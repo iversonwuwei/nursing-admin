@@ -1,0 +1,270 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme inline {
+  /* Healthcare Dashboard Color Palette - uipro design system */
+  --color-primary: #0369A1;        /* Calm blue - 主色 */
+  --color-primary-hover: #0284C7;
+  --color-primary-light: #38BDF8; /* Secondary cyan */
+  --color-cta: #22C55E;            /* Health green - CTA */
+  --color-cta-hover: #16A34A;
+  --color-background: #F0F9FF;    /* Light blue bg */
+  --color-surface: #FFFFFF;       /* Card surface */
+  --color-text: #0C4A6E;          /* Deep blue text */
+  --color-text-secondary: #0369A1;
+  --color-muted: #E0F2FE;         /* Muted blue */
+  --color-border: #BAE6FD;        /* Border blue */
+  
+  /* Status Colors */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-info: #3B82F6;
+  
+  /* Warm accent for elderly care */
+  --color-accent-warm: #F472B6;   /* Soft pink - 温暖感 */
+  --color-accent-warm-light: #FBCFE8;
+  
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
+  --radius-full: 9999px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(3 105 161 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(3 105 161 / 0.1), 0 2px 4px -2px rgb(3 105 161 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(3 105 161 / 0.1), 0 4px 6px -4px rgb(3 105 161 / 0.1);
+  --shadow-card: 0 0 0 1px rgb(3 105 161 / 0.05), 0 4px 12px rgb(3 105 161 / 0.08);
+  --shadow-hover: 0 8px 25px -5px rgb(3 105 161 / 0.15), 0 4px 10px -6px rgb(3 105 161 / 0.1);
+}
+
+:root {
+  --background: 203 94% 97%;
+  --foreground: 199 47% 24%;
+  --card: 0 0% 100%;
+  --card-foreground: 199 47% 24%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 199 47% 24%;
+  --primary: 199 100% 37%;
+  --primary-foreground: 203 94% 97%;
+  --secondary: 203 80% 92%;
+  --secondary-foreground: 199 47% 24%;
+  --muted: 203 80% 92%;
+  --muted-foreground: 199 30% 45%;
+  --accent: 330 80% 94%;
+  --accent-foreground: 330 50% 25%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 199 80% 88%;
+  --input: 199 80% 88%;
+  --ring: 199 100% 37%;
+  --radius: 0.75rem;
+  
+  /* Chart colors - Data dense dashboard */
+  --chart-1: #0369A1;
+  --chart-2: #38BDF8;
+  --chart-3: #22C55E;
+  --chart-4: #F59E0B;
+  --chart-5: #F472B6;
+}
+
+/* Font family */
+body {
+  font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Figtree', 'Noto Sans', sans-serif;
+}
+
+/* Code/monospace */
+code, pre, .font-mono {
+  font-family: 'SF Mono', 'Fira Code', 'Fira Sans Mono', monospace;
+}
+
+/* Smooth transitions */
+* {
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Focus visible for accessibility - WCAG compliant */
+:focus-visible {
+  outline: 3px solid hsl(var(--primary) / 0.5);
+  outline-offset: 2px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* Button press effect */
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Status indicator pulse */
+.status-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Smooth page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Table row hover */
+.table-row-hover {
+  transition: background-color 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background-color: hsl(var(--primary) / 0.04);
+}
+
+/* Badge variants */
+.badge-success {
+  background-color: #DCFCE7;
+  color: #166534;
+}
+
+.badge-warning {
+  background-color: #FEF3C7;
+  color: #92400E;
+}
+
+.badge-danger {
+  background-color: #FEE2E2;
+  color: #991B1B;
+}
+
+.badge-info {
+  background-color: #DBEAFE;
+  color: #1E40AF;
+}
+
+/* KPI Card specific styles */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--color-primary);
+}
+
+/* Data table styles */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 2px solid hsl(var(--border));
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.data-table td {
+  padding: 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.data-table tr:hover td {
+  background-color: hsl(var(--primary) / 0.04);
+}
+
+/* Responsive typography - WCAG 4.5:1 contrast */
+@media (min-width: 375px) {
+  body {
+    font-size: 16px;
+  }
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
