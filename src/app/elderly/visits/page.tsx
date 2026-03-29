@@ -58,7 +58,7 @@ export default function VisitsPage() {
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead>
               <tr><th>老人</th><th>访客</th><th>关系</th><th>联系电话</th><th>日期</th><th>时间</th><th>方式</th><th>状态</th><th></th></tr>
             </thead>

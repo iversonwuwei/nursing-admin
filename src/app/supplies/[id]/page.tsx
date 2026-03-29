@@ -76,7 +76,7 @@ export default function SupplyDetailPage() {
           </div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead><tr><th>日期</th><th>入库</th><th>出库</th><th>结存</th></tr></thead>
             <tbody>
               {data.history.map((h: any, i: number) => (

@@ -63,7 +63,7 @@ export default function FacePage() {
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead>
               <tr><th>老人</th><th>房间</th><th>录入状态</th><th>采集进度</th><th>最后更新</th><th></th></tr>
             </thead>

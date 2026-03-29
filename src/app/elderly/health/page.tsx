@@ -82,7 +82,7 @@ export default function HealthPage() {
           </div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead>
               <tr>
                 <th>姓名</th><th>房间</th><th>血压<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>mmHg</span></th>

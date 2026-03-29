@@ -83,7 +83,7 @@ export default function EquipmentStatusPage() {
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead>
               <tr><th>设备</th><th>类型</th><th>位置</th><th>状态</th><th>信号强度</th><th>电量</th><th>运行时长</th><th>备注</th></tr>
             </thead>

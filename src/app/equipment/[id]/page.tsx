@@ -87,7 +87,7 @@ export default function EquipmentDetailPage() {
           </div>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+          <table className="table">
             <thead><tr><th>时间</th><th>心率(bpm)</th><th>血氧(%)</th><th>备注</th></tr></thead>
             <tbody>
               {data.history.map((h: any, i: number) => (

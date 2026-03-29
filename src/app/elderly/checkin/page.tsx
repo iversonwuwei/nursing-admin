@@ -129,24 +129,54 @@ export default function CheckinPage() {
             </div>
           </div>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table-base">
+        <div className="table-wrap">
+          <table className="table">
             <thead>
               <tr>
-                <th>姓名</th><th>年龄</th><th>性别</th><th>入住房间</th><th>护理等级</th><th>申请日期</th><th>状态</th><th></th>
+                <th style={{ width: 40, textAlign: 'center' }}>#</th>
+                <th>姓名</th>
+                <th>年龄</th>
+                <th>性别</th>
+                <th>入住房间</th>
+                <th>护理等级</th>
+                <th>申请日期</th>
+                <th>状态</th>
+                <th style={{ textAlign: 'right' }}>操作</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(e => (
-                <tr key={e.id}>
-                  <td><div className="font-semibold text-sm">{e.name}</div><div className="text-[10px]" style={{ color: "var(--color-muted)" }}>{e.id}</div></td>
-                  <td><span className="text-sm">{e.age}岁</span></td>
-                  <td><span className="text-sm">{e.gender}</span></td>
-                  <td><span className="text-sm">{e.room}</span></td>
-                  <td><Tag variant={e.level === "特级护理" ? "danger" : e.level === "一级护理" ? "warning" : "info"}>{e.level}</Tag></td>
-                  <td><span className="text-xs" style={{ color: "var(--color-muted)" }}>{e.date}</span></td>
-                  <td><Tag variant={e.status === "待审核" ? "warning" : "success"}>{e.status}</Tag></td>
-                  <td><button className="btn btn-primary btn-sm" style={{ fontSize: 12, height: 28 }}>审核</button></td>
+              {filtered.map((e, i) => (
+                <tr key={e.id} className="table-hover-row">
+                  <td>
+                    <span className="table-row-num">{i + 1}</span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="avatar avatar-sm">{e.name.slice(0, 1)}</div>
+                      <div>
+                        <div className="font-semibold" style={{ fontSize: 14 }}>{e.name}</div>
+                        <div className="text-xs" style={{ color: 'var(--color-muted)' }}>{e.id}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span style={{ fontSize: 14 }}>{e.age}岁</span></td>
+                  <td><span style={{ fontSize: 14 }}>{e.gender}</span></td>
+                  <td><span style={{ fontSize: 14, fontFamily: 'monospace' }}>{e.room}</span></td>
+                  <td>
+                    <Tag variant={e.level === '特级护理' ? 'danger' : e.level === '一级护理' ? 'warning' : 'info'}>
+                      {e.level}
+                    </Tag>
+                  </td>
+                  <td><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{e.date}</span></td>
+                  <td>
+                    <div className="table-status">
+                      <span className={`status-dot ${e.status === '待审核' ? 'warning' : 'success'}`} />
+                      <Tag variant={e.status === '待审核' ? 'warning' : 'success'}>{e.status}</Tag>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="btn btn-primary btn-sm">审核</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
