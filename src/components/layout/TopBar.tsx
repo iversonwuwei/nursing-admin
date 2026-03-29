@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { Bell, LogOut } from 'lucide-react';
 
 interface TopBarProps {
   username: string;
@@ -33,29 +34,26 @@ export function TopBar({ username, organization }: TopBarProps) {
       </div>
 
       <div className="topbar-right">
-        {/* 通知 */}
+        {/* Notifications */}
         <button className="btn btn-ghost btn-icon" style={{ position: 'relative' }}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
+          <Bell width={18} height={18} />
           <span style={{
             position: 'absolute', top: 6, right: 6,
             width: 7, height: 7,
-            background: 'var(--danger)',
+            background: 'hsl(var(--danger))',
             borderRadius: '50%',
             border: '2px solid white'
           }}/>
         </button>
 
-        {/* 用户区 */}
+        {/* User area */}
         <div className="topbar-divider"/>
         <div className="topbar-user-info">
           <p className="topbar-username">{username}</p>
           <p className="topbar-role">管理员</p>
         </div>
         <div className="topbar-avatar">{username.charAt(0).toUpperCase()}</div>
-        <button onClick={handleLogout} className="btn btn-ghost btn-sm" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        <button onClick={handleLogout} className="btn btn-ghost btn-sm" style={{ color: 'hsl(var(--muted-foreground))', fontSize: 13 }}>
           退出
         </button>
       </div>

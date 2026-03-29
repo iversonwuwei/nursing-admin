@@ -1,87 +1,52 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { useEffect, useState } from 'react'
-import { Sidebar } from './sidebar'
+import { TopNavbar } from './TopNavbar'
 
 export function AppWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { data: session, status } = useSession()
-  const router = useRouter()
+  const { status } = useSession()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
-  // 登录页直接渲染
+  // Login page — no navbar
   if (pathname === '/login') return <>{children}</>
 
-  // 未挂载 / loading
+  // Loading
   if (!mounted || status === 'loading') {
     return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--color-bg)',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: 'var(--color-primary)', margin: '0 auto 12px',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }} />
+          <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>加载中...</div>
+        </div>
+        <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       </div>
     )
   }
 
-  // 未登录 → 跳转
   if (status === 'unauthenticated') {
-    router.push('/login')
-    return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
-      </div>
-    )
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
+    return null
   }
 
   return (
-    <div className="layout">
-      <Sidebar />
-      <div className="main-content">
-        <header className="main-header">
-          <div className="header-title">Nursing Admin</div>
-          <div className="header-actions">
-            <button className="header-icon-btn" title="消息">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              <span className="notification-dot" />
-            </button>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              paddingLeft: 12,
-              borderLeft: '1px solid var(--border)',
-              marginLeft: 4,
-            }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                background: 'var(--primary)',
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 13,
-                fontWeight: 600,
-              }}>
-                {session?.user?.name?.charAt(0) ?? '管'}
-              </div>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>
-                {session?.user?.name ?? '管理员'}
-              </span>
-            </div>
-          </div>
-        </header>
-        <main className="main-body">
-          {children}
-        </main>
+    <div className="app-shell">
+      <TopNavbar />
+      <div className="page-body">
+        {children}
       </div>
     </div>
   )

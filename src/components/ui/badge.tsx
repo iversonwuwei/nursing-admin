@@ -3,23 +3,27 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 whitespace-nowrap",
+  "inline-flex items-center justify-center rounded-md text-xs font-semibold transition-colors whitespace-nowrap",
   {
     variants: {
       variant: {
-        default: "bg-primary text-white",
-        secondary: "bg-secondary text-white",
-        danger: "bg-danger/10 text-danger border border-danger/20",
+        /* 默认主色 */
+        default: "bg-primary text-primary-foreground",
+        /* 次要/幽灵 */
+        secondary: "bg-secondary/10 text-secondary border border-secondary/20",
         destructive: "bg-danger/10 text-danger border border-danger/20",
-        success: "bg-success/10 text-success border border-success/20",
-        warning: "bg-warning/10 text-warning border border-warning/20",
-        info: "bg-info/10 text-info border border-info/20",
+        success: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+        warning: "bg-amber-100 text-amber-700 border border-amber-200",
+        info: "bg-sky-100 text-sky-700 border border-sky-200",
+        /* 护理等级 */
+        critical: "bg-red-100 text-red-700 border border-red-200 font-bold",
+        high: "bg-amber-100 text-amber-700 border border-amber-200",
+        medium: "bg-sky-100 text-sky-700 border border-sky-200",
+        low: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+        /* 通用 */
         outline: "border border-border text-foreground bg-transparent",
-        // 护理等级徽章
-        vip: "bg-gradient-to-r from-primary to-primary-600 text-white",
-        level1: "bg-secondary/10 text-secondary border border-secondary/20",
-        level2: "bg-info/10 text-info border border-info/20",
-        level3: "bg-gray-100 text-gray-600 border border-gray-200",
+        neutral: "bg-stone-100 text-stone-600 border border-stone-200",
+        orange: "bg-orange-100 text-orange-700 border border-orange-200",
       },
     },
     defaultVariants: {

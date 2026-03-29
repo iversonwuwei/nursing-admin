@@ -3,3 +3,5 @@ export { elderlyList, elderlyList as MOCK_ELDERLY, feeRecords, healthRecords, ca
 export { equipmentList, equipmentList as MOCK_EQUIPMENT, equipmentAlarms } from "./equipment"
 export { equipmentCategories, type EquipmentCategory } from "./equipment-new"
 export { organizations, organizations as MOCK_ORGS, totalStats } from "./organizations"
+export * from "./health-data"
+export * from "./alerts-data"

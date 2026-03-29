@@ -1,146 +1,113 @@
-"use client";
+'use client'
 
-import { useState, useMemo } from "react";
-import { organizations, totalStats } from "@/lib/data";
+import { useState } from 'react'
+import Link from 'next/link'
+import { StatCard, DataCard, ProgressBar, PageHeader } from '@/components/nh'
+import { organizations, totalStats } from '@/lib/data'
+import { Building2, MapPin, Phone, ChevronRight, Bed, Users } from 'lucide-react'
 
 export default function OrganizationsPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = useMemo(() => organizations.find(o => o.id === selectedId) || null, [selectedId]);
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const occRate = (o: typeof organizations[0]) =>
-    o.totalBeds > 0 ? Math.round((o.occupiedBeds / o.totalBeds) * 100) : 0;
-
-  const rateColor = (rate: number) =>
-    rate >= 90 ? "bg-red-500" : rate >= 70 ? "bg-amber-500" : "bg-emerald-500";
+    o.totalBeds > 0 ? Math.round((o.occupiedBeds / o.totalBeds) * 100) : 0
 
   return (
-    <div className="space-y-5 animate-fade-up">
+    <div className="animate-fade-up">
 
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-bold text-foreground tracking-tight">机构管理</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">共 {organizations.length} 家连锁机构</p>
-        </div>
-        <button className="inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          新增机构
-        </button>
+      <PageHeader
+        title="机构管理"
+        subtitle={`共 ${organizations.length} 家连锁机构`}
+        actions={
+          <button className="btn btn-primary btn-sm">新增机构</button>
+        }
+      />
+
+      <div className="kpi-grid">
+        <StatCard icon={<Building2 size={18} />} label="机构总数" value={totalStats.totalOrgs} color="primary" />
+        <StatCard icon={<Bed size={18} />} label="床位总数" value={totalStats.totalBeds} color="info" />
+        <StatCard icon={<Users size={18} />} label="入住人数" value={totalStats.totalElderly} color="success" />
+        <StatCard icon={<Building2 size={18} />} label="平均入住率" value={`${totalStats.avgOccupancy}%`} color="warning" />
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm border-l-4 border-l-purple-500">
-          <div className="text-xs font-medium text-muted-foreground">机构总数</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{totalStats.totalOrgs}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm border-l-4 border-l-gray-400">
-          <div className="text-xs font-medium text-muted-foreground">床位总数</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{totalStats.totalBeds}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm border-l-4 border-l-emerald-500">
-          <div className="text-xs font-medium text-muted-foreground">入住人数</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{totalStats.totalElderly}</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm border-l-4 border-l-amber-500">
-          <div className="text-xs font-medium text-muted-foreground">平均入住率</div>
-          <div className="text-2xl font-bold text-foreground mt-1">{totalStats.avgOccupancy}%</div>
-        </div>
-      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {organizations.map(org => {
+          const rate = occRate(org)
+          const isSelected = selectedId === org.id
 
-      {/* Table */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                {["机构名称", "地址", "床位", "入住率", "员工", ""].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {organizations.map(org => {
-                const rate = occRate(org);
-                const isSelected = selectedId === org.id;
-                return (
-                  <tr
-                    key={org.id}
-                    onClick={() => setSelectedId(isSelected ? null : org.id)}
-                    className={`cursor-pointer border-b border-border/50 last:border-0 transition-colors ${isSelected ? 'bg-muted/30' : 'hover:bg-muted/20'}`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-foreground text-sm">{org.name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{org.phone}</div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate">{org.address}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-sm whitespace-nowrap">
-                      {org.occupiedBeds}/{org.totalBeds}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${rateColor(rate)}`}
-                            style={{ width: `${rate}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-bold text-foreground w-8 text-right">{rate}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{org.staffCount} 人</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={e => { e.stopPropagation(); setSelectedId(org.id); }}
-                        className="text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
-                      >
-                        详情 →
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Detail panel */}
-      {selected && (
-        <div className="rounded-xl border border-border bg-card p-5 animate-fade-up">
-          <div className="flex items-start justify-between mb-5">
-            <div>
-              <h2 className="text-sm font-bold text-foreground tracking-tight">{selected.name}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{selected.address}</p>
-            </div>
-            <button
-              onClick={() => setSelectedId(null)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          return (
+            <DataCard
+              key={org.id}
+              icon={<Building2 size={16} />}
+              title={org.name}
+              subtitle={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 2 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <MapPin size={11} style={{ color: 'var(--color-muted)' }} />
+                    <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{org.address}</span>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <Phone size={11} style={{ color: 'var(--color-muted)' }} />
+                    <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{org.phone}</span>
+                  </span>
+                </div>
+              }
+              badge={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ProgressBar
+                    value={rate}
+                    color={rate >= 90 ? 'danger' : rate >= 70 ? 'warning' : 'success'}
+                    showLabel
+                    size="sm"
+                  />
+                  <span className="text-xs font-semibold" style={{
+                    color: rate >= 90 ? 'var(--color-danger)' : rate >= 70 ? 'var(--color-warning)' : 'var(--color-success)',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {org.occupiedBeds}/{org.totalBeds} 床
+                  </span>
+                </div>
+              }
+              action={
+                <button
+                  className="btn btn-ghost btn-icon btn-sm"
+                  onClick={() => setSelectedId(isSelected ? null : org.id)}
+                  style={{ color: 'var(--color-muted)' }}
+                >
+                  <ChevronRight size={14} style={{ transform: isSelected ? 'rotate(90deg)' : 'none', transition: 'transform 200ms ease' }} />
+                </button>
+              }
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: "床位使用",   value: `${selected.occupiedBeds}/${selected.totalBeds}` },
-              { label: "入住率",     value: `${occRate(selected)}%` },
-              { label: "员工数量",   value: `${selected.staffCount} 人` },
-              { label: "入住老人",   value: `${selected.elderlyCount} 人` },
-            ].map(item => (
-              <div key={item.label} className="p-3 rounded-xl border border-border bg-muted/30">
-                <div className="text-xs text-muted-foreground mb-1">{item.label}</div>
-                <div className="text-base font-bold text-foreground tracking-tight">{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+              {isSelected && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                    {[
+                      { label: '总床位', value: `${org.totalBeds} 床` },
+                      { label: '入住人数', value: `${org.occupiedBeds} 人` },
+                      { label: '空床位', value: `${org.totalBeds - org.occupiedBeds} 床` },
+                      { label: '员工数', value: `${org.staffCount} 人` },
+                    ].map(item => (
+                      <div key={item.label} style={{
+                        padding: '10px 12px', borderRadius: 10,
+                        background: 'var(--color-bg)', textAlign: 'center',
+                      }}>
+                        <div className="text-xs" style={{ color: 'var(--color-muted)', marginBottom: 3 }}>{item.label}</div>
+                        <div className="font-bold" style={{ color: 'var(--color-text)', fontSize: 15 }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <Link href={`/organizations/${org.id}`} className="btn btn-ghost btn-sm">
+                      查看详情 <ChevronRight size={12} />
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </DataCard>
+          )
+        })}
+      </div>
 
     </div>
-  );
+  )
 }

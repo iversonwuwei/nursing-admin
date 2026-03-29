@@ -1,225 +1,187 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import Link from 'next/link';
-import {
-  ArrowLeft,
-  Building2,
-  MapPin,
-  Phone,
-  Users,
-  Bed,
-  Edit,
-  User,
-  Star,
-} from 'lucide-react';
+import { useState } from 'react'
+import Link from 'next/link'
+import { StatCard, Tag, PageHeader, DataCard } from '@/components/nh'
+import { Building2, MapPin, Phone, Bed, Users, Edit, ChevronRight, ArrowLeft, Star } from 'lucide-react'
 
 const orgData = {
-  id: '1',
-  name: '静安分院',
-  address: '上海市静安区静安寺路100号',
-  phone: '021-62880001',
-  beds: 80,
-  occupied: 76,
-  staff: 28,
-  manager: '张主任',
-  established: '2018-06-01',
-  area: '3000㎡',
-};
-
+  id: '1', name: '静安分院', address: '上海市静安区静安寺路100号',
+  phone: '021-62880001', beds: 80, occupied: 76, staff: 28,
+  manager: '张主任', established: '2018-06-01', area: '3000㎡',
+}
 const staffData = [
   { id: '1', name: '张主任', role: '院长', gender: '女', age: 45, phone: '13800001001', status: '在职' },
   { id: '2', name: '李医生', role: '主治医师', gender: '男', age: 38, phone: '13800001002', status: '在职' },
   { id: '3', name: '王护士', role: '护士长', gender: '女', age: 32, phone: '13800001003', status: '在职' },
   { id: '4', name: '赵护理', role: '护理员', gender: '女', age: 28, phone: '13800001004', status: '在职' },
   { id: '5', name: '钱后勤', role: '后勤主管', gender: '男', age: 42, phone: '13800001005', status: '在职' },
-];
-
+]
 const bedData = Array.from({ length: 12 }, (_, i) => ({
   id: `${i + 1}`,
-  room: `${Math.floor(i / 4) + 1}号楼-${String(i % 4 + 1).padStart(3, '0')}`,
+  room: `${Math.floor(i / 4) + 1}号楼-${String((i % 4) + 1).padStart(3, '0')}`,
   status: i < 9 ? 'occupied' : i < 10 ? 'reserved' : 'available',
-}));
+}))
 
-const tabs = [
+const TABS = [
   { id: 'overview', label: '机构概览' },
   { id: 'beds', label: '床位管理' },
   { id: 'staff', label: '员工管理' },
-];
+]
 
 export default function OrgDetailPage() {
-  const [activeTab, setActiveTab] = useState('overview');
-
-  const occupancy = Math.round((orgData.occupied / orgData.beds) * 100);
+  const [activeTab, setActiveTab] = useState('overview')
+  const occupancy = Math.round((orgData.occupied / orgData.beds) * 100)
 
   return (
-    <div className="p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/organizations"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border text-muted-foreground
-                       hover:bg-accent transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">{orgData.name}</h1>
-              <p className="text-sm text-muted-foreground">机构编号: {orgData.id}</p>
-            </div>
+    <div className="animate-fade-up">
+
+      <PageHeader
+        title={orgData.name}
+        subtitle={`机构编号: ${orgData.id}`}
+        actions={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href="/organizations" className="btn btn-secondary btn-sm">
+              <ArrowLeft size={13} />返回
+            </Link>
+            <button className="btn btn-primary btn-sm">
+              <Edit size={13} />编辑
+            </button>
           </div>
-        </div>
-        <button className="inline-flex items-center gap-1.5 h-8 px-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors cursor-pointer">
-          <Edit className="w-3.5 h-3.5" />
-          编辑
-        </button>
+        }
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
+        <StatCard icon={<Bed size={18} />} label="床位总数" value={orgData.beds} sub="总床位数" color="info" />
+        <StatCard icon={<Users size={18} />} label="入住人数" value={orgData.occupied} sub="当前入住" color="success" />
+        <StatCard icon={<Users size={18} />} label="入住率" value={`${occupancy}%`} sub={`空床 ${orgData.beds - orgData.occupied} 个`} color={occupancy >= 90 ? 'danger' : occupancy >= 70 ? 'warning' : 'success'} />
+        <StatCard icon={<Building2 size={18} />} label="员工数" value={orgData.staff} sub="在职员工" color="primary" />
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border">
-        <div className="flex gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer
-                         ${activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--color-border)' }}>
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            style={{
+              padding: '10px 16px', fontSize: 13, fontWeight: activeTab === id ? 600 : 450,
+              color: activeTab === id ? 'var(--color-primary)' : 'var(--color-muted)',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              borderBottom: activeTab === id ? '2px solid var(--color-primary)' : '2px solid transparent',
+              marginBottom: -1, transition: 'all 150ms ease',
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Overview Tab */}
+      {/* Overview */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-3 gap-5">
-          {/* Info Card */}
-          <div className="rounded-xl border border-border bg-card p-5 space-y-3 col-span-2">
-            <h3 className="text-sm font-semibold text-foreground">基本信息</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-muted-foreground text-xs">地址</p>
-                  <p className="text-foreground">{orgData.address}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <Phone className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-muted-foreground text-xs">联系电话</p>
-                  <p className="text-foreground">{orgData.phone}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">成立日期</p>
-                <p className="text-foreground">{orgData.established}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">占地面积</p>
-                <p className="text-foreground">{orgData.area}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs">负责人</p>
-                <p className="text-foreground">{orgData.manager}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats Card */}
-          <div className="rounded-xl border border-border bg-card p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">运营数据</h3>
-            <div className="space-y-3">
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
+          <DataCard
+            icon={<Building2 size={16} />}
+            title="基本信息"
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               {[
-                { label: '床位总数', value: orgData.beds, icon: <Bed className="w-4 h-4" />, colorClass: 'bg-purple-500 text-white' },
-                { label: '入住人数', value: orgData.occupied, icon: <Users className="w-4 h-4" />, colorClass: 'bg-emerald-500 text-white' },
-                { label: '员工数量', value: orgData.staff, icon: <User className="w-4 h-4" />, colorClass: 'bg-gray-100 text-gray-500' },
-                { label: '入住率', value: `${occupancy}%`, icon: <Star className="w-4 h-4" />, colorClass: 'bg-amber-500 text-white' },
-              ].map((s) => (
-                <div key={s.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-md flex items-center justify-center ${s.colorClass}`}>
-                      {s.icon}
-                    </div>
-                    <span className="text-sm text-muted-foreground">{s.label}</span>
-                  </div>
-                  <span className="text-sm font-bold text-foreground">{s.value}</span>
+                { label: '机构名称', value: orgData.name },
+                { label: '机构编号', value: orgData.id },
+                { label: '地址', value: orgData.address },
+                { label: '联系电话', value: orgData.phone },
+                { label: '成立日期', value: orgData.established },
+                { label: '占地面积', value: orgData.area },
+                { label: '负责人', value: orgData.manager },
+              ].map(item => (
+                <div key={item.label}>
+                  <div className="text-xs" style={{ color: 'var(--color-muted)', marginBottom: 2 }}>{item.label}</div>
+                  <div className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{item.value}</div>
                 </div>
               ))}
             </div>
-          </div>
+          </DataCard>
+
+          <DataCard
+            icon={<Star size={16} />}
+            title="运营数据"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: '床位总数', value: `${orgData.beds} 床`, color: 'info' },
+                { label: '入住人数', value: `${orgData.occupied} 人`, color: 'success' },
+                { label: '员工数量', value: `${orgData.staff} 人`, color: 'primary' },
+                { label: '入住率', value: `${occupancy}%`, color: occupancy >= 90 ? 'danger' : occupancy >= 70 ? 'warning' : 'success' },
+              ].map(s => (
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.label}</span>
+                  <span className="font-bold" style={{ color: `var(--color-${s.color === 'info' ? 'info' : s.color === 'success' ? 'success' : s.color === 'primary' ? 'primary' : s.color})` }}>
+                    {s.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </DataCard>
         </div>
       )}
 
-      {/* Beds Tab */}
+      {/* Beds */}
       {activeTab === 'beds' && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">房间号</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bedData.map((bed) => (
-                <tr key={bed.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-mono text-foreground">{bed.room}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold ${
-                      bed.status === 'occupied' ? 'bg-emerald-50 text-emerald-600' :
-                      bed.status === 'reserved' ? 'bg-amber-50 text-amber-600' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {bed.status === 'occupied' ? '已入住' : bed.status === 'reserved' ? '预留' : '可用'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataCard icon={<Bed size={16} />} title="床位管理">
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>房间号</th><th>状态</th></tr>
+              </thead>
+              <tbody>
+                {bedData.map(bed => (
+                  <tr key={bed.id}>
+                    <td><span className="font-semibold text-sm" style={{ fontFamily: 'monospace' }}>{bed.room}</span></td>
+                    <td>
+                      <Tag variant={bed.status === 'occupied' ? 'success' : bed.status === 'reserved' ? 'warning' : 'neutral'}>
+                        {bed.status === 'occupied' ? '已入住' : bed.status === 'reserved' ? '预留' : '可用'}
+                      </Tag>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataCard>
       )}
 
-      {/* Staff Tab */}
+      {/* Staff */}
       {activeTab === 'staff' && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">姓名</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">职位</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">性别</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">年龄</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">联系电话</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staffData.map((s) => (
-                <tr key={s.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{s.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.role}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.gender}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{s.age}</td>
-                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{s.phone}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-600">
-                      {s.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataCard icon={<Users size={16} />} title="员工管理">
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>姓名</th><th>职位</th><th>性别</th><th>年龄</th><th>联系电话</th><th>状态</th></tr>
+              </thead>
+              <tbody>
+                {staffData.map(s => (
+                  <tr key={s.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="avatar avatar-sm" style={{ background: 'rgba(13,148,136,0.1)', color: 'var(--color-primary)' }}>
+                          {s.name.slice(0, 1)}
+                        </div>
+                        <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{s.name}</span>
+                      </div>
+                    </td>
+                    <td><span className="text-sm">{s.role}</span></td>
+                    <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.gender}</span></td>
+                    <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.age}岁</span></td>
+                    <td><span className="text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.phone}</span></td>
+                    <td><Tag variant="success">{s.status}</Tag></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataCard>
       )}
+
     </div>
-  );
+  )
 }

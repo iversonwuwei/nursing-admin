@@ -1,65 +1,77 @@
 'use client'
 
+import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { useState } from 'react'
+import {
+  Home, Building2, Users, UserPlus, Heart, ScanFace, Video,
+  UserCheck, CalendarDays, DoorOpen, Monitor,
+  CalendarHeart, ShieldAlert, Package, PieChart,
+  Bot, Activity, ChevronDown, ChevronRight,
+} from 'lucide-react'
 
-const navItems = [
+const NAV = [
+  { label: '概览', href: '/', icon: Home },
+  { label: '分院管理', href: '/branch', icon: Building2 },
   {
-    label: '首页',
-    href: '/',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="9" rx="1.5" />
-        <rect x="14" y="3" width="7" height="5" rx="1.5" />
-        <rect x="14" y="12" width="7" height="9" rx="1.5" />
-        <rect x="3" y="16" width="7" height="5" rx="1.5" />
-      </svg>
-    ),
+    label: '老人服务',
+    icon: Users,
+    children: [
+      { label: '老人列表', href: '/elderly' },
+      { label: '办理入住', href: '/elderly/checkin' },
+      { label: '健康档案', href: '/elderly/health' },
+      { label: '人脸录入', href: '/elderly/face' },
+      { label: '探视记录', href: '/elderly/visits' },
+      { label: '指标更新', href: '/elderly/vitals' },
+    ],
   },
   {
-    label: '老人管理',
-    href: '/elderly',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
+    label: '人员管理',
+    icon: UserCheck,
+    children: [
+      { label: '员工列表', href: '/staff' },
+      { label: '排班管理', href: '/staff/schedule' },
+    ],
   },
-  {
-    label: '机构管理',
-    href: '/organizations',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 21h18" />
-        <path d="M5 21V7l8-4v18" />
-        <path d="M19 21V11l-6-4" />
-        <path d="M9 9v.01" />
-        <path d="M9 12v.01" />
-        <path d="M9 15v.01" />
-        <path d="M9 18v.01" />
-      </svg>
-    ),
-  },
+  { label: '房间管理', href: '/rooms', icon: DoorOpen },
   {
     label: '设备管理',
-    href: '/equipment',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="7" width="20" height="14" rx="2" />
-        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-        <path d="M6 11h4" />
-        <path d="M14 11h4" />
-      </svg>
-    ),
+    icon: Monitor,
+    children: [
+      { label: '设备列表', href: '/equipment' },
+      { label: '设备监控', href: '/equipment/monitor' },
+      { label: '设备状态', href: '/equipment/status' },
+      { label: '设备统计', href: '/equipment/stats' },
+    ],
+  },
+  { label: '活动管理', href: '/activities', icon: CalendarHeart },
+  {
+    label: '运营管理',
+    icon: ShieldAlert,
+    children: [
+      { label: '事故报告', href: '/incidents', badge: 2 },
+      { label: '物资管理', href: '/supplies', badge: 3 },
+      { label: '财务收支', href: '/financial', icon: PieChart },
+      { label: 'AI助手', href: '/ai-assistant', icon: Bot },
+    ],
   },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
+
+  const toggle = (label: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      next.has(label) ? next.delete(label) : next.add(label)
+      return next
+    })
+  }
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -69,50 +81,79 @@ export function Sidebar() {
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon">NH</div>
-        <div>
-          <div className="sidebar-logo-text">Nursing</div>
+        <div className="sidebar-logo-text">
+          <div className="sidebar-logo-name">Nursing</div>
           <div className="sidebar-logo-sub">管理系统</div>
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Nav */}
       <nav className="sidebar-nav">
-        <div className="nav-label">导航菜单</div>
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
-          >
-            <span className="nav-icon">{item.icon}</span>
-            <span>{item.label}</span>
-          </Link>
-        ))}
+        {NAV.map(item => {
+          if (item.children) {
+            const isOpen = openGroups.has(item.label)
+            const hasActive = item.children.some(c => isActive(c.href))
+            return (
+              <div key={item.label} className={`sidebar-group${isOpen ? ' is-open' : ''}`}>
+                <button
+                  className={`sidebar-group-btn${isOpen ? ' is-open' : ''}`}
+                  onClick={() => toggle(item.label)}
+                >
+                  <item.icon size={16} className="sidebar-item-icon" />
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {isOpen
+                    ? <ChevronDown size={13} style={{ opacity: 0.5 }} />
+                    : <ChevronRight size={13} style={{ opacity: 0.5 }} />
+                  }
+                </button>
+                <div className="sidebar-dropdown">
+                  {item.children.map(child => (
+                    <Link
+                      key={child.href}
+                      href={child.href!}
+                      className={`sidebar-dropdown-item${isActive(child.href!) ? ' is-active' : ''}`}
+                    >
+                      {'icon' in child && child.icon && (() => { const Icon = child.icon as React.ElementType; return <Icon size={14} /> })()}
+                      <span>{child.label}</span>
+                      {'badge' in child && child.badge && (
+                        <span className="sidebar-badge">{child.badge}</span>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+
+          const Icon = item.icon
+          return (
+            <Link
+              key={item.href}
+              href={item.href!}
+              className={`sidebar-item${isActive(item.href!) ? ' is-active' : ''}`}
+            >
+              <Icon size={16} className="sidebar-item-icon" />
+              <span>{item.label}</span>
+            </Link>
+          )
+        })}
       </nav>
 
-      {/* Footer */}
+      {/* User */}
       <div className="sidebar-footer">
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">管</div>
-          <div>
-            <div className="sidebar-username">管理员</div>
-            <div className="sidebar-role">系统管理员</div>
+        <div
+          className="sidebar-user"
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          title="点击退出登录"
+        >
+          <div className="sidebar-avatar">
+            {(session?.user?.name ?? '管').charAt(0)}
+          </div>
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name">{session?.user?.name ?? '管理员'}</div>
+            <div className="sidebar-user-role">系统管理员</div>
           </div>
         </div>
-        <button
-          onClick={() => signOut({ callbackUrl: '/login' })}
-          className="nav-item"
-          style={{ width: '100%' }}
-        >
-          <span className="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </span>
-          <span>退出登录</span>
-        </button>
       </div>
     </aside>
   )
