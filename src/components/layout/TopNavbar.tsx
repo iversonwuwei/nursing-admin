@@ -1,15 +1,23 @@
 'use client'
 
+import {
+  BarChart3,
+  Bell,
+  CalendarHeart,
+  ChevronDown,
+  DoorOpen,
+  Home, Landmark,
+  Menu,
+  Monitor,
+  Settings,
+  UserCheck,
+  Users,
+  X,
+} from 'lucide-react'
+import { signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
-import { useSession } from 'next-auth/react'
-import { useState, useEffect, useRef } from 'react'
-import {
-  Home, Landmark, Users, UserCheck, DoorOpen, Monitor,
-  CalendarHeart, Bell, Settings, Menu, X, ChevronDown,
-  BarChart3,
-} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 /* ── Nav data ── */
 const NAV_ITEMS = [

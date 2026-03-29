@@ -1,10 +1,10 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
-import Link from 'next/link'
 import {
   Activity, AlertTriangle, BarChart3,
 } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 const DATA_NAV = [
   { label: '健康监测', href: '/health', icon: Activity },

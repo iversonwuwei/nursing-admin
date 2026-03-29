@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { AlertTriangle, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
-import { Search, Plus, ShieldAlert, ChevronRight, AlertTriangle } from 'lucide-react'
+import { useState } from 'react'
 
 const INCIDENTS = [
   { id: 'I001', title: '老人摔倒', level: '严重', elder: '张桂英', room: '201-1', time: '2026-03-28 16:30', status: '处理中', desc: '如厕时不慎摔倒，右臂擦伤，已送医处理' },

@@ -1,8 +1,8 @@
 "use client"
+import { Tag, type TagVariant } from "@/components/nh"
+import { ArrowLeft, Edit, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, Edit, TrendingUp } from "lucide-react"
-import { Tag, type TagVariant } from "@/components/nh"
 
 const SUPPLY_DATA = {
   "SP001": {

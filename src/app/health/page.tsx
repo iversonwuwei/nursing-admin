@@ -1,1 +1,1 @@
-export { default } from '../health-monitoring/page'
+export { default } from '../health-monitoring/page';

@@ -1,14 +1,25 @@
 'use client'
 
+import { DataCard, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { elderlyList, equipmentAlarms, organizations } from '@/lib/data'
+import {
+  Activity,
+  AlertTriangle, Bell,
+  CalendarHeart,
+  ChevronRight,
+  ClipboardList,
+  DollarSign,
+  DoorOpen,
+  Download,
+  Droplets,
+  Heart,
+  Home,
+  Stethoscope,
+  Thermometer,
+  Users,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { StatCard, DataCard, Tag, PageHeader, type TagVariant } from '@/components/nh'
-import { elderlyList, organizations, equipmentAlarms } from '@/lib/data'
-import {
-  Users, Home, ClipboardList, AlertTriangle, Bell, DollarSign,
-  Activity, ChevronRight, Download, CalendarHeart, DoorOpen,
-  Stethoscope, Heart, Thermometer, Droplets,
-} from 'lucide-react'
 
 // ─── Mock Data ───────────────────────────────────────────────────────────────
 

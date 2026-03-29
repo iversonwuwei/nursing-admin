@@ -1,8 +1,8 @@
-import type { Metadata } from "next"
-import { Inter, Fira_Code } from "next/font/google"
-import "./globals.css"
 import { AppWrapper } from "@/components/layout/app-wrapper"
 import { SessionProvider } from "@/components/providers/session-provider"
+import type { Metadata } from "next"
+import { Fira_Code, Inter } from "next/font/google"
+import "./globals.css"
 
 const inter = Inter({
   subsets: ["latin"],

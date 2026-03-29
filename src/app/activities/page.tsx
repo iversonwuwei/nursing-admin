@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { EmptyState, FilterBar, FilterItem, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { CalendarHeart, ChevronRight, Clock, Plus, Search, Users } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, EmptyState, type TagVariant } from '@/components/nh'
-import { Search, Plus, ChevronRight, CalendarHeart, Users, Clock } from 'lucide-react'
+import { useState } from 'react'
 
 const ACTIVITIES = [
   { id: 'A001', name: '太极晨练', category: '运动健身', date: '2026-03-29', time: '07:00', duration: 60, participants: 28, capacity: 30, location: '院内花园', status: '进行中' },

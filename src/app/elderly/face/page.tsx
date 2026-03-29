@@ -1,7 +1,7 @@
 "use client"
+import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag } from "@/components/nh"
+import { AlertCircle, Camera, CheckCircle2, ScanFace, Search } from "lucide-react"
 import { useState } from "react"
-import { ScanFace, CheckCircle2, AlertCircle, Search, Camera } from "lucide-react"
-import { DataCard, Tag, PageHeader, StatCard, FilterBar, FilterItem } from "@/components/nh"
 
 const FACES = [
   { id: "E001", name: "张桂英", room: "201-1", status: "已录入", progress: 100, lastUpdate: "2026-03-15" },

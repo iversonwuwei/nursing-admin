@@ -1,9 +1,9 @@
 "use client"
-import { useState } from "react"
+import { Tag, type TagVariant } from "@/components/nh"
+import { ArrowLeft, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, Edit } from "lucide-react"
-import { Tag, type TagVariant } from "@/components/nh"
+import { useState } from "react"
 
 const INCIDENT_DATA = {
   "I001": {

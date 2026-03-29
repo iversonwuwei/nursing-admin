@@ -1,6 +1,6 @@
-import { notFound } from 'next/navigation'
 import { StandardModulePage } from '@/components/nh'
 import { healthMetricPages } from '@/lib/data/standard-pages'
+import { notFound } from 'next/navigation'
 
 export default async function HealthMetricPage({
   params,

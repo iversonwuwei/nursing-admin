@@ -1,6 +1,6 @@
 "use client"
+import { Bot, Clock, Send, Sparkles, ThumbsUp, User } from "lucide-react"
 import { useState } from "react"
-import { Bot, Send, Sparkles, User, Clock, ThumbsUp } from "lucide-react"
 
 const SUGGESTIONS = [
   "分析本月护理质量报告",

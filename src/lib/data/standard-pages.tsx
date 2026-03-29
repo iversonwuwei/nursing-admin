@@ -1,27 +1,27 @@
-import {
-  Activity,
-  Bell,
-  CalendarDays,
-  ClipboardCheck,
-  FileText,
-  Heart,
-  Home,
-  Monitor,
-  Package,
-  PieChart,
-  ShieldAlert,
-  ShieldCheck,
-  Stethoscope,
-  UserCheck,
-  Users,
-  Settings,
-  Moon,
-} from 'lucide-react'
 import { Tag } from '@/components/nh'
 import type { StandardModulePageConfig } from '@/components/nh/StandardModulePage'
-import { alertRecords, ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS, ALERT_TYPE_LABELS } from '@/lib/data/alerts-data'
 import { equipmentList } from '@/lib/data'
+import { ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS, ALERT_TYPE_LABELS, alertRecords } from '@/lib/data/alerts-data'
 import { healthStats, healthTrends, healthVitals, VITAL_RANGES } from '@/lib/data/health-data'
+import {
+    Activity,
+    Bell,
+    CalendarDays,
+    ClipboardCheck,
+    FileText,
+    Heart,
+    Home,
+    Monitor,
+    Moon,
+    Package,
+    PieChart,
+    Settings,
+    ShieldAlert,
+    ShieldCheck,
+    Stethoscope,
+    UserCheck,
+    Users,
+} from 'lucide-react'
 
 const bpAbnormalCount = healthVitals.filter(v => v.bloodPressureHigh > VITAL_RANGES.bloodPressureHigh.max).length
 const hrAbnormalCount = healthVitals.filter(v => v.heartRate > 80 || v.heartRate < 65).length

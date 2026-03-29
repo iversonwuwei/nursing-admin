@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { ArrowLeft, Bed, Building2, Edit, Star, Users } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, DataCard } from '@/components/nh'
-import { Building2, Bed, Users, Edit, ArrowLeft, Star } from 'lucide-react'
+import { useState } from 'react'
 
 const orgData = {
   id: '1', name: '静安分院', address: '上海市静安区静安寺路100号',

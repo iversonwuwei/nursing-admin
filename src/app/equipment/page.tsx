@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { equipmentAlarms, equipmentList } from '@/lib/data'
+import { AlertTriangle, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
-import { equipmentList, equipmentAlarms } from '@/lib/data'
-import { Search, Plus, Wifi, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useState } from 'react'
 
 const CATEGORY_TAG: Record<string, TagVariant> = {
   '医疗设备': 'info', '康复设备': 'warning', '生活设备': 'primary', '智能设备': 'purple',

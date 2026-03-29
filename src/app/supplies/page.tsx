@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { AlertTriangle, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
-import { Search, Plus, Package, ChevronRight, AlertTriangle } from 'lucide-react'
+import { useState } from 'react'
 
 const SUPPLIES = [
   { id: 'SP001', name: '成人护理垫', category: '护理用品', unit: '包', stock: 45, minStock: 50, price: '¥38', supplier: '稳健医疗', status: '库存不足' },

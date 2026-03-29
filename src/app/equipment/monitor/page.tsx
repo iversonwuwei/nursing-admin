@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
 import { DataCard } from "@/components/nh";
 import {
   Activity,
   AlertTriangle,
-  CheckCircle2,
-  Wifi,
-  Thermometer,
   Battery,
-  Clock,
-  TrendingUp,
+  CheckCircle2,
   ChevronRight,
+  Clock,
   RefreshCw,
+  Thermometer,
+  TrendingUp,
+  Wifi,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 
 // 模拟实时监控数据
 const MONITOR_POINTS = [

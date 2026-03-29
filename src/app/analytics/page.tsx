@@ -1,1 +1,1 @@
-export { default } from '../data-dashboard/page'
+export { default } from '../data-dashboard/page';

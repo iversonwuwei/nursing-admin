@@ -1,11 +1,17 @@
 'use client'
 
-import { StatCard, Tag, PageHeader, DataCard } from '@/components/nh'
-import { organizations } from '@/lib/data'
+import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh';
+import { organizations } from '@/lib/data';
 import {
-  BarChart3, TrendingUp, Users, DollarSign, Award,
-  ArrowUp, ArrowDown, Home, Activity,
-} from 'lucide-react'
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  Award,
+  BarChart3,
+  DollarSign,
+  Home,
+  TrendingUp, Users,
+} from 'lucide-react';
 
 /* ── Pure CSS Bar Chart ── */
 function BarChart({ data, maxVal }: { data: { label: string; value: number; color?: string }[]; maxVal: number }) {

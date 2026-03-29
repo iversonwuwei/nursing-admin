@@ -1,8 +1,8 @@
 "use client"
+import { Tag, type TagVariant } from "@/components/nh"
+import { ArrowLeft, Edit, Monitor } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Monitor, ArrowLeft, Edit } from "lucide-react"
-import { Tag, type TagVariant } from "@/components/nh"
 
 const DEVICE_DATA = {
   "EQ001": {

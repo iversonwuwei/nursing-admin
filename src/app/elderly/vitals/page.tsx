@@ -1,8 +1,8 @@
 "use client"
-import { useState } from "react"
+import { DataCard, FilterBar, FilterItem, PageHeader, StatCard } from "@/components/nh"
+import { Activity, Minus, Plus, Search, TrendingDown, TrendingUp } from "lucide-react"
 import Link from "next/link"
-import { Activity, Search, Plus, TrendingUp, TrendingDown, Minus } from "lucide-react"
-import { DataCard, PageHeader, StatCard, FilterBar, FilterItem } from "@/components/nh"
+import { useState } from "react"
 
 const RECORDS = [
   { id: "V001", elder: "张桂英", room: "201-1", bp: "135/85", hr: 72, temp: 36.5, spo2: 97, bloodSugar: 5.8, recordedBy: "陈美华", time: "08:30" },

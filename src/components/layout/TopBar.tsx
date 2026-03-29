@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface TopBarProps {
   username: string;

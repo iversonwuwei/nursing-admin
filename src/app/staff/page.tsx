@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { Plus, Search, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
-import { Search, Plus, UserCheck, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
 
 const STAFF = [
   { id: 'S001', name: '王美丽', role: '护理主管', department: '护理部', phone: '13800138001', status: '在职', gender: '女' },

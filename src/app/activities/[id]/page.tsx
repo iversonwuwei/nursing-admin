@@ -1,8 +1,8 @@
 "use client"
+import { StatCard } from "@/components/nh/StatCard"
+import { ArrowLeft, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ArrowLeft, Edit } from "lucide-react"
-import { StatCard } from "@/components/nh/StatCard"
 
 const ACTIVITY_DATA = {
   "A001": { id: "A001", name: "太极晨练", category: "运动健身", date: "2026-03-29", time: "07:00", duration: 60, participants: 28, capacity: 30, location: "院内花园", status: "进行中", teacher: "李老师", desc: "每日早晨在花园进行太极拳锻炼，助于老人舒筋活络、修身养性。" },
