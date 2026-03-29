@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
 import { organizations } from '@/lib/data'
 import { Search, Plus, DoorOpen, ChevronRight } from 'lucide-react'
 
@@ -17,7 +17,7 @@ const ROOMS: Array<{
   { id: 'R005', name: '单人护理间', floor: 1, type: '护理间', capacity: 1, occupied: 1, status: '已满', org: '浦东分院' },
 ]
 
-const STATUS_TAG: Record<string, string> = { '已满': 'danger', '可入住': 'success', '维护中': 'warning' }
+const STATUS_TAG: Record<string, TagVariant> = { '已满': 'danger', '可入住': 'success', '维护中': 'warning' }
 
 export default function RoomsPage() {
   const [search, setSearch] = useState('')
@@ -123,7 +123,7 @@ export default function RoomsPage() {
                       </span>
                     </div>
                   </td>
-                  <td><Tag variant={STATUS_TAG[r.status] as any}>{r.status}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[r.status]}>{r.status}</Tag></td>
                   <td style={{ textAlign: 'right' }}>
                     <Link href={`/rooms/${r.id}`} className="btn btn-ghost btn-sm">
                       查看 <ChevronRight size={12} />

@@ -2,14 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
 import { equipmentList, equipmentAlarms } from '@/lib/data'
-import { Search, Plus, Wifi, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react'
+import { Search, Plus, Wifi, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
-const CATEGORY_TAG: Record<string, string> = {
+const CATEGORY_TAG: Record<string, TagVariant> = {
   '医疗设备': 'info', '康复设备': 'warning', '生活设备': 'primary', '智能设备': 'purple',
 }
-const STATUS_TAG: Record<string, string> = {
+const STATUS_TAG: Record<string, TagVariant> = {
   '正常': 'success', '维修中': 'warning', '已报废': 'danger', '待维修': 'warning',
 }
 
@@ -123,15 +123,15 @@ export default function EquipmentPage() {
                       </div>
                     </div>
                   </td>
-                  <td><Tag variant={CATEGORY_TAG[e.category] as any}>{e.category}</Tag></td>
+                  <td><Tag variant={CATEGORY_TAG[e.category]}>{e.category}</Tag></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.model}</span></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.location}</span></td>
-                  <td><Tag variant={STATUS_TAG[e.status] as any}>{e.status}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[e.status]}>{e.status}</Tag></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.purchaseDate}</span></td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                      <Link href={`/equipment/${e.id}`} className="btn btn-ghost btn-sm">详情</Link>
-                      <Link href="/equipment/monitor" className="btn btn-ghost btn-sm">监控</Link>
+                      <Link href={`/devices/${e.id}`} className="btn btn-ghost btn-sm">详情</Link>
+                      <Link href="/devices/realtime" className="btn btn-ghost btn-sm">监控</Link>
                     </div>
                   </td>
                 </tr>

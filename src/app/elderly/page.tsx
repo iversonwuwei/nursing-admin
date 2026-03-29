@@ -3,14 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
 import { elderlyList } from '@/lib/data'
 import { Search, Plus, UserPlus, ChevronRight, Users, Home, UserCheck, UserPlus as NewUser } from 'lucide-react'
 
-const LEVEL_TAG: Record<string, string> = {
+const LEVEL_TAG: Record<string, TagVariant> = {
   '特级护理': 'danger', '全护理': 'warning', '半自理': 'info', '自理': 'success',
 }
-const STATUS_TAG: Record<string, string> = {
+const STATUS_TAG: Record<string, TagVariant> = {
   '入住': 'success', '待入住': 'warning', '离院': 'neutral',
 }
 
@@ -37,7 +37,6 @@ export default function ElderlyPage() {
   const occupiedBeds = elderlyList.filter(e => e.status === '入住').length
   const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0
   const critical = elderlyList.filter(e => e.careLevel === '特级护理').length
-  const todayDischarges = 1
   const newThisMonth = 2
 
   return (
@@ -168,8 +167,8 @@ export default function ElderlyPage() {
                   </td>
                   <td><span className="text-sm">{e.gender}</span></td>
                   <td><span className="text-sm">{e.age}岁</span></td>
-                  <td><Tag variant={LEVEL_TAG[e.careLevel] as any}>{e.careLevel}</Tag></td>
-                  <td><Tag variant={STATUS_TAG[e.status] as any}>{e.status}</Tag></td>
+                  <td><Tag variant={LEVEL_TAG[e.careLevel]}>{e.careLevel}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[e.status]}>{e.status}</Tag></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.roomNumber}</span></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.checkInDate}</span></td>
                   <td style={{ textAlign: 'right' }}>

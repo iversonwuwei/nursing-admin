@@ -1,10 +1,10 @@
 "use client"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Package, ArrowLeft, Edit, TrendingUp } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { ArrowLeft, Edit, TrendingUp } from "lucide-react"
+import { Tag, type TagVariant } from "@/components/nh"
 
-const SUPPLY_DATA: Record<string, any> = {
+const SUPPLY_DATA = {
   "SP001": {
     id: "SP001", name: "成人护理垫", category: "护理用品", unit: "包",
     stock: 45, minStock: 50, price: "¥38", supplier: "稳健医疗",
@@ -17,14 +17,16 @@ const SUPPLY_DATA: Record<string, any> = {
       { date: "2026-02-01", in: 0, out: 15, balance: 55 },
     ]
   },
-}
+} as const
 
-const STATUS_TAG: Record<string, string> = { "正常": "success", "库存不足": "danger", "即将过期": "warning" }
+type SupplyDetail = (typeof SUPPLY_DATA)[keyof typeof SUPPLY_DATA]
+
+const STATUS_TAG: Record<string, TagVariant> = { "正常": "success", "库存不足": "danger", "即将过期": "warning" }
 
 export default function SupplyDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = SUPPLY_DATA[id] || SUPPLY_DATA["SP001"]
+  const data: SupplyDetail = id in SUPPLY_DATA ? SUPPLY_DATA[id as keyof typeof SUPPLY_DATA] : SUPPLY_DATA["SP001"]
 
   return (
     <div className="page-root animate-fade-up">
@@ -40,7 +42,7 @@ export default function SupplyDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Tag variant="neutral">{data.category}</Tag>
-          <Tag variant={STATUS_TAG[data.status] as any}>{data.status}</Tag>
+          <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
           <button className="btn btn-primary btn-sm flex items-center gap-2">
             <Edit size={14} />编辑
           </button>
@@ -79,7 +81,7 @@ export default function SupplyDetailPage() {
           <table className="table">
             <thead><tr><th>日期</th><th>入库</th><th>出库</th><th>结存</th></tr></thead>
             <tbody>
-              {data.history.map((h: any, i: number) => (
+              {data.history.map((h, i) => (
                 <tr key={i}>
                   <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{h.date}</span></td>
                   <td><span className="font-semibold" style={{ color: "var(--color-success)" }}>+{h.in}</span></td>

@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { StatCard, Tag, PageHeader, DataCard } from '@/components/nh'
+import { StatCard, Tag, PageHeader } from '@/components/nh'
 import { healthVitals, healthTrends, healthStats, VITAL_RANGES } from '@/lib/data/health-data'
-import { Activity, Heart, Droplets, Thermometer, AlertTriangle, Clock } from 'lucide-react'
+import { Activity, Heart, Droplets, AlertTriangle, Clock } from 'lucide-react'
 
 /* ── Pure CSS Line Chart ── */
 function LineChart({

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, EmptyState, type TagVariant } from '@/components/nh'
 import { Search, Plus, ChevronRight, CalendarHeart, Users, Clock } from 'lucide-react'
 
 const ACTIVITIES = [
@@ -13,7 +13,7 @@ const ACTIVITIES = [
   { id: 'A005', name: '生日会', category: '节日活动', date: '2026-03-30', time: '15:00', duration: 90, participants: 0, capacity: 60, location: '多功能厅', status: '报名中' },
 ]
 
-const STATUS_TAG: Record<string, string> = {
+const STATUS_TAG: Record<string, TagVariant> = {
   '进行中': 'success', '报名中': 'info', '已完成': 'neutral',
 }
 
@@ -102,7 +102,7 @@ export default function ActivitiesPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                     <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{act.name}</span>
-                    <Tag variant={STATUS_TAG[act.status] as any}>{act.status}</Tag>
+                    <Tag variant={STATUS_TAG[act.status]}>{act.status}</Tag>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{act.date} {act.time}</span>

@@ -2,10 +2,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { ShieldAlert, ArrowLeft, Edit, CheckCircle2 } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { ArrowLeft, Edit } from "lucide-react"
+import { Tag, type TagVariant } from "@/components/nh"
 
-const INCIDENT_DATA: Record<string, any> = {
+const INCIDENT_DATA = {
   "I001": {
     id: "I001", title: "老人摔倒", level: "严重", elder: "张桂英", room: "201-1",
     reporter: "刘建国", reporterRole: "护工", time: "2026-03-28 16:30",
@@ -30,10 +30,12 @@ const INCIDENT_DATA: Record<string, any> = {
     nextStep: "加强门禁管理，增设离院报警",
     attachments: ["监控截图.jpg", "找回照片.jpg"],
   },
-}
+} as const
 
-const LEVEL_TAG: Record<string, string> = { "严重": "danger", "一般": "warning", "轻微": "info" }
-const STATUS_TAG: Record<string, string> = { "处理中": "warning", "已结案": "success" }
+type IncidentDetail = (typeof INCIDENT_DATA)[keyof typeof INCIDENT_DATA]
+
+const LEVEL_TAG: Record<string, TagVariant> = { "严重": "danger", "一般": "warning", "轻微": "info" }
+const STATUS_TAG: Record<string, TagVariant> = { "处理中": "warning", "已结案": "success" }
 
 const TABS = [
   { id: "info", label: "事故信息" },
@@ -44,7 +46,7 @@ const TABS = [
 export default function IncidentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = INCIDENT_DATA[id] || INCIDENT_DATA["I001"]
+  const data: IncidentDetail = id in INCIDENT_DATA ? INCIDENT_DATA[id as keyof typeof INCIDENT_DATA] : INCIDENT_DATA["I001"]
   const [activeTab, setActiveTab] = useState("info")
 
   return (
@@ -64,8 +66,8 @@ export default function IncidentDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Tag variant={LEVEL_TAG[data.level] as any}>{data.level}</Tag>
-          <Tag variant={STATUS_TAG[data.status] as any}>{data.status}</Tag>
+          <Tag variant={LEVEL_TAG[data.level]}>{data.level}</Tag>
+          <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
           <button className="btn btn-primary btn-sm flex items-center gap-2">
             <Edit size={14} />编辑
           </button>

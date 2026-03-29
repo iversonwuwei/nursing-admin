@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { StatCard, DataCard, Tag, PageHeader } from '@/components/nh'
+import { StatCard, DataCard, Tag, PageHeader, type TagVariant } from '@/components/nh'
 import { elderlyList, organizations, equipmentAlarms } from '@/lib/data'
 import {
   Users, Home, ClipboardList, AlertTriangle, Bell, DollarSign,
@@ -21,7 +21,7 @@ const todayTasks = [
   { id: 'T006', elderly: '王建国', room: '203', type: '下午茶', time: '15:00', status: '待执行', nurse: '张护士' },
 ]
 
-const TASK_STATUS_TAG: Record<string, string> = {
+const TASK_STATUS_TAG: Record<string, TagVariant> = {
   '已完成': 'success', '进行中': 'warning', '待执行': 'neutral',
 }
 
@@ -47,7 +47,7 @@ const quickLinks = [
   { icon: <Users size={18} />, label: '员工列表', href: '/staff' },
   { icon: <AlertTriangle size={18} />, label: '事故报告', href: '/incidents' },
   { icon: <DollarSign size={18} />, label: '财务收支', href: '/financial' },
-  { icon: <Stethoscope size={18} />, label: '医疗设备', href: '/equipment' },
+  { icon: <Stethoscope size={18} />, label: '医疗设备', href: '/devices' },
 ]
 
 // ─── Derived Stats ───────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ export default function DashboardPage() {
                     <td style={{ padding: '9px 10px', fontSize: 12 }}>{task.type}</td>
                     <td style={{ padding: '9px 10px', fontSize: 12, color: 'var(--color-muted)' }}>{task.nurse}</td>
                     <td style={{ padding: '9px 10px' }}>
-                      <Tag variant={TASK_STATUS_TAG[task.status] as any}>{task.status}</Tag>
+                      <Tag variant={TASK_STATUS_TAG[task.status]}>{task.status}</Tag>
                     </td>
                   </tr>
                 ))}

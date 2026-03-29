@@ -35,27 +35,27 @@ function DonutChart({ segments, centerLabel, centerValue }: {
 }) {
   const r = 40
   const circ = 2 * Math.PI * r
-  let offset = 0
+  const chartSegments = segments.reduce<Array<{ value: number; color: string; label: string; dash: number; offset: number }>>((acc, seg) => {
+    const dash = (seg.value / 100) * circ
+    const offset = acc.length === 0 ? 0 : acc[acc.length - 1].offset + acc[acc.length - 1].dash
+
+    return [...acc, { ...seg, dash, offset }]
+  }, [])
 
   return (
     <div className="donut-chart-inner">
       <svg width="100" height="100" viewBox="0 0 100 100">
-        {segments.map((seg, i) => {
-          const dash = (seg.value / 100) * circ
-          const el = (
+        {chartSegments.map((seg, i) => (
             <circle
               key={i}
               cx="50" cy="50" r={r} fill="none"
               stroke={seg.color} strokeWidth="9"
-              strokeDasharray={`${dash} ${circ - dash}`}
+              strokeDasharray={`${seg.dash} ${circ - seg.dash}`}
               strokeLinecap="round"
-              transform={`rotate(-90 50 50) rotate(${(offset / circ) * 360} 50 50)`}
+              transform={`rotate(-90 50 50) rotate(${(seg.offset / circ) * 360} 50 50)`}
               style={{ transition: 'stroke-dasharray 600ms ease' }}
             />
-          )
-          offset += dash
-          return el
-        })}
+        ))}
         <text x="50" y="46" textAnchor="middle" style={{ fontSize: 15, fontWeight: 800, fill: 'var(--color-text)', letterSpacing: '-0.02em' }}>
           {centerValue}
         </text>

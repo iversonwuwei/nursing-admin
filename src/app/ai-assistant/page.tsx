@@ -1,7 +1,6 @@
 "use client"
 import { useState } from "react"
 import { Bot, Send, Sparkles, User, Clock, ThumbsUp } from "lucide-react"
-import { DataCard } from "@/components/nh"
 
 const SUGGESTIONS = [
   "分析本月护理质量报告",

@@ -2,9 +2,9 @@
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Monitor, ArrowLeft, Edit } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { Tag, type TagVariant } from "@/components/nh"
 
-const DEVICE_DATA: Record<string, any> = {
+const DEVICE_DATA = {
   "EQ001": {
     id: "EQ001", name: "心电监护仪 #1", room: "201-1床", type: "医疗设备",
     model: "Philips IntelliVue MX450", serialNumber: "PH-2024-00123",
@@ -17,27 +17,29 @@ const DEVICE_DATA: Record<string, any> = {
     ],
     maintenance: { last: "2026-02-15", next: "2026-05-15", cycle: "3个月" },
   },
-}
+} as const
 
-const STATUS_TAG: Record<string, string> = { "online": "success", "offline": "danger", "warning": "warning" }
+type DeviceDetail = (typeof DEVICE_DATA)[keyof typeof DEVICE_DATA]
+
+const STATUS_TAG: Record<string, TagVariant> = { "online": "success", "offline": "danger", "warning": "warning" }
 
 export default function EquipmentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = DEVICE_DATA[id] || DEVICE_DATA["EQ001"]
+  const data: DeviceDetail = id in DEVICE_DATA ? DEVICE_DATA[id as keyof typeof DEVICE_DATA] : DEVICE_DATA["EQ001"]
 
   return (
     <div className="page-root animate-fade-up">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/equipment" className="btn btn-ghost btn-icon btn-icon-sm btn-icon">
+          <Link href="/devices" className="btn btn-ghost btn-icon btn-icon-sm btn-icon">
             <ArrowLeft size={16} />
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.name}</h1>
               <Tag variant="neutral">{data.type}</Tag>
-              <Tag variant={STATUS_TAG[data.status] as any}>{data.status === "online" ? "在线" : data.status === "offline" ? "离线" : "异常"}</Tag>
+              <Tag variant={STATUS_TAG[data.status]}>{data.status === "online" ? "在线" : data.status === "offline" ? "离线" : "异常"}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               编号: {data.id} · {data.room}
@@ -90,7 +92,7 @@ export default function EquipmentDetailPage() {
           <table className="table">
             <thead><tr><th>时间</th><th>心率(bpm)</th><th>血氧(%)</th><th>备注</th></tr></thead>
             <tbody>
-              {data.history.map((h: any, i: number) => (
+              {data.history.map((h, i) => (
                 <tr key={i}>
                   <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{h.time}</span></td>
                   <td><span className="font-semibold text-sm">{h.hr}</span></td>

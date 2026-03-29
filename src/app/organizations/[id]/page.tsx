@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { StatCard, Tag, PageHeader, DataCard } from '@/components/nh'
-import { Building2, MapPin, Phone, Bed, Users, Edit, ChevronRight, ArrowLeft, Star } from 'lucide-react'
+import { Building2, Bed, Users, Edit, ArrowLeft, Star } from 'lucide-react'
 
 const orgData = {
   id: '1', name: '静安分院', address: '上海市静安区静安寺路100号',

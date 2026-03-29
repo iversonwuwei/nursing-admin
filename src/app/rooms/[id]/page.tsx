@@ -2,9 +2,9 @@
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { DoorOpen, ArrowLeft, Edit } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { Tag, type TagVariant } from "@/components/nh"
 
-const ROOM_DATA: Record<string, any> = {
+const ROOM_DATA = {
   "R201": {
     id: "R201", floor: 2, floorName: "二楼东", type: "单人间",
     beds: 1, occupied: 1,
@@ -15,14 +15,16 @@ const ROOM_DATA: Record<string, any> = {
     last_clean: "2026-03-29 06:00",
     next_clean: "2026-03-30 06:00",
   },
-}
+} as const
 
-const TYPE_TAG: Record<string, string> = { "单人间": "info", "双人间": "primary", "VIP套房": "warning" }
+type RoomDetail = (typeof ROOM_DATA)[keyof typeof ROOM_DATA]
+
+const TYPE_TAG: Record<string, TagVariant> = { "单人间": "info", "双人间": "primary", "VIP套房": "warning" }
 
 export default function RoomDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = ROOM_DATA[id] || ROOM_DATA["R201"]
+  const data: RoomDetail = id in ROOM_DATA ? ROOM_DATA[id as keyof typeof ROOM_DATA] : ROOM_DATA["R201"]
 
   return (
     <div className="page-root animate-fade-up">
@@ -34,7 +36,7 @@ export default function RoomDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.id}</h1>
-              <Tag variant={TYPE_TAG[data.type] as any}>{data.type}</Tag>
+              <Tag variant={TYPE_TAG[data.type]}>{data.type}</Tag>
               <Tag variant={data.status === "空闲" ? "success" : "neutral"}>{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>

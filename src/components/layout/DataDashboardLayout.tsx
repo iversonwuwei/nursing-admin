@@ -7,9 +7,9 @@ import {
 } from 'lucide-react'
 
 const DATA_NAV = [
-  { label: '健康监测', href: '/health-monitoring', icon: Activity },
+  { label: '健康监测', href: '/health', icon: Activity },
   { label: '报警中心', href: '/alerts', icon: AlertTriangle },
-  { label: '数据分析', href: '/data-dashboard', icon: BarChart3 },
+  { label: '数据分析', href: '/analytics', icon: BarChart3 },
 ]
 
 interface DataDashboardLayoutProps {

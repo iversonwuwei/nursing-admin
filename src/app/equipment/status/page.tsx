@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
-import { Monitor, CheckCircle2, XCircle, AlertTriangle, Wifi, Battery, Clock, Search } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { Monitor, CheckCircle2, XCircle, AlertTriangle, Wifi, Battery, Search } from "lucide-react"
+import { DataCard, Tag, type TagVariant } from "@/components/nh"
 
 const DEVICES = [
   { id: "EQ001", name: "心电监护仪 #1", room: "201-1床", type: "医疗设备", status: "online", signal: 92, battery: 85, uptime: 720, lastAlert: null },
@@ -14,7 +14,7 @@ const DEVICES = [
   { id: "EQ008", name: "呼叫对讲系统", room: "二楼走廊", type: "通信设备", status: "online", signal: 100, battery: 100, uptime: 2160, lastAlert: null },
 ]
 
-const STATUS_TAG: Record<string, string> = { online: "success", offline: "danger", warning: "warning" }
+const STATUS_TAG: Record<string, TagVariant> = { online: "success", offline: "danger", warning: "warning" }
 const STATUS_LABEL: Record<string, string> = { online: "正常", offline: "离线", warning: "异常" }
 
 export default function EquipmentStatusPage() {
@@ -103,7 +103,7 @@ export default function EquipmentStatusPage() {
                   </td>
                   <td><Tag variant="neutral">{d.type}</Tag></td>
                   <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{d.room}</span></td>
-                  <td><Tag variant={STATUS_TAG[d.status] as any}>{STATUS_LABEL[d.status]}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[d.status]}>{STATUS_LABEL[d.status]}</Tag></td>
                   <td>{signalBar(d.signal)}</td>
                   <td>{batteryBar(d.battery)}</td>
                   <td>

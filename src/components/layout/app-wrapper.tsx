@@ -1,22 +1,26 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { TopNavbar } from './TopNavbar'
 
 export function AppWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const { status } = useSession()
-  const [mounted, setMounted] = useState(false)
 
-  useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    if (pathname !== '/login' && status === 'unauthenticated') {
+      router.replace('/login')
+    }
+  }, [pathname, router, status])
 
   // Login page — no navbar
   if (pathname === '/login') return <>{children}</>
 
   // Loading
-  if (!mounted || status === 'loading') {
+  if (status === 'loading' || status === 'unauthenticated') {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -33,13 +37,6 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
         <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       </div>
     )
-  }
-
-  if (status === 'unauthenticated') {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login'
-    }
-    return null
   }
 
   return (

@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
-import { Search, Plus, UserCheck, ChevronRight, ShieldCheck } from 'lucide-react'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
+import { Search, Plus, UserCheck, ShieldCheck } from 'lucide-react'
 
 const STAFF = [
   { id: 'S001', name: '王美丽', role: '护理主管', department: '护理部', phone: '13800138001', status: '在职', gender: '女' },
@@ -14,11 +14,11 @@ const STAFF = [
   { id: 'S006', name: '郑伟', role: '厨师长', department: '后勤部', phone: '13800138006', status: '休假', gender: '男' },
 ]
 
-const ROLE_TAG: Record<string, string> = {
+const ROLE_TAG: Record<string, TagVariant> = {
   '护理主管': 'primary', '护士': 'info', '后勤主管': 'warning',
   '心理咨询师': 'purple', '厨师长': 'neutral',
 }
-const STATUS_TAG: Record<string, string> = { '在职': 'success', '休假': 'warning', '离职': 'danger' }
+const STATUS_TAG: Record<string, TagVariant> = { '在职': 'success', '休假': 'warning', '离职': 'danger' }
 
 export default function StaffPage() {
   const [search, setSearch] = useState('')
@@ -113,9 +113,9 @@ export default function StaffPage() {
                     </div>
                   </td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.id}</span></td>
-                  <td><Tag variant={ROLE_TAG[s.role] as any}>{s.role}</Tag></td>
+                  <td><Tag variant={ROLE_TAG[s.role]}>{s.role}</Tag></td>
                   <td><span className="text-sm">{s.department}</span></td>
-                  <td><Tag variant={STATUS_TAG[s.status] as any}>{s.status}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[s.status]}>{s.status}</Tag></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.phone}</span></td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>

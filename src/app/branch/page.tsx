@@ -1,5 +1,5 @@
 "use client"
-import { StatCard } from "@/components/nh"
+import { StatCard, PageHeader } from "@/components/nh"
 import { Building2, ChevronRight } from "lucide-react"
 
 const BRANCHES = [
@@ -17,13 +17,10 @@ export default function BranchPage() {
 
   return (
     <div className="page-root animate-fade-up">
-
-      <div className="page-header">
-        <div>
-          <div className="page-title">分院管理</div>
-          <div className="page-subtitle">共 {BRANCHES.length} 家分院 · 总床位 {totalBeds} 张</div>
-        </div>
-      </div>
+      <PageHeader
+        title="分院管理"
+        subtitle={`共 ${BRANCHES.length} 家分院 · 总床位 ${totalBeds} 张`}
+      />
 
       <div className="kpi-grid">
         <StatCard label="分院总数" value={BRANCHES.length} color="primary" />
@@ -35,9 +32,9 @@ export default function BranchPage() {
       <div className="flex flex-col gap-2">
         {BRANCHES.map((branch, i) => {
           const occ = Math.round(branch.occupied / branch.beds * 100)
-          const color = ACCENT[i % ACCENT.length]
+          const accentClass = ACCENT[i % ACCENT.length]
           return (
-            <div key={branch.id} className="card p-4 table-hover-row transition-all" style={{ padding: "16px 20px" }}>
+            <div key={branch.id} className={`card p-4 table-hover-row transition-all ${accentClass}`} style={{ padding: "16px 20px" }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div style={{

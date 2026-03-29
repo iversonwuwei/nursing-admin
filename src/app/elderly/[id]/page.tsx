@@ -1,18 +1,19 @@
 "use client"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { StatCard } from "@/components/nh"
 import { ArrowLeft, Edit } from "lucide-react"
 
-const ELDER_DATA: Record<string, any> = {
+const ELDER_DATA = {
   "1": { id: "1", name: "张桂英", gender: "女", age: 82, idCard: "310***********1234", phone: "138****1234", roomNumber: "201-1", careLevel: "特级护理", checkInDate: "2022-03-15", birthday: "1942-08-15", emergencyContact: "张伟 139****1234", status: "入住", medicalHistory: ["高血压", "糖尿病"], allergies: ["青霉素"], habits: ["吸烟史10年"], height: 165, weight: 68 },
   "E001": { id: "E001", name: "张桂英", gender: "女", age: 82, idCard: "310***********1234", phone: "138****1234", roomNumber: "201-1", careLevel: "特级护理", checkInDate: "2022-03-15", birthday: "1942-08-15", emergencyContact: "张伟 139****1234", status: "入住", medicalHistory: ["高血压", "糖尿病"], allergies: ["青霉素"], habits: ["吸烟史10年"], height: 165, weight: 68 },
-}
+} as const
+
+type ElderDetail = (typeof ELDER_DATA)[keyof typeof ELDER_DATA]
 
 export default function ElderlyDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = ELDER_DATA[id] || ELDER_DATA["E001"]
+  const data: ElderDetail = id in ELDER_DATA ? ELDER_DATA[id as keyof typeof ELDER_DATA] : ELDER_DATA["E001"]
 
   return (
     <div className="page-root animate-fade-up">

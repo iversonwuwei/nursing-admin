@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { StatCard, Tag, PageHeader } from '@/components/nh'
 import {
-  alertRecords, alertStats,
+  alertRecords,
   ALERT_TYPE_LABELS, ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS,
   type AlertRecord, type AlertLevel, type AlertStatus, type AlertType,
 } from '@/lib/data/alerts-data'

@@ -7,7 +7,9 @@ const pageTitles: Record<string, string> = {
   '/': '首页',
   '/elderly': '老人管理',
   '/organizations': '机构管理',
-  '/equipment': '设备管理',
+  '/devices': '设备管理',
+  '/health': '健康监测',
+  '/analytics': '数据分析',
 };
 
 export function Header() {

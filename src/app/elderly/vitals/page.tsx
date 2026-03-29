@@ -1,8 +1,8 @@
 "use client"
 import { useState } from "react"
 import Link from "next/link"
-import { Activity, Search, Plus, TrendingUp, TrendingDown, Minus, Clock } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { Activity, Search, Plus, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { DataCard, PageHeader, StatCard, FilterBar, FilterItem } from "@/components/nh"
 
 const RECORDS = [
   { id: "V001", elder: "张桂英", room: "201-1", bp: "135/85", hr: 72, temp: 36.5, spo2: 97, bloodSugar: 5.8, recordedBy: "陈美华", time: "08:30" },
@@ -20,43 +20,36 @@ export default function VitalsPage() {
 
   return (
     <div className="page-root animate-fade-up">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>指标更新</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>今日已录入 {RECORDS.length} 条生命体征记录</p>
-        </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Plus size={14} />批量录入
-        </button>
-      </div>
+      <PageHeader
+        title="指标更新"
+        subtitle={`今日已录入 ${RECORDS.length} 条生命体征记录`}
+        actions={
+          <button className="btn btn-primary btn-sm flex items-center gap-2">
+            <Plus size={14} />批量录入
+          </button>
+        }
+      />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
           { label: "血压", value: "38/38", icon: Activity, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)", norm: "90-140/60-90" },
           { label: "心率", value: "72bpm", icon: Activity, color: "var(--color-primary)", bg: "var(--color-primary-light)", norm: "60-100bpm" },
           { label: "体温", value: "36.5℃", icon: Activity, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)", norm: "36-37.3℃" },
           { label: "血氧", value: "97%", icon: Activity, color: "var(--color-info)", bg: "rgba(59,130,246,0.1)", norm: "95-100%" },
           { label: "血糖", value: "5.8", icon: Activity, color: "var(--color-purple)", bg: "rgba(139,92,246,0.1)", norm: "3.9-7.0" },
-        ].map(({ label, value, icon: Icon, color, bg, norm }) => (
-          <div key={label} className="data-card" style={{ padding: "12px 14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={15} style={{ color }} />
-              </div>
-              <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{label}</span>
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "var(--color-text)" }}>{value}</div>
-            <div style={{ fontSize: 10, color: "var(--color-muted)", marginTop: 2 }}>正常: {norm}</div>
-          </div>
+        ].map(({ label, value, icon: Icon, norm }) => (
+          <StatCard key={label} icon={<Icon size={18} />} label={label} value={value} sub={`正常: ${norm}`} color={label === "血压" ? "danger" : label === "心率" ? "primary" : label === "体温" ? "warning" : label === "血氧" ? "info" : "purple"} />
         ))}
       </div>
 
-      <div className="filter-bar">
-        <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
-          <span className="input-icon"><Search size={16} /></span>
-          <input className="input" placeholder="搜索老人姓名或房间..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
-        </div>
-      </div>
+      <FilterBar>
+        <FilterItem label="搜索">
+          <div className="input-wrap" style={{ minWidth: 240 }}>
+            <span className="input-icon"><Search size={14} /></span>
+            <input className="input" placeholder="搜索老人姓名或房间..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+          </div>
+        </FilterItem>
+      </FilterBar>
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>

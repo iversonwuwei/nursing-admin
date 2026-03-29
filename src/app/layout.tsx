@@ -1,7 +1,20 @@
 import type { Metadata } from "next"
+import { Inter, Fira_Code } from "next/font/google"
 import "./globals.css"
 import { AppWrapper } from "@/components/layout/app-wrapper"
 import { SessionProvider } from "@/components/providers/session-provider"
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
+})
+
+const firaCode = Fira_Code({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
+})
 
 export const metadata: Metadata = {
   title: "养老院管理系统 v2",
@@ -14,15 +27,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh-CN">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="zh-CN" className={`${inter.variable} ${firaCode.variable}`}>
       <body>
         <SessionProvider>
           <AppWrapper>{children}</AppWrapper>

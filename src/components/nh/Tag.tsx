@@ -1,6 +1,6 @@
 import React from 'react'
 
-type TagVariant = 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'purple' | 'neutral'
+export type TagVariant = 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'purple' | 'neutral'
 
 interface TagProps {
   children: React.ReactNode

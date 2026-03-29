@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
 import { Search, Plus, Package, ChevronRight, AlertTriangle } from 'lucide-react'
 
 const SUPPLIES = [
@@ -13,8 +13,8 @@ const SUPPLIES = [
   { id: 'SP005', name: '创可贴', category: '医疗用品', unit: '盒', stock: 200, minStock: 50, price: '¥12', supplier: '云南白药', status: '正常' },
 ]
 
-const STATUS_TAG: Record<string, string> = { '库存不足': 'danger', '正常': 'success' }
-const CAT_TAG: Record<string, string> = { '护理用品': 'primary', '防护用品': 'warning', '消毒用品': 'info', '医疗用品': 'purple' }
+const STATUS_TAG: Record<string, TagVariant> = { '库存不足': 'danger', '正常': 'success' }
+const CAT_TAG: Record<string, TagVariant> = { '护理用品': 'primary', '防护用品': 'warning', '消毒用品': 'info', '医疗用品': 'purple' }
 
 export default function SuppliesPage() {
   const [search, setSearch] = useState('')
@@ -115,7 +115,7 @@ export default function SuppliesPage() {
                       <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{s.name}</span>
                     </div>
                   </td>
-                  <td><Tag variant={CAT_TAG[s.category] as any}>{s.category}</Tag></td>
+                  <td><Tag variant={CAT_TAG[s.category]}>{s.category}</Tag></td>
                   <td><span className="text-sm">{s.unit}</span></td>
                   <td>
                     <span className="font-semibold text-sm" style={{
@@ -127,7 +127,7 @@ export default function SuppliesPage() {
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.minStock}</span></td>
                   <td><span className="text-sm">{s.price}</span></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.supplier}</span></td>
-                  <td><Tag variant={STATUS_TAG[s.status] as any}>{s.status}</Tag></td>
+                  <td><Tag variant={STATUS_TAG[s.status]}>{s.status}</Tag></td>
                   <td style={{ textAlign: 'right' }}>
                     <Link href={`/supplies/${s.id}`} className="btn btn-ghost btn-sm">
                       入库 <ChevronRight size={12} />

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState } from '@/components/nh'
+import { StatCard, Tag, PageHeader, FilterBar, FilterItem, Pagination, EmptyState, type TagVariant } from '@/components/nh'
 import { Search, Plus, ShieldAlert, ChevronRight, AlertTriangle } from 'lucide-react'
 
 const INCIDENTS = [
@@ -12,8 +12,8 @@ const INCIDENTS = [
   { id: 'I004', title: '食物过敏', level: '轻微', elder: '李秀兰', room: '205-1', time: '2026-03-25 12:00', status: '已结案', desc: '午餐后出现皮疹，医务室处理后好转' },
 ]
 
-const LEVEL_TAG: Record<string, string> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
-const STATUS_TAG: Record<string, string> = { '处理中': 'warning', '已结案': 'success' }
+const LEVEL_TAG: Record<string, TagVariant> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
+const STATUS_TAG: Record<string, TagVariant> = { '处理中': 'warning', '已结案': 'success' }
 
 export default function IncidentsPage() {
   const [search, setSearch] = useState('')
@@ -98,8 +98,8 @@ export default function IncidentsPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
                     <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{inc.title}</span>
-                    <Tag variant={LEVEL_TAG[inc.level] as any}>{inc.level}</Tag>
-                    <Tag variant={STATUS_TAG[inc.status] as any}>{inc.status}</Tag>
+                    <Tag variant={LEVEL_TAG[inc.level]}>{inc.level}</Tag>
+                    <Tag variant={STATUS_TAG[inc.status]}>{inc.status}</Tag>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     {inc.elder && <span className="text-xs" style={{ color: 'var(--color-muted)' }}>👤 {inc.elder}</span>}

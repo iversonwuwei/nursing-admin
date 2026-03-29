@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DataCard, Tag } from "@/components/nh";
+import { DataCard } from "@/components/nh";
 import {
   Activity,
   AlertTriangle,
@@ -15,17 +15,18 @@ import {
   ChevronRight,
   RefreshCw,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 // 模拟实时监控数据
 const MONITOR_POINTS = [
-  { id: "EQ-001", name: "心电监护仪 #1", room: "201-1床", status: "online", metrics: { hr: 72, bp: "120/80", temp: 36.5, spo2: 98, battery: 85 }, alert: null },
-  { id: "EQ-002", name: "心电监护仪 #2", room: "201-2床", status: "online", metrics: { hr: 68, bp: "118/76", temp: 36.4, spo2: 97, battery: 62 }, alert: null },
-  { id: "EQ-003", name: "血压监测仪", room: "202-1床", status: "online", metrics: { hr: null, bp: "135/88", temp: null, spo2: null, battery: 45 }, alert: { level: "warning", msg: "电量低于50%" } },
-  { id: "EQ-004", name: "智能床垫传感器", room: "203-1床", status: "offline", metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 0 }, alert: { level: "danger", msg: "设备离线" } },
-  { id: "EQ-005", name: "血糖监测仪", room: "204-1床", status: "online", metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 92 }, alert: null },
-  { id: "EQ-006", name: "呼吸监测仪", room: "205-1床", status: "online", metrics: { hr: 16, bp: null, temp: 36.6, spo2: 99, battery: 78 }, alert: null },
-]
+  { id: "EQ-001", name: "心电监护仪 #1", room: "201-1床", status: "online", runtimeHours: 64, metrics: { hr: 72, bp: "120/80", temp: 36.5, spo2: 98, battery: 85 }, alert: null },
+  { id: "EQ-002", name: "心电监护仪 #2", room: "201-2床", status: "online", runtimeHours: 52, metrics: { hr: 68, bp: "118/76", temp: 36.4, spo2: 97, battery: 62 }, alert: null },
+  { id: "EQ-003", name: "血压监测仪", room: "202-1床", status: "online", runtimeHours: 31, metrics: { hr: null, bp: "135/88", temp: null, spo2: null, battery: 45 }, alert: { level: "warning", msg: "电量低于50%" } },
+  { id: "EQ-004", name: "智能床垫传感器", room: "203-1床", status: "offline", runtimeHours: 0, metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 0 }, alert: { level: "danger", msg: "设备离线" } },
+  { id: "EQ-005", name: "血糖监测仪", room: "204-1床", status: "online", runtimeHours: 80, metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 92 }, alert: null },
+  { id: "EQ-006", name: "呼吸监测仪", room: "205-1床", status: "online", runtimeHours: 43, metrics: { hr: 16, bp: null, temp: 36.6, spo2: 99, battery: 78 }, alert: null },
+] as const
 
 const STATS = {
   total: MONITOR_POINTS.length,
@@ -42,7 +43,7 @@ const ALERT_HISTORY = [
 ]
 
 function MetricCard({ icon: Icon, label, value, unit, color }: {
-  icon: any; label: string; value: number | string | null; unit: string; color: string
+  icon: LucideIcon; label: string; value: number | string | null; unit: string; color: string
 }) {
   if (value === null) return null
   return (
@@ -104,7 +105,7 @@ export default function MonitorPage() {
           </p>
         </div>
         <div className="flex-center" style={{ gap: 8 }}>
-          <Link href="/equipment" className="btn btn-secondary btn-sm">设备列表</Link>
+          <Link href="/devices" className="btn btn-secondary btn-sm">设备列表</Link>
           <button
             className="btn btn-secondary btn-sm flex-center"
             onClick={handleRefresh}
@@ -207,7 +208,7 @@ export default function MonitorPage() {
                       <MetricCard icon={Wifi} label="血氧" value={eq.metrics.spo2} unit="%" color="var(--color-success)" />
                     )}
                     <MetricCard icon={Battery} label="电量" value={eq.metrics.battery} unit="%" color={eq.metrics.battery < 30 ? "var(--color-danger)" : "var(--color-success)"} />
-                    <MetricCard icon={Clock} label="运行时长" value={Math.floor(Math.random() * 72 + 8)} unit="h" color="var(--color-muted)" />
+                    <MetricCard icon={Clock} label="运行时长" value={eq.runtimeHours} unit="h" color="var(--color-muted)" />
                   </div>
                 )}
               </div>
@@ -244,7 +245,7 @@ export default function MonitorPage() {
             ))}
           </div>
           <div style={{ padding: "8px 12px 12px" }}>
-            <Link href="/equipment/status" className="btn btn-ghost btn-sm flex-center" style={{ width: "100%", justifyContent: "center" }}>
+            <Link href="/devices/status" className="btn btn-ghost btn-sm flex-center" style={{ width: "100%", justifyContent: "center" }}>
               查看全部 <ChevronRight size={13} />
             </Link>
           </div>

@@ -7,8 +7,7 @@ import { useSession } from 'next-auth/react'
 import { useState, useEffect, useRef } from 'react'
 import {
   Home, Landmark, Users, UserCheck, DoorOpen, Monitor,
-  CalendarHeart, AlertTriangle, Package, PieChart, Bot,
-  Activity as VitalIcon, Bell, Settings, Menu, X, ChevronDown,
+  CalendarHeart, Bell, Settings, Menu, X, ChevronDown,
   BarChart3,
 } from 'lucide-react'
 
@@ -40,10 +39,11 @@ const NAV_ITEMS = [
     label: '设备管理',
     icon: Monitor,
     children: [
-      { label: '设备列表', href: '/equipment' },
-      { label: '设备监控', href: '/equipment/monitor' },
-      { label: '设备状态', href: '/equipment/status' },
-      { label: '设备统计', href: '/equipment/stats' },
+      { label: '设备总览', href: '/devices' },
+      { label: '资产管理', href: '/devices/assets' },
+      { label: '设备监控', href: '/devices/realtime' },
+      { label: '设备状态', href: '/devices/status' },
+      { label: '设备统计', href: '/devices/stats' },
     ],
   },
   { label: '活动管理', href: '/activities', icon: CalendarHeart },
@@ -51,9 +51,9 @@ const NAV_ITEMS = [
     label: '数据中心',
     icon: BarChart3,
     children: [
-      { label: '健康监测', href: '/health-monitoring' },
+      { label: '健康监测', href: '/health' },
       { label: '报警中心', href: '/alerts' },
-      { label: '数据分析', href: '/data-dashboard' },
+      { label: '数据分析', href: '/analytics' },
     ],
   },
   {
@@ -104,6 +104,7 @@ function NavItem({ item, pathname, openDropdown, setOpenDropdown }: {
       <Link
         href={item.href!}
         className={`navbar-item${isActive(item.href!, pathname) ? ' is-active' : ''}`}
+        onClick={() => setOpenDropdown(null)}
       >
         <span className="navbar-item-icon">
           <item.icon size={16} strokeWidth={isActive(item.href!, pathname) ? 2.2 : 1.8} />
@@ -141,6 +142,7 @@ function NavItem({ item, pathname, openDropdown, setOpenDropdown }: {
               key={child.href}
               href={child.href}
               className={`navbar-dropdown-item${isActiveExact(child.href, pathname) ? ' is-active' : ''}`}
+              onClick={() => setOpenDropdown(null)}
             >
               {child.label}
               {'badge' in child && child.badge && (
@@ -266,9 +268,6 @@ export function TopNavbar() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  // close dropdown on route change
-  useEffect(() => { setOpenDropdown(null) }, [pathname])
 
   return (
     <>

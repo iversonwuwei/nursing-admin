@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
-import { ScanFace, CheckCircle2, AlertCircle, Plus, Search, Camera } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { ScanFace, CheckCircle2, AlertCircle, Search, Camera } from "lucide-react"
+import { DataCard, Tag, PageHeader, StatCard, FilterBar, FilterItem } from "@/components/nh"
 
 const FACES = [
   { id: "E001", name: "张桂英", room: "201-1", status: "已录入", progress: 100, lastUpdate: "2026-03-15" },
@@ -23,43 +23,35 @@ export default function FacePage() {
 
   return (
     <div className="page-root animate-fade-up">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>人脸录入</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>老人人脸数据采集与管理</p>
-        </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Camera size={14} />开始录入
-        </button>
-      </div>
+      <PageHeader
+        title="人脸录入"
+        subtitle="老人人脸数据采集与管理"
+        actions={
+          <button className="btn btn-primary btn-sm flex items-center gap-2">
+            <Camera size={14} />开始录入
+          </button>
+        }
+      />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
           { label: "需录入老人", value: stats.total, icon: ScanFace, color: "var(--color-primary)", bg: "var(--color-primary-light)" },
           { label: "已完成", value: stats.done, icon: CheckCircle2, color: "var(--color-success)", bg: "rgba(34,197,94,0.1)" },
           { label: "录入中", value: stats.inProgress, icon: ScanFace, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)" },
           { label: "待录入", value: stats.pending, icon: AlertCircle, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)" },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="data-card" style={{ padding: "14px 18px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--color-muted)" }}>{label}</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "var(--color-text)", letterSpacing: "-0.02em", marginTop: 4 }}>{value}</div>
-              </div>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={18} style={{ color }} />
-              </div>
-            </div>
-          </div>
+        ].map(({ label, value, icon: Icon }) => (
+          <StatCard key={label} icon={<Icon size={18} />} label={label} value={value} color={label === "已完成" ? "success" : label === "录入中" ? "warning" : label === "待录入" ? "danger" : "primary"} />
         ))}
       </div>
 
-      <div className="filter-bar">
-        <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
-          <span className="input-icon"><Search size={16} /></span>
-          <input className="input" placeholder="搜索姓名..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
-        </div>
-      </div>
+      <FilterBar>
+        <FilterItem label="搜索">
+          <div className="input-wrap" style={{ minWidth: 220 }}>
+            <span className="input-icon"><Search size={14} /></span>
+            <input className="input" placeholder="搜索姓名..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+          </div>
+        </FilterItem>
+      </FilterBar>
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>

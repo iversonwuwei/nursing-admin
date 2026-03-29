@@ -1,9 +1,8 @@
 "use client"
 import { useState } from "react"
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users } from "lucide-react"
-import { DataCard } from "@/components/nh"
+import { CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react"
+import { DataCard, PageHeader, StatCard } from "@/components/nh"
 
-const HOURS = ["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"]
 const DAYS = ["周一","周二","周三","周四","周五","周六","周日"]
 
 const SHIFTS: Record<string, { bg: string; color: string; label: string }> = {
@@ -23,19 +22,28 @@ const SCHEDULE: Record<string, string[]> = {
 
 export default function SchedulePage() {
   const [weekOffset, setWeekOffset] = useState(0)
+  const title = weekOffset === 0 ? "本周排班" : weekOffset > 0 ? `未来第${weekOffset}周` : `过去第${Math.abs(weekOffset)}周`
+  const published = Object.values(SCHEDULE).flat().filter(shift => shift !== "休息").length
 
   return (
     <div className="page-root animate-fade-up">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>排班管理</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>本周排班表 · 可调整员工班次</p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setWeekOffset(w => w - 1)}><ChevronLeft size={14} /></button>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", minWidth: 120, textAlign: "center" }}>本周排班</span>
-          <button className="btn btn-secondary btn-sm" onClick={() => setWeekOffset(w => w + 1)}><ChevronRight size={14} /></button>
-        </div>
+      <PageHeader
+        title="排班管理"
+        subtitle={`${title} · 可调整员工班次`}
+        actions={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setWeekOffset(w => w - 1)}><ChevronLeft size={14} /></button>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", minWidth: 120, textAlign: "center" }}>{title}</span>
+            <button className="btn btn-secondary btn-sm" onClick={() => setWeekOffset(w => w + 1)}><ChevronRight size={14} /></button>
+          </div>
+        }
+      />
+
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <StatCard icon={<Users size={18} />} label="排班员工" value={Object.keys(SCHEDULE).length} color="primary" />
+        <StatCard icon={<CalendarDays size={18} />} label="已发布班次" value={published} color="success" />
+        <StatCard icon={<Users size={18} />} label="休息安排" value={Object.values(SCHEDULE).flat().filter(shift => shift === "休息").length} color="info" />
+        <StatCard icon={<CalendarDays size={18} />} label="当前周视图" value={title} color="warning" />
       </div>
 
       {/* Legend */}

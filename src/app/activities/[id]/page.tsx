@@ -4,15 +4,17 @@ import { useParams } from "next/navigation"
 import { ArrowLeft, Edit } from "lucide-react"
 import { StatCard } from "@/components/nh/StatCard"
 
-const ACTIVITY_DATA: Record<string, any> = {
+const ACTIVITY_DATA = {
   "A001": { id: "A001", name: "太极晨练", category: "运动健身", date: "2026-03-29", time: "07:00", duration: 60, participants: 28, capacity: 30, location: "院内花园", status: "进行中", teacher: "李老师", desc: "每日早晨在花园进行太极拳锻炼，助于老人舒筋活络、修身养性。" },
   "A002": { id: "A002", name: "手工编织课", category: "文娱活动", date: "2026-03-29", time: "09:00", duration: 90, participants: 15, capacity: 20, location: "三楼活动室", status: "报名中", teacher: "王老师", desc: "教老人制作简单编织品，锻炼手部精细动作，丰富业余生活。" },
-}
+} as const
+
+type ActivityDetail = (typeof ACTIVITY_DATA)[keyof typeof ACTIVITY_DATA]
 
 export default function ActivityDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = ACTIVITY_DATA[id] || ACTIVITY_DATA["A001"]
+  const data: ActivityDetail = id in ACTIVITY_DATA ? ACTIVITY_DATA[id as keyof typeof ACTIVITY_DATA] : ACTIVITY_DATA["A001"]
 
   return (
     <div className="page-root animate-fade-up">

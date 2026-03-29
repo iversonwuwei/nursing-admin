@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
-import { UserPlus, CalendarDays, Home as HomeIcon, Phone, Shield, Plus, Search } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { UserPlus, CalendarDays, Home as HomeIcon, Shield, Plus, Search } from "lucide-react"
+import { DataCard, Tag, PageHeader, StatCard, FilterBar, FilterItem } from "@/components/nh"
 
 const ELDERLY_LIST = [
   { id: "E001", name: "张桂英", age: 82, gender: "女", room: "201-1", level: "特级护理", status: "待审核", date: "2026-03-28" },
@@ -18,37 +18,41 @@ export default function CheckinPage() {
 
   return (
     <div className="page-root animate-fade-up">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>办理入住</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>新建入住登记 · 共 {ELDERLY_LIST.length} 条待审核</p>
-        </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => setShowForm(!showForm)}>
-          <Plus size={14} />新建入住
-        </button>
-      </div>
+      <PageHeader
+        title="办理入住"
+        subtitle={`新建入住登记 · 共 ${ELDERLY_LIST.length} 条待审核`}
+        actions={
+          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => setShowForm(!showForm)}>
+            <Plus size={14} />新建入住
+          </button>
+        }
+      />
 
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
           { label: "本月新增", value: 8, icon: UserPlus, color: "var(--color-primary)", bg: "var(--color-primary-light)" },
           { label: "待审核", value: 2, icon: CalendarDays, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)" },
           { label: "已入住", value: 124, icon: HomeIcon, color: "var(--color-success)", bg: "rgba(34,197,94,0.1)" },
           { label: "本月退住", value: 3, icon: Shield, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)" },
-        ].map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="data-card" style={{ padding: "16px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--color-muted)", fontWeight: 500 }}>{label}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "var(--color-text)", letterSpacing: "-0.03em", marginTop: 4 }}>{value}</div>
-              </div>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={20} style={{ color }} />
-              </div>
-            </div>
-          </div>
+        ].map(({ label, value, icon: Icon }) => (
+          <StatCard key={label} icon={<Icon size={18} />} label={label} value={value} color={label === "本月新增" ? "primary" : label === "待审核" ? "warning" : label === "已入住" ? "success" : "danger"} />
         ))}
       </div>
+
+      <FilterBar>
+        <FilterItem label="搜索">
+          <div className="input-wrap" style={{ minWidth: 220 }}>
+            <span className="input-icon"><Search size={14} /></span>
+            <input
+              className="input"
+              placeholder="搜索姓名或编号..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ paddingLeft: 34 }}
+            />
+          </div>
+        </FilterItem>
+      </FilterBar>
 
       {/* Form */}
       {showForm && (

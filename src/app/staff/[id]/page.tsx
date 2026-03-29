@@ -2,9 +2,9 @@
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { ArrowLeft, Edit } from "lucide-react"
-import { DataCard, Tag } from "@/components/nh"
+import { Tag, type TagVariant } from "@/components/nh"
 
-const STAFF_DATA: Record<string, any> = {
+const STAFF_DATA = {
   "S001": {
     id: "S001", name: "陈美华", role: "护士长", department: "护理部",
     phone: "138****0001", email: "chenmh@nursinghome.com",
@@ -20,14 +20,16 @@ const STAFF_DATA: Record<string, any> = {
     certificates: ["护士执业证书", "护理管理培训证书", "急救证书"],
     bonus: "¥2,000",
   },
-}
+} as const
 
-const ROLE_TAG: Record<string, string> = { "护士长": "primary", "护士": "info", "护工": "warning", "医生": "danger", "后勤": "neutral" }
+type StaffDetail = (typeof STAFF_DATA)[keyof typeof STAFF_DATA]
+
+const ROLE_TAG: Record<string, TagVariant> = { "护士长": "primary", "护士": "info", "护工": "warning", "医生": "danger", "后勤": "neutral" }
 
 export default function StaffDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data = STAFF_DATA[id] || STAFF_DATA["S001"]
+  const data: StaffDetail = id in STAFF_DATA ? STAFF_DATA[id as keyof typeof STAFF_DATA] : STAFF_DATA["S001"]
 
   return (
     <div className="page-root animate-fade-up">
@@ -42,7 +44,7 @@ export default function StaffDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.name}</h1>
-              <Tag variant={ROLE_TAG[data.role] as any}>{data.role}</Tag>
+              <Tag variant={ROLE_TAG[data.role]}>{data.role}</Tag>
               <Tag variant="success">{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -92,7 +94,7 @@ export default function StaffDetailPage() {
         </div>
         <div className="data-card-body">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-            {data.schedule.map((s: any, i: number) => (
+            {data.schedule.map((s, i) => (
               <div key={i} style={{ padding: "8px 6px", borderRadius: 8, background: s.shift === "休息" ? "var(--color-bg)" : "var(--color-primary-light)", border: `1px solid ${s.shift === "休息" ? "var(--color-border)" : "rgba(13,148,136,0.2)"}`, textAlign: "center" }}>
                 <div className="text-xs mb-1" style={{ color: "var(--color-muted)" }}>{s.day}</div>
                 <div className="text-xs font-semibold" style={{ color: s.shift === "休息" ? "var(--color-muted)" : "var(--color-primary)" }}>{s.shift}</div>
