@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# nursing-admin-v2
 
-## Getting Started
+养老护理管理后台前端工程，基于 Next.js 16、React 19 与 Tailwind CSS。
 
-First, run the development server:
+## 本地开发
+
+```bash
+npm install
+npm run dev
+```
+
+默认开发地址为 <http://localhost:3000。>
+
+## 常用命令
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
+npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 文档约定
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+自 2026-03-30 起，跨工程 Markdown 文档统一维护在独立的 nursing-documents 工程中，不再在当前仓库新增产品、架构、设计、数据库或运维类 Markdown 文档。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+当前规则如下：
 
-## Learn More
+- 平台级文档统一放在 nursing-documents/docs/platform/
+- 运维与历史归档放在 nursing-documents/docs/operations/
+- 当前仓库仅保留工程运行与协作所需的少量根级文件，例如 README.md、AGENTS.md、CLAUDE.md
 
-To learn more about Next.js, take a look at the following resources:
+文档站验证命令：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd ../nursing-documents
+npm install
+npm run docs:build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 仓库边界
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+本仓库负责管理后台前端实现与本地开发配置；跨项目说明、需求沉淀、架构设计、接口文档与发布手册统一在 nursing-documents 中维护。
