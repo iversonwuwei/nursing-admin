@@ -1,6 +1,7 @@
 'use client'
 
-import { PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
 import {
   ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS,
   ALERT_TYPE_LABELS,
@@ -9,9 +10,11 @@ import {
   type AlertRecord,
   type AlertStatus, type AlertType,
 } from '@/lib/data/alerts-data'
+import { getAlertAiSuggestion, getOpenAlertAiSummary } from '@/lib/mock/admin-ai'
 import {
   Activity,
   AlertTriangle, Bell,
+  Bot,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -21,6 +24,7 @@ import {
   Shield,
   User,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 const LEVEL_ICON: Record<AlertLevel, React.ReactNode> = {
@@ -72,6 +76,7 @@ function AlertCard({ alert, onTransition }: {
   onTransition: (id: string, next: AlertStatus) => void
 }) {
   const next = NEXT_STATUS[alert.status]
+  const aiSuggestion = getAlertAiSuggestion(alert)
 
   return (
     <div className="alert-card"
@@ -150,6 +155,23 @@ function AlertCard({ alert, onTransition }: {
           </div>
         )}
 
+        <div style={{ marginTop: 10, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>
+              <Bot size={12} />
+              {aiSuggestion.title}
+            </div>
+            <Tag variant="info">{aiSuggestion.confidence}%</Tag>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{aiSuggestion.explanation}</div>
+          <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+            {aiSuggestion.actions.map(item => (
+              <div key={item} style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>• {item}</div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-primary)', fontWeight: 600 }}>{aiSuggestion.escalation}</div>
+        </div>
+
         {/* Actions */}
         {next && (
           <div className="alert-actions">
@@ -220,6 +242,14 @@ export default function AlertsPage() {
   const processing = alerts.filter(a => a.status === 'processing').length
   const resolved = alerts.filter(a => a.status === 'resolved').length
   const critical = alerts.filter(a => a.level === 'critical' && a.status !== 'resolved').length
+  const openAlertAiSummary = getOpenAlertAiSummary()
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
+    source: 'alerts-center',
+    entityId: entityId ?? 'alerts-board',
+    entityName: entityName ?? '报警中心',
+    focus,
+    target,
+  })
 
   return (
     <div className="animate-fade-up">
@@ -276,6 +306,29 @@ export default function AlertsPage() {
           </div>
         </div>
       </div>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title="AI 事件解释面板"
+        subtitle="报警中心当前优先承接解释与升级建议，不允许 AI 直接关闭高等级事件。"
+        badge={<Tag variant="warning">人工兜底</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>待解释事件</div>
+            <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800, color: 'var(--color-text)' }}>{openAlertAiSummary.total}</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{openAlertAiSummary.summary}</div>
+          </div>
+          <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>紧急升级提醒</div>
+            <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800, color: 'var(--color-danger)' }}>{openAlertAiSummary.critical}</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{openAlertAiSummary.deviceSummary}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Link href={buildAiHref('alert-escalation', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+        </div>
+      </DataCard>
 
       {/* Filters */}
       <div className="filter-bar">

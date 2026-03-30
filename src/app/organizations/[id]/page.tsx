@@ -1,7 +1,9 @@
 'use client'
 
 import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
-import { ArrowLeft, Bed, Building2, Edit, Star, Users } from 'lucide-react'
+import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getOrganizationBedAiInsight, getOrganizationDetailAiInsight, getOrganizationStaffAiInsight } from '@/lib/mock/admin-ai'
+import { ArrowLeft, Bed, Bot, Building2, Edit, Star, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -32,6 +34,24 @@ const TABS = [
 export default function OrgDetailPage() {
   const [activeTab, setActiveTab] = useState('overview')
   const occupancy = Math.round((orgData.occupied / orgData.beds) * 100)
+  const aiInsight = getOrganizationDetailAiInsight(orgData)
+  const reservedBeds = bedData.filter(item => item.status === 'reserved').length
+  const availableBeds = bedData.filter(item => item.status === 'available').length
+  const occupiedBeds = bedData.filter(item => item.status === 'occupied').length
+  const bedAiInsight = getOrganizationBedAiInsight({
+    name: orgData.name,
+    occupied: occupiedBeds,
+    reserved: reservedBeds,
+    available: availableBeds,
+  })
+  const staffAiInsight = getOrganizationStaffAiInsight(staffData.map(item => ({ name: item.name, role: item.role, status: item.status })))
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: focus === 'staff-roster' ? 'organization-staff' : 'organization-detail',
+    entityId: orgData.id,
+    entityName: orgData.name,
+    focus,
+    target,
+  })
 
   return (
     <div className="animate-fade-up">
@@ -57,6 +77,30 @@ export default function OrgDetailPage() {
         <StatCard icon={<Users size={18} />} label="入住率" value={`${occupancy}%`} sub={`空床 ${orgData.beds - orgData.occupied} 个`} color={occupancy >= 90 ? 'danger' : occupancy >= 70 ? 'warning' : 'success'} />
         <StatCard icon={<Building2 size={18} />} label="员工数" value={orgData.staff} sub="在职员工" color="primary" />
       </div>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title={aiInsight.title}
+        subtitle="把机构负荷、人员配置和空床承接转成管理动作。"
+        badge={<Tag variant="primary">Org AI</Tag>}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+            {aiInsight.summary}
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {aiInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: '10px 12px', fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {aiInsight.confidence}%</div>
+            <Link href={buildAiHref('overview-risk', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--color-border)' }}>
@@ -127,59 +171,101 @@ export default function OrgDetailPage() {
 
       {/* Beds */}
       {activeTab === 'beds' && (
-        <DataCard icon={<Bed size={16} />} title="床位管理">
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr><th>房间号</th><th>状态</th></tr>
-              </thead>
-              <tbody>
-                {bedData.map(bed => (
-                  <tr key={bed.id}>
-                    <td><span className="font-semibold text-sm" style={{ fontFamily: 'monospace' }}>{bed.room}</span></td>
-                    <td>
-                      <Tag variant={bed.status === 'occupied' ? 'success' : bed.status === 'reserved' ? 'warning' : 'neutral'}>
-                        {bed.status === 'occupied' ? '已入住' : bed.status === 'reserved' ? '预留' : '可用'}
-                      </Tag>
-                    </td>
-                  </tr>
+        <div style={{ display: 'grid', gap: 16 }}>
+          <DataCard icon={<Bot size={16} />} title={bedAiInsight.title} subtitle="把床位状态从表格转换成可执行的承接与周转动作。" badge={<Tag variant="warning">床位主管确认</Tag>}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {bedAiInsight.summary}
+              </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {bedAiInsight.actions.map(action => (
+                  <div key={action} style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: '10px 12px', fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>
+                    {action}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </DataCard>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {bedAiInsight.confidence}%</div>
+                <Link href={buildAiHref('bed-turnover', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+              </div>
+            </div>
+          </DataCard>
+
+          <DataCard icon={<Bed size={16} />} title="床位管理">
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr><th>房间号</th><th>状态</th></tr>
+                </thead>
+                <tbody>
+                  {bedData.map(bed => (
+                    <tr key={bed.id}>
+                      <td><span className="font-semibold text-sm" style={{ fontFamily: 'monospace' }}>{bed.room}</span></td>
+                      <td>
+                        <Tag variant={bed.status === 'occupied' ? 'success' : bed.status === 'reserved' ? 'warning' : 'neutral'}>
+                          {bed.status === 'occupied' ? '已入住' : bed.status === 'reserved' ? '预留' : '可用'}
+                        </Tag>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DataCard>
+        </div>
       )}
 
       {/* Staff */}
       {activeTab === 'staff' && (
-        <DataCard icon={<Users size={16} />} title="员工管理">
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr><th>姓名</th><th>职位</th><th>性别</th><th>年龄</th><th>联系电话</th><th>状态</th></tr>
-              </thead>
-              <tbody>
-                {staffData.map(s => (
-                  <tr key={s.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div className="avatar avatar-sm" style={{ background: 'rgba(13,148,136,0.1)', color: 'var(--color-primary)' }}>
-                          {s.name.slice(0, 1)}
-                        </div>
-                        <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{s.name}</span>
-                      </div>
-                    </td>
-                    <td><span className="text-sm">{s.role}</span></td>
-                    <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.gender}</span></td>
-                    <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.age}岁</span></td>
-                    <td><span className="text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.phone}</span></td>
-                    <td><Tag variant="success">{s.status}</Tag></td>
-                  </tr>
+        <div style={{ display: 'grid', gap: 16 }}>
+          <DataCard icon={<Bot size={16} />} title={staffAiInsight.title} subtitle="把员工名册转换成可跟进的组织动作，而不是停留在列表展示。" badge={<Tag variant="warning">人员配置追踪</Tag>}>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {staffAiInsight.summary}
+              </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {staffAiInsight.actions.map(action => (
+                  <div key={action} style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: '10px 12px', fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>
+                    {action}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </DataCard>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {staffAiInsight.confidence}%</div>
+                <Link href={buildAiHref('staff-roster', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+              </div>
+            </div>
+          </DataCard>
+
+          <DataCard icon={<Users size={16} />} title="员工管理">
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr><th>姓名</th><th>职位</th><th>性别</th><th>年龄</th><th>联系电话</th><th>状态</th></tr>
+                </thead>
+                <tbody>
+                  {staffData.map(s => (
+                    <tr key={s.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div className="avatar avatar-sm" style={{ background: 'rgba(13,148,136,0.1)', color: 'var(--color-primary)' }}>
+                            {s.name.slice(0, 1)}
+                          </div>
+                          <span className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{s.name}</span>
+                        </div>
+                      </td>
+                      <td><span className="text-sm">{s.role}</span></td>
+                      <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.gender}</span></td>
+                      <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.age}岁</span></td>
+                      <td><span className="text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.phone}</span></td>
+                      <td><Tag variant="success">{s.status}</Tag></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DataCard>
+        </div>
       )}
 
     </div>

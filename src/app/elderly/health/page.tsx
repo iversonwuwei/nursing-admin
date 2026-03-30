@@ -1,8 +1,9 @@
 "use client"
-import { useState } from "react"
-import Link from "next/link"
-import { FileHeart, Activity, Pill, Heart, Stethoscope, AlertCircle, Plus, Search } from "lucide-react"
 import { DataCard, Tag } from "@/components/nh"
+import { getHealthArchiveAiInsights, getMedicationAiSummary } from "@/lib/mock/admin-ai"
+import { Activity, AlertCircle, Bot, FileHeart, Heart, Pill, Plus, Search, Stethoscope } from "lucide-react"
+import Link from "next/link"
+import { useState } from "react"
 
 const HEALTH_RECORDS = [
   { id: "HR001", name: "张桂英", room: "201-1", age: 82, bp: "135/85", hr: 72, temp: 36.5, bloodSugar: 5.8, o2: 97, lastCheck: "2026-03-28", alert: "血压偏高" },
@@ -21,6 +22,8 @@ export default function HealthPage() {
   const [search, setSearch] = useState("")
 
   const filtered = HEALTH_RECORDS.filter(r => r.name.includes(search) || r.id.includes(search))
+  const aiInsights = getHealthArchiveAiInsights(HEALTH_RECORDS)
+  const medicationAiSummary = getMedicationAiSummary(MEDICATIONS)
 
   const vitalTag = (val: string | null, warn: string | null, normal: string, warnThresh: { high: string; low: string }) => {
     if (!val) return null
@@ -62,6 +65,42 @@ export default function HealthPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="page-grid-2" style={{ alignItems: "start" }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 巡诊建议"
+          subtitle="将健康异常和测量记录转成班次关注项，仍需护士确认后再升级。"
+          badge={<Tag variant="warning">需人工确认</Tag>}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.elderlyId} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.elderlyName}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-muted)" }}>{item.title}</div>
+                  </div>
+                  <Tag variant={item.severity === "高风险" ? "danger" : "warning"}>{item.severity}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.explanation}</div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {item.confidence}%</div>
+              </div>
+            ))}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Pill size={16} />}
+          title="AI 用药提醒"
+          subtitle="把待服药项和健康异常对象联动呈现，降低漏服风险。"
+        >
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {medicationAiSummary}
+          </div>
+        </DataCard>
       </div>
 
       {/* Health table */}

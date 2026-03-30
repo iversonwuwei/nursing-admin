@@ -1,6 +1,9 @@
 "use client"
-import { Tag, type TagVariant } from "@/components/nh"
-import { ArrowLeft, Edit } from "lucide-react"
+import { DataCard, Tag, type TagVariant } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getStaffDetailActionAiInsight } from "@/lib/mock/admin-ai"
+import { getStaffAiProfile } from "@/lib/mock/app-ai"
+import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
@@ -30,6 +33,24 @@ export default function StaffDetailPage() {
   const params = useParams()
   const id = params.id as string
   const data: StaffDetail = id in STAFF_DATA ? STAFF_DATA[id as keyof typeof STAFF_DATA] : STAFF_DATA["S001"]
+  const aiProfile = getStaffAiProfile(data.id)
+  const actionInsight = getStaffDetailActionAiInsight({
+    id: data.id,
+    name: data.name,
+    role: data.role,
+    department: data.department,
+    performance: data.performance,
+    attendance: data.attendance,
+    satisfaction: data.satisfaction,
+    schedule: data.schedule.map(item => ({ ...item })),
+  })
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
+    source: 'staff-detail',
+    entityId: data.id,
+    entityName: data.name,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -147,6 +168,57 @@ export default function StaffDetailPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <DataCard title={actionInsight.title} subtitle="把个人排班、表现和交接价值转成主管可跟进动作。" badge={<Tag variant="warning">Manager Review</Tag>}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>
+              <Bot size={16} style={{ color: "var(--color-primary)" }} />
+              AI 用工动作
+            </div>
+            <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {actionInsight.summary}
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {actionInsight.actions.map(item => (
+                <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)", border: "1px solid var(--color-border)", borderRadius: 10, padding: "10px 12px" }}>{item}</div>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {actionInsight.confidence}%</div>
+              <Link href={buildAiHref('staff-action', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
+
+        <DataCard title="AI 班次摘要" subtitle="面向员工 APP 的班次开场摘要和优先动作建议。" badge={<Tag variant="primary">Staff AI</Tag>}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {aiProfile.shiftSummary}
+            </div>
+            <Tag variant={aiProfile.workloadLevel === "高负荷" ? "warning" : "success"}>{aiProfile.workloadLevel}</Tag>
+            <div style={{ display: "grid", gap: 8 }}>
+              {aiProfile.recommendedActions.map(item => (
+                <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>• {item}</div>
+              ))}
+            </div>
+            <div>
+              <Link href={buildAiHref('staff-shift-summary', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
+
+        <DataCard title="AI 交接班草稿" subtitle="把未闭环事项和重点老人压缩成下一班可直接阅读的摘要。">
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {aiProfile.handoverDraft}
+            </div>
+            <div>
+              <Link href={buildAiHref('handover-draft', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
       </div>
     </div>
   )

@@ -1,8 +1,10 @@
 'use client'
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
 import { equipmentAlarms, equipmentList } from '@/lib/data'
-import { AlertTriangle, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
+import { getEquipmentListAiInsights, getEquipmentListAiNarratives } from '@/lib/mock/admin-ai'
+import { AlertTriangle, Bot, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -34,6 +36,15 @@ export default function EquipmentPage() {
   }
 
   const categories = [...new Set(equipmentList.map(e => e.category))]
+  const aiInsights = getEquipmentListAiInsights(equipmentList, equipmentAlarms)
+  const aiNarratives = getEquipmentListAiNarratives(equipmentList, equipmentAlarms)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'equipment-list',
+    entityId: 'equipment-board',
+    entityName: '设备列表',
+    focus,
+    target,
+  })
 
   return (
     <div className="animate-fade-up">
@@ -53,6 +64,48 @@ export default function EquipmentPage() {
         <StatCard icon={<CheckCircle2 size={18} />} label="正常运行" value={stats.normal} color="success" />
         <StatCard icon={<AlertTriangle size={18} />} label="待处理告警" value={stats.alarm} sub="需立即处理" color="danger" />
         <StatCard icon={<Wifi size={18} />} label="维修中" value={stats.repair} sub="设备维护" color="warning" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 巡检摘要"
+          subtitle="优先解释哪些设备需要先巡检或准备备用方案。"
+          badge={<Tag variant="info">Patrol Assist</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                  <Tag variant={item.variant}>{item.title}</Tag>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('equipment-patrol', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Wifi size={16} />}
+          title="AI 维保建议"
+          subtitle="把设备列表翻译成巡检顺序、备用路径和维保节奏。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('equipment-maintenance', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <FilterBar>

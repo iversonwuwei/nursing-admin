@@ -182,7 +182,12 @@
 | `/supplies` | 物资列表 | 供应链 / 后勤 | Supply Service | 已实现 |
 | `/supplies/[id]` | 物资详情 | 供应链 / 后勤 | Supply Service | 已实现 |
 | `/financial` | 财务总览 | 费用系统 | Billing Service | 已实现 |
-| `/ai-assistant` | AI 助手入口 | AI 能力 | AI Service | 已实现 |
+| `/ai-assistant` | AI 总览入口 | AI 能力 | AI Service | 已实现 |
+| `/ai-assistant/inference` | AI 推理详情 | AI 能力 | AI Service | 已实现 |
+| `/ai-assistant/rules` | AI 规则治理 | AI 能力 | AI Service / Config Service | 已实现 |
+| `/ai-assistant/logs` | AI 问答日志 | AI 能力 | AI Service / Audit Service | 已实现 |
+| `/ai-assistant/staff-app` | 员工 APP + AI 预览 | AI 能力 / 员工 APP 原型 | AI Service / Care Service / Alert Service | 待实现 |
+| `/ai-assistant/family-app` | 家属 APP + AI 预览 | AI 能力 / 家属 APP 原型 | AI Service / Elder Service / Visit Service | 待实现 |
 | `/settings` | 系统配置 | 系统设置 | Config Service | 标准骨架页 |
 | `/settings/roles` | 角色权限 | 系统设置 | User Service / Config Service | 标准骨架页 |
 | `/login` | 登录页 | 认证 | User Service | 已实现 |
@@ -224,6 +229,12 @@
 | 账单中心 | 费用账单、支付记录、欠费提醒 | Billing Service |
 | AI 家属助手 | 今日状态问答、风险解释、护理说明 | AI Service |
 
+建议优先补充三类家属 AI 能力：
+
+- 今日状态摘要卡
+- 探视与视频沟通建议
+- 家属友好版健康解释
+
 ---
 
 ## 7. 员工 APP 模块映射建议
@@ -239,6 +250,12 @@
 | 交接班 | 班次交接、重点关注老人 | Care Service + Staff Service |
 | 我的排班 | 今日班次、未来排班、请假替班 | Staff Service |
 | AI 护理助手 | 任务提醒、风险提示、护理建议 | AI Service |
+
+建议优先补充三类员工 AI 能力：
+
+- 班次摘要与优先任务建议
+- 报警响应动作提示
+- 交接班摘要草稿
 
 ---
 
@@ -299,6 +316,20 @@
 - `/devices/realtime`
 - `/alerts`
 - `/health`
+
+### 8.5 APP + AI 原型在当前仓库的承接方式
+
+当前仓库虽不是 Flutter 代码仓，但可以先承接 APP + AI 的高保真 Web 原型页，用于验证：
+
+- 首页信息密度
+- 卡片排序优先级
+- 员工与家属两类语言风格差异
+- AI 解释与人工兜底的交互边界
+
+建议优先在以下路由落地：
+
+- `/ai-assistant/staff-app`
+- `/ai-assistant/family-app`
 
 原因是这些页面最能代表平台的核心链路：
 

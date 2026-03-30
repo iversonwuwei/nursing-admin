@@ -1,7 +1,8 @@
 "use client"
-import { useState } from "react"
-import { Video, Search, Plus, Clock, UserCheck } from "lucide-react"
 import { DataCard, Tag } from "@/components/nh"
+import { getVisitAiSuggestions } from "@/lib/mock/app-ai"
+import { Clock, Plus, Search, UserCheck, Video } from "lucide-react"
+import { useState } from "react"
 
 const VISITS = [
   { id: "V001", elder: "张桂英", room: "201-1", visitor: "张伟", relation: "儿子", phone: "139****1234", date: "2026-03-29", time: "14:30", type: "现场", status: "已完成" },
@@ -15,6 +16,7 @@ export default function VisitsPage() {
   const [search, setSearch] = useState("")
   const filtered = VISITS.filter(v => v.elder.includes(search) || v.visitor.includes(search))
   const todayCount = VISITS.filter(v => v.date === "2026-03-29").length
+  const aiSuggestions = getVisitAiSuggestions()
 
   return (
     <div className="page-root animate-fade-up">
@@ -55,6 +57,21 @@ export default function VisitsPage() {
           <input className="input" placeholder="搜索老人姓名或探视人..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
         </div>
       </div>
+
+      <DataCard title="AI 探视助手" subtitle="把探视审核、视频沟通和家属通知统一成可执行建议。" badge={<Tag variant="primary">Family AI</Tag>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+          {aiSuggestions.map(item => (
+            <div key={item.title} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
+                <Tag variant={item.type === "视频" ? "info" : item.type === "现场" ? "warning" : "primary"}>{item.type}</Tag>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+              <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>{item.action}</div>
+            </div>
+          ))}
+        </div>
+      </DataCard>
 
       <DataCard>
         <div style={{ overflowX: "auto" }}>

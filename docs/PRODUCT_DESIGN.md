@@ -375,6 +375,8 @@
 | — | `ElderlyDetailScreen` | 老人详情（从任务跳转） |
 | — | `AlertDetailScreen` | 报警详情（从报警推送跳转） |
 | — | `CheckInRecordScreen` | 打卡记录 |
+| — | `AIShiftBriefScreen` | AI 班次摘要与重点老人提醒 |
+| — | `AIHandoverScreen` | AI 交接班草稿与风险交班建议 |
 
 ### 4.3 家属 APP 页面列表
 
@@ -389,6 +391,8 @@
 | — | `BillScreen` | 账单与缴费 |
 | — | `AlertHistoryScreen` | 报警历史 |
 | — | `FeedbackScreen` | 护理评价与反馈 |
+| — | `AITodaySummaryScreen` | AI 今日状态摘要与家属问答入口 |
+| — | `AIVisitAssistantScreen` | AI 探视安排与视频沟通建议 |
 
 ---
 

@@ -1,6 +1,9 @@
 "use client"
-import { DataCard } from "@/components/nh"
-import { ArrowDownRight, ArrowUpRight, DollarSign, PieChart, TrendingDown, TrendingUp } from "lucide-react"
+import { DataCard, Tag } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getFinancialAiInsights, getFinancialAiNarratives } from "@/lib/mock/admin-ai"
+import { ArrowDownRight, ArrowUpRight, Bot, DollarSign, PieChart, TrendingDown, TrendingUp } from "lucide-react"
+import Link from "next/link"
 
 const MONTHLY = [
   { month: "3月", income: 298000, expense: 186000, profit: 112000 },
@@ -42,6 +45,15 @@ function BreakdownRow({ label, amount, ratio, color }: { label: string; amount: 
 export default function FinancialPage() {
   const current = MONTHLY[0]
   const profitRate = Math.round(current.profit / current.income * 100)
+  const aiInsights = getFinancialAiInsights(MONTHLY, CATEGORIES, EXPENSES)
+  const aiNarratives = getFinancialAiNarratives(MONTHLY, EXPENSES)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'financial',
+    entityId: current.month,
+    entityName: `${current.month}财务收支`,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -82,6 +94,50 @@ export default function FinancialPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="page-grid-2" style={{ alignItems: "start" }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 经营解读"
+          subtitle="把收入、支出和利润变化转成经营关注点，仍需财务负责人复核后再用于正式汇报。"
+          badge={<Tag variant="warning">需财务确认</Tag>}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, color: "var(--color-muted)", lineHeight: 1.6 }}>{item.summary}</div>
+                  </div>
+                  <Tag variant={item.variant}>{item.metric}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('financial-interpretation', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<TrendingUp size={16} />}
+          title="AI 建议动作"
+          subtitle="强调经营关注点，而不是替代预算审批或正式记账。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('financial-actions', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       {/* Charts row */}

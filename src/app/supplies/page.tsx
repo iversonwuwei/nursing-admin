@@ -1,7 +1,9 @@
 'use client'
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
-import { AlertTriangle, ChevronRight, Package, Plus, Search } from 'lucide-react'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getSupplyAiInsights, getSupplyAiNarratives } from '@/lib/mock/admin-ai'
+import { AlertTriangle, Bot, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -21,6 +23,15 @@ export default function SuppliesPage() {
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+  const aiInsights = getSupplyAiInsights(SUPPLIES)
+  const aiNarratives = getSupplyAiNarratives(SUPPLIES)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'supplies-list',
+    entityId: 'supply-board',
+    entityName: '物资管理',
+    focus,
+    target,
+  })
 
   const lowStock = SUPPLIES.filter(s => s.status === '库存不足').length
   const filtered = SUPPLIES.filter(s => {
@@ -48,6 +59,50 @@ export default function SuppliesPage() {
         <StatCard icon={<AlertTriangle size={18} />} label="库存不足" value={lowStock} sub="需立即采购" color="danger" />
         <StatCard icon={<Package size={18} />} label="库存正常" value={SUPPLIES.length - lowStock} color="success" />
         <StatCard icon={<Package size={18} />} label="本月采购" value={12} sub="采购次数" color="info" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 补货摘要"
+          subtitle="先标出最可能影响一线执行的缺货风险，不替代正式采购审批。"
+          badge={<Tag variant="warning">Procurement Assist</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>{item.summary}</div>
+                  </div>
+                  <Tag variant={item.variant}>{item.metric}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('supply-restock', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="AI 采购建议"
+          subtitle="把库存表转成补货优先级与缺口估算。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('supply-procurement', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <FilterBar>

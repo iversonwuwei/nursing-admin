@@ -1,6 +1,8 @@
 "use client"
-import { Tag, type TagVariant } from "@/components/nh"
-import { ArrowLeft, Edit, Monitor } from "lucide-react"
+import { DataCard, Tag, type TagVariant } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getEquipmentDetailAiInsight, getEquipmentMaintenanceNarratives } from "@/lib/mock/admin-ai"
+import { ArrowLeft, Bot, Edit, Monitor } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
@@ -27,6 +29,37 @@ export default function EquipmentDetailPage() {
   const params = useParams()
   const id = params.id as string
   const data: DeviceDetail = id in DEVICE_DATA ? DEVICE_DATA[id as keyof typeof DEVICE_DATA] : DEVICE_DATA["EQ001"]
+  const aiInsight = getEquipmentDetailAiInsight({
+    id: data.id,
+    name: data.name,
+    room: data.room,
+    type: data.type,
+    status: data.status,
+    signal: data.signal,
+    battery: data.battery,
+    uptime: data.uptime,
+    maintenance: { ...data.maintenance },
+    history: data.history.map(item => ({ ...item })),
+  })
+  const maintenanceNarratives = getEquipmentMaintenanceNarratives({
+    id: data.id,
+    name: data.name,
+    room: data.room,
+    type: data.type,
+    status: data.status,
+    signal: data.signal,
+    battery: data.battery,
+    uptime: data.uptime,
+    maintenance: { ...data.maintenance },
+    history: data.history.map(item => ({ ...item })),
+  })
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
+    source: 'equipment-detail',
+    entityId: data.id,
+    entityName: data.name,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -50,6 +83,48 @@ export default function EquipmentDetailPage() {
           <Edit size={14} />编辑
         </button>
       </div>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title={aiInsight.title}
+        subtitle="把实时状态、历史波动和维护节奏转成设备跟进建议。"
+        badge={<Tag variant="warning">Device AI</Tag>}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {aiInsight.summary}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {aiInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {aiInsight.confidence}%</div>
+            <Link href={buildAiHref('device-status', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
+
+      <DataCard
+        icon={<Monitor size={16} />}
+        title="AI 维保摘要"
+        subtitle="把维保时间窗和异常波动压缩成设备部可执行的跟进项。"
+        badge={<Tag variant="info">Maintenance</Tag>}
+      >
+        <div style={{ display: "grid", gap: 10 }}>
+          {maintenanceNarratives.map(item => (
+            <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {item}
+            </div>
+          ))}
+          <div>
+            <Link href={buildAiHref('maintenance-follow-up', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
 
       {/* Real-time metrics */}
       <div className="data-card">

@@ -1,13 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { StatCard, DataCard, ProgressBar, PageHeader } from '@/components/nh'
+import { DataCard, PageHeader, ProgressBar, StatCard, Tag } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
 import { organizations, totalStats } from '@/lib/data'
-import { Building2, MapPin, Phone, ChevronRight, Bed, Users } from 'lucide-react'
+import { getOrganizationAiInsights, getOrganizationAiNarratives } from '@/lib/mock/admin-ai'
+import { Bed, Bot, Building2, ChevronRight, MapPin, Phone, Users } from 'lucide-react'
+import Link from 'next/link'
+import { useState } from 'react'
 
 export default function OrganizationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const aiInsights = getOrganizationAiInsights(organizations)
+  const aiNarratives = getOrganizationAiNarratives(organizations)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'organizations-list',
+    entityId: 'org-board',
+    entityName: '机构管理',
+    focus,
+    target,
+  })
 
   const occRate = (o: typeof organizations[0]) =>
     o.totalBeds > 0 ? Math.round((o.occupiedBeds / o.totalBeds) * 100) : 0
@@ -28,6 +39,50 @@ export default function OrganizationsPage() {
         <StatCard icon={<Bed size={18} />} label="床位总数" value={totalStats.totalBeds} color="info" />
         <StatCard icon={<Users size={18} />} label="入住人数" value={totalStats.totalElderly} color="success" />
         <StatCard icon={<Building2 size={18} />} label="平均入住率" value={`${totalStats.avgOccupancy}%`} color="warning" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 机构摘要"
+          subtitle="帮助管理层看见机构承接压力与人员配置密度，不替代经营判断。"
+          badge={<Tag variant="info">Operations View</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                  </div>
+                  <Tag variant={item.variant}>{item.metric}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('organization-overview', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Building2 size={16} />}
+          title="AI 调配建议"
+          subtitle="强调机构间资源不均衡，而不是只展示总量。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('organization-capacity', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

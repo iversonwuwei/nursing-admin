@@ -1,10 +1,12 @@
 "use client";
 
 import { DataCard } from "@/components/nh";
+import { getDeviceAiInsights, getDeviceAiOverview } from "@/lib/mock/admin-ai";
 import {
   Activity,
   AlertTriangle,
   Battery,
+  Bot,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -64,6 +66,8 @@ function AlertBadge({ level }: { level: string }) {
 
 export default function MonitorPage() {
   const [refreshing, setRefreshing] = useState(false)
+  const aiInsights = getDeviceAiInsights(MONITOR_POINTS, ALERT_HISTORY)
+  const aiOverview = getDeviceAiOverview(MONITOR_POINTS, ALERT_HISTORY)
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -146,6 +150,45 @@ export default function MonitorPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="page-grid-2" style={{ marginBottom: 16, alignItems: "start" }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 设备解释"
+          subtitle="优先解释监测盲区与重复告警来源，避免只看到设备状态不看到护理影响。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.deviceId} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.deviceName}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-muted)" }}>{item.room}</div>
+                  </div>
+                  <span className={`tag ${item.severity === "高风险" ? "danger" : "warning"}`}>{item.severity}</span>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {item.confidence}%</div>
+              </div>
+            ))}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="AI 巡检建议"
+          subtitle="把设备告警翻译成班次动作建议，不直接替代工程或护理判断。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiOverview.map(item => (
+              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </DataCard>
       </div>
 
       {/* Main grid */}

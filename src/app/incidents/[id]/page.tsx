@@ -1,6 +1,8 @@
 "use client"
-import { Tag, type TagVariant } from "@/components/nh"
-import { ArrowLeft, Edit } from "lucide-react"
+import { DataCard, Tag, type TagVariant } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getIncidentAiInsight, getIncidentFollowupInsight } from "@/lib/mock/admin-ai"
+import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useState } from "react"
@@ -48,6 +50,15 @@ export default function IncidentDetailPage() {
   const id = params.id as string
   const data: IncidentDetail = id in INCIDENT_DATA ? INCIDENT_DATA[id as keyof typeof INCIDENT_DATA] : INCIDENT_DATA["I001"]
   const [activeTab, setActiveTab] = useState("info")
+  const aiInsight = getIncidentAiInsight(data)
+  const followupInsight = getIncidentFollowupInsight(data)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'incident-detail',
+    entityId: data.id,
+    entityName: data.title,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -73,6 +84,59 @@ export default function IncidentDetailPage() {
           </button>
         </div>
       </div>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title={aiInsight.title}
+        subtitle="补充事故解释、闭环标准和后续动作，最终结论仍以人工复盘为准。"
+        badge={<Tag variant="warning">AI 草稿</Tag>}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {aiInsight.summary}
+          </div>
+          <div style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-warning)" }}>闭环风险</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>{aiInsight.risk}</div>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {aiInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--color-muted)" }}>{aiInsight.closureHint}</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {aiInsight.confidence}%</div>
+            <Link href={buildAiHref('incident-explanation', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title={followupInsight.title}
+        subtitle="把事故处理节点压缩成复盘和留痕动作。"
+        badge={<Tag variant="info">Closure Follow-up</Tag>}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {followupInsight.summary}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {followupInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {followupInsight.confidence}%</div>
+            <Link href={buildAiHref('incident-followup', 'logs')} className="btn btn-secondary btn-sm">带上下文追踪</Link>
+          </div>
+        </div>
+      </DataCard>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--color-border)", paddingBottom: 0 }}>

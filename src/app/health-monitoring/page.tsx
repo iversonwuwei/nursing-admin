@@ -1,8 +1,11 @@
 'use client'
 
-import { PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
 import { healthStats, healthTrends, healthVitals, VITAL_RANGES } from '@/lib/data/health-data'
-import { Activity, AlertTriangle, Clock, Droplets, Heart } from 'lucide-react'
+import { getHealthAiInsights, getHealthFollowupActions, getHealthTrendNarratives } from '@/lib/mock/admin-ai'
+import { Activity, AlertTriangle, Bot, Clock, Droplets, Heart } from 'lucide-react'
+import Link from 'next/link'
 import { useState } from 'react'
 
 /* ── Pure CSS Line Chart ── */
@@ -150,6 +153,16 @@ export default function HealthMonitoringPage() {
   const displayVitals = view === 'abnormal'
     ? healthVitals.filter(v => v.isAbnormal)
     : healthVitals
+  const aiInsights = getHealthAiInsights()
+  const trendNarratives = getHealthTrendNarratives()
+  const followupActions = getHealthFollowupActions(aiInsights)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
+    source: 'health-monitoring',
+    entityId: entityId ?? 'health-board',
+    entityName: entityName ?? '健康监测',
+    focus,
+    target,
+  })
 
   return (
     <div className="animate-fade-up">
@@ -181,6 +194,74 @@ export default function HealthMonitoringPage() {
         <StatCard icon={<Heart size={18} />} label="平均心率" value={`${healthStats.avgHeartRate}`} sub={VITAL_RANGES.heartRate.unit} color="info" />
         <StatCard icon={<Droplets size={18} />} label="平均血氧" value={healthStats.avgBloodOxygen} sub={VITAL_RANGES.bloodOxygen.unit} color="success" />
       </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 风险解释"
+          subtitle="对连续异常和组合异常给出解释与建议动作，仍需人工复核后再升级。"
+          badge={<Tag variant="warning">需人工确认</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.slice(0, 4).map(item => (
+              <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.roomNumber} · {item.title}</div>
+                  </div>
+                  <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.explanation}</div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
+                <div style={{ marginTop: 8 }}>
+                  <Link href={buildAiHref('health-risk', 'inference', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Activity size={16} />}
+          title="AI 趋势解读"
+          subtitle="把近 7 日健康趋势转成管理可读的摘要，不直接给医疗诊断。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {trendNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+            <div>
+              <Link href={buildAiHref('health-trend', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
+      </div>
+
+      <DataCard icon={<Bot size={16} />} title="AI 跟进动作" subtitle="把重点异常对象压成当班跟进序列，并带着对象上下文进入 AI 运营中心。" badge={<Tag variant="warning">Follow-up Board</Tag>}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {followupActions.map(item => (
+            <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.title}</div>
+                </div>
+                <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.summary}</div>
+              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
+                <Link href={buildAiHref('health-followup', 'logs', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">带上下文追踪</Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </DataCard>
 
       {/* Trend Charts */}
       <div className="hm-chart-grid">

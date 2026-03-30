@@ -1,5 +1,9 @@
 "use client"
-import { ArrowLeft, Edit } from "lucide-react"
+import { DataCard, Tag } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getElderDetailActionAiInsight } from "@/lib/mock/admin-ai"
+import { getElderAiProfile } from "@/lib/mock/app-ai"
+import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
@@ -14,6 +18,23 @@ export default function ElderlyDetailPage() {
   const params = useParams()
   const id = params.id as string
   const data: ElderDetail = id in ELDER_DATA ? ELDER_DATA[id as keyof typeof ELDER_DATA] : ELDER_DATA["E001"]
+  const aiProfile = getElderAiProfile(data.id)
+  const actionInsight = getElderDetailActionAiInsight({
+    id: data.id,
+    name: data.name,
+    roomNumber: data.roomNumber,
+    careLevel: data.careLevel,
+    medicalHistory: [...data.medicalHistory],
+    allergies: [...data.allergies],
+    status: data.status,
+  })
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'elderly-detail',
+    entityId: data.id,
+    entityName: data.name,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -85,6 +106,57 @@ export default function ElderlyDetailPage() {
           </div>
         </div>
       </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
+        <DataCard title="AI 状态摘要" subtitle="把当前健康、报警和后续动作压缩成可读结论。" badge={<Tag variant="primary">Admin + Family AI</Tag>}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {aiProfile.statusSummary}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 700 }}>置信度 {aiProfile.confidence}%</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {aiProfile.followupActions.map(item => (
+                <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>• {item}</div>
+              ))}
+            </div>
+            <div>
+              <Link href={buildAiHref('elder-status', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
+
+        <DataCard title="家属端摘要草稿" subtitle="同一份数据在家属端的表达应更温和、更结论导向。">
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+              {aiProfile.familyBrief}
+            </div>
+            <div>
+              <Link href={buildAiHref('family-brief', 'logs')} className="btn btn-secondary btn-sm">带上下文追踪</Link>
+            </div>
+          </div>
+        </DataCard>
+      </div>
+
+      <DataCard title={actionInsight.title} subtitle="把病史、护理等级和房间上下文转成管理侧跟进动作。" badge={<Tag variant="warning">Admin Follow-up</Tag>}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>
+            <Bot size={16} style={{ color: "var(--color-primary)" }} />
+            AI 管理动作
+          </div>
+          <div style={{ padding: 14, borderRadius: 10, background: "var(--color-bg)", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {actionInsight.summary}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {actionInsight.actions.map(item => (
+              <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)", border: "1px solid var(--color-border)", borderRadius: 10, padding: "10px 12px" }}>{item}</div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {actionInsight.confidence}%</div>
+            <Link href={buildAiHref('elder-management', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
     </div>
   )
 }

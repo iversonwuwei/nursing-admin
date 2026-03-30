@@ -1,6 +1,9 @@
 "use client"
-import { DataCard, PageHeader, StatCard } from "@/components/nh"
-import { CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react"
+import { DataCard, PageHeader, StatCard, Tag } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getScheduleAiInsights, getScheduleAiNarratives } from "@/lib/mock/admin-ai"
+import { Bot, CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react"
+import Link from "next/link"
 import { useState } from "react"
 
 const DAYS = ["周一","周二","周三","周四","周五","周六","周日"]
@@ -24,6 +27,16 @@ export default function SchedulePage() {
   const [weekOffset, setWeekOffset] = useState(0)
   const title = weekOffset === 0 ? "本周排班" : weekOffset > 0 ? `未来第${weekOffset}周` : `过去第${Math.abs(weekOffset)}周`
   const published = Object.values(SCHEDULE).flat().filter(shift => shift !== "休息").length
+  const scheduleItems = Object.entries(SCHEDULE).map(([name, shifts]) => ({ name, shifts }))
+  const aiInsights = getScheduleAiInsights(scheduleItems)
+  const aiNarratives = getScheduleAiNarratives(scheduleItems)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
+    source: 'staff-schedule',
+    entityId: 'schedule-board',
+    entityName: title,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -44,6 +57,50 @@ export default function SchedulePage() {
         <StatCard icon={<CalendarDays size={18} />} label="已发布班次" value={published} color="success" />
         <StatCard icon={<Users size={18} />} label="休息安排" value={Object.values(SCHEDULE).flat().filter(shift => shift === "休息").length} color="info" />
         <StatCard icon={<CalendarDays size={18} />} label="当前周视图" value={title} color="warning" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 排班摘要"
+          subtitle="辅助识别班次密度、夜班覆盖和连续上班风险，不自动改排班。"
+          badge={<Tag variant="warning">排班主管确认</Tag>}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.summary}</div>
+                  </div>
+                  <Tag variant={item.variant}>{item.metric}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: "var(--color-text)" }}>{item.action}</div>
+              </div>
+            ))}
+            <div>
+              <Link href={buildAiHref('schedule-density', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<CalendarDays size={16} />}
+          title="AI 调整建议"
+          subtitle="把周排班表转成管理可读摘要，而不是只看格子。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+                {item}
+              </div>
+            ))}
+            <div>
+              <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+            </div>
+          </div>
+        </DataCard>
       </div>
 
       {/* Legend */}

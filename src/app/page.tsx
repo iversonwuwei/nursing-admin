@@ -2,9 +2,12 @@
 
 import { DataCard, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { elderlyList, equipmentAlarms, organizations } from '@/lib/data'
+import { getAiDashboardActions, getAiDashboardInsights } from '@/lib/mock/admin-ai'
+import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
 import {
   Activity,
   AlertTriangle, Bell,
+  Bot,
   CalendarHeart,
   ChevronRight,
   ClipboardList,
@@ -20,6 +23,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useSyncExternalStore } from 'react'
 
 // ─── Mock Data ───────────────────────────────────────────────────────────────
 
@@ -76,10 +80,17 @@ const maxService = Math.max(...weeklyServiceData.map(d => d.count))
 
 export default function DashboardPage() {
   const router = useRouter()
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
   const today = new Date()
   const dateStr = today.toLocaleDateString('zh-CN', {
     weekday: 'long', month: 'long', day: 'numeric',
   })
+  const aiInsights = getAiDashboardInsights(applications)
+  const aiActions = getAiDashboardActions(applications)
 
   return (
     <div className="animate-fade-up">
@@ -147,6 +158,43 @@ export default function DashboardPage() {
           trend={{ value: '+5.3%', direction: 'up' }}
           color="purple"
         />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 风险摘要"
+          subtitle="结合入住评估、健康异常与未闭环报警给出当前最需要被看见的信号。"
+          badge={<Tag variant="primary">Admin + AI</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <Link key={item.id} href={item.href} style={{ textDecoration: 'none' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                    <Tag variant={item.variant}>{item.value}</Tag>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<ClipboardList size={16} />}
+          title="AI 运营建议"
+          subtitle="当前仓库仍以结果型数据为主，建议只做建议展示，不自动执行。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiActions.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </DataCard>
       </div>
 
       {/* ── Main Grid: Tasks | Service Chart ── */}

@@ -1,134 +1,216 @@
-"use client"
-import { Bot, Clock, Send, Sparkles, ThumbsUp, User } from "lucide-react"
-import { useState } from "react"
+'use client'
 
-const SUGGESTIONS = [
-  "分析本月护理质量报告",
-  "生成下周排班建议",
-  "统计各楼层入住率",
-  "查找本周异常情况",
-]
+import { AdminAiNav } from '@/components/ai/admin-ai-nav'
+import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { appendAiTrackingContext, getAiSourceLabel, getAiTargetLabel, readAiTrackingContext } from '@/lib/ai-context'
+import {
+  getAdminAiPromptReply,
+  getAiDashboardInsights,
+} from '@/lib/mock/admin-ai'
+import {
+  getAdmissionApplicationsSnapshot,
+  subscribeAdmissionWorkflow,
+} from '@/lib/mock/admission-workflow'
+import {
+  Bot,
+  BrainCircuit,
+  ChevronRight,
+  MessageSquareText,
+  Send,
+  Sparkles,
+} from 'lucide-react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { useState, useSyncExternalStore } from 'react'
 
-const HISTORY = [
-  { q: "本月护理质量如何？", a: "本月护理质量整体良好，KPI得分92分。主要扣分项：摔倒事件2起（同比减少1起），压疮发生0例（达标），用药准时率98.5%（达标）。", time: "10:30", useful: true },
-  { q: "有哪些老人需要重点关注？", a: "以下3位老人需要重点关注：①张桂英（201-1）- 血压持续偏高，建议调整用药；②李秀兰（205-1）- 血糖波动较大；③王建国（203-2）- 最近情绪低落，建议增加心理关怀。", time: "10:15", useful: true },
+const PRESET_PROMPTS = [
+  '总结当前入住评估闭环进度',
+  '解释为什么健康异常需要人工复核',
+  '生成适合院长晨会的 AI 运营摘要',
+  '任务中心的 AI 建议应该如何使用',
 ]
 
 export default function AIAssistantPage() {
-  const [input, setInput] = useState("")
-  const [messages, setMessages] = useState<{role: "user" | "ai"; content: string}[]>([])
+  const searchParams = useSearchParams()
+  const trackingContext = readAiTrackingContext(searchParams)
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
+  const [prompt, setPrompt] = useState(PRESET_PROMPTS[0])
+  const [reply, setReply] = useState(getAdminAiPromptReply(PRESET_PROMPTS[0]))
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    setMessages([...messages, { role: "user", content: input }])
-    setInput("")
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: "ai", content: "正在分析您的请求，请稍候..." }])
-    }, 800)
-  }
+  const dashboardInsights = getAiDashboardInsights(applications)
+  const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
+  const targetHref = trackingContext?.target === 'rules'
+    ? appendAiTrackingContext('/ai-assistant/rules', { ...trackingContext, target: 'rules' })
+    : trackingContext?.target === 'logs'
+      ? appendAiTrackingContext('/ai-assistant/logs', { ...trackingContext, target: 'logs' })
+      : appendAiTrackingContext('/ai-assistant/inference', trackingContext ? { ...trackingContext, target: 'inference' } : null)
 
   return (
-    <div className="page-root animate-fade-up ai-page">
-      <div className="ai-header">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>AI助手</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>智能分析 · 数据洞察 · 管理建议</p>
-        </div>
-        <div className="ai-status">
-          <span className="ai-status-dot" style={{ background: "var(--color-success)" }} />AI运行中
-        </div>
-      </div>
+    <div className="page-root animate-fade-up">
+      <PageHeader
+        title="AI 运营入口"
+        subtitle="统一查看 Admin 端 AI 总览，并进入推理详情、规则治理和问答日志。"
+        actions={<Tag variant="primary">AI 先建议，人再确认</Tag>}
+      />
 
-      <div className="ai-layout">
-        {/* Chat area */}
-        <div className="data-card ai-chat-card">
-          {/* Messages */}
-          <div className="ai-messages">
-            {messages.length === 0 && (
-              <div className="ai-empty">
-                <div className="ai-empty-icon" style={{ background: "linear-gradient(145deg, var(--color-primary-light), var(--color-primary))" }}>
-                  <Bot size={28} style={{ color: "white" }} />
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <div className="ai-empty-title">您好，我是AI助手</div>
-                  <div className="ai-empty-sub">可以问我关于养老院运营管理的任何问题</div>
-                </div>
-                <div className="ai-suggestions">
-                  {SUGGESTIONS.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => { setInput(s); handleSend() }}
-                      className="btn btn-secondary btn-sm"
-                      style={{ fontSize: 12 }}
-                    >
-                      <Sparkles size={12} style={{ color: "var(--color-primary)" }} />{s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {messages.map((msg, i) => (
-              <div key={i} className="ai-message">
-                <div className="ai-avatar" style={{ background: msg.role === "ai" ? "var(--color-primary-light)" : "rgba(59,130,246,0.1)" }}>
-                  {msg.role === "ai" ? <Bot size={16} style={{ color: "var(--color-primary)" }} /> : <User size={16} style={{ color: "var(--color-info)" }} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)", marginBottom: 4 }}>{msg.role === "ai" ? "AI助手" : "我"}</div>
-                  <div className={`ai-bubble ${msg.role === "ai" ? "ai" : "user"}`}>
-                    {msg.content}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {/* Input */}
-          <div className="ai-input-row">
-            <div className="input-wrap" style={{ flex: 1 }}>
-              <textarea
-                className="input"
-                placeholder="输入问题，AI助手将为您解答..."
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                rows={1}
-                style={{ width: "100%", resize: "none", height: 44, padding: "10px 14px" }}
-              />
-            </div>
-            <button className="btn btn-primary btn-icon" onClick={handleSend} style={{ height: 44, width: 44, flexShrink: 0 }}>
-              <Send size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div className="ai-sidebar">
-          <div className="data-card ai-history-card">
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text)", marginBottom: 12 }}>最近对话</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {HISTORY.map((h, i) => (
-                <div key={i} className="ai-history-item">
-                  <div className="ai-history-q">Q: {h.q}</div>
-                  <div className="ai-history-a">{h.a.substring(0, 60)}...</div>
-                  <div className="ai-history-meta">
-                    <span className="ai-history-time"><Clock size={10} />{h.time}</span>
-                    {h.useful && <span className="ai-history-useful"><ThumbsUp size={10} />有用</span>}
-                  </div>
+      {trackingContext && (
+        <DataCard
+          icon={<BrainCircuit size={16} />}
+          title="当前追踪上下文"
+          subtitle="从业务页面带入的上下文会继续透传到 AI 子页，便于追踪来源和动作闭环。"
+          badge={<Tag variant="warning">Tracked Context</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+              {[
+                { label: '来源页面', value: getAiSourceLabel(trackingContext.source) },
+                { label: '对象', value: trackingContext.entityName ?? '-' },
+                { label: '对象编号', value: trackingContext.entityId ?? '-' },
+                { label: '关注点', value: trackingContext.focus ?? '-' },
+              ].map(item => (
+                <div key={item.label} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.value}</div>
                 </div>
               ))}
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.6 }}>
+                推荐下一步：进入{getAiTargetLabel(trackingContext.target ?? 'inference')}，继续查看与当前页面相关的 AI 解释和治理信息。
+              </div>
+              <Link href={targetHref} className="btn btn-primary btn-sm">按当前来源继续追踪</Link>
+            </div>
           </div>
-          <div className="data-card" style={{ padding: "12px 14px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text)", marginBottom: 8 }}>快捷功能</div>
-            <div className="ai-quick-funcs">
-              {["生成月度报告","智能排班建议","老人健康摘要","护理质量分析"].map(f => (
-                <button key={f} className="btn btn-ghost ai-quick-btn">
-                  <Sparkles size={12} style={{ color: "var(--color-primary)" }} />{f}
+        </DataCard>
+      )}
+
+      <AdminAiNav />
+
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <StatCard icon={<Bot size={18} />} label="AI 分页入口" value={6} sub="含员工端与家属端 AI 预览" color="primary" />
+        <StatCard icon={<BrainCircuit size={18} />} label="风险摘要" value={dashboardInsights.length} sub="当前总览已聚合" color="success" />
+        <StatCard icon={<MessageSquareText size={18} />} label="待确认建议" value={pendingConfirmations} sub="需继续人工复核" color="warning" />
+        <StatCard icon={<Sparkles size={18} />} label="当前模式" value="结果型" sub="不自动执行业务动作" color="info" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<MessageSquareText size={16} />}
+          title="Admin AI 问答面板"
+          subtitle="当前只演示结果型问答，不直接下发业务动作。"
+          badge={<Tag variant="info">Demo Safe Mode</Tag>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {PRESET_PROMPTS.map(item => (
+                <button
+                  key={item}
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setPrompt(item)
+                    setReply(getAdminAiPromptReply(item))
+                  }}
+                >
+                  <Sparkles size={12} />
+                  {item}
                 </button>
               ))}
             </div>
+            <textarea
+              className="input"
+              rows={3}
+              value={prompt}
+              onChange={event => setPrompt(event.target.value)}
+              placeholder="输入入住评估、健康异常、报警解释或周报相关问题..."
+              style={{ width: '100%', resize: 'vertical', padding: '10px 12px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setReply(getAdminAiPromptReply(prompt))}>
+                <Send size={12} />
+                生成回答
+              </button>
+            </div>
+            <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div className="data-card-icon-wrap"><Bot size={14} /></div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>AI 回答</span>
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--color-text)' }}>{reply}</div>
+            </div>
           </div>
-        </div>
+        </DataCard>
+
+        <DataCard
+          icon={<BrainCircuit size={16} />}
+          title="子页导航"
+          subtitle="把推理、规则和日志拆成独立页面，便于后续接真实 AI 服务。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              {
+                href: '/ai-assistant/inference',
+                title: '推理详情页',
+                description: '查看模型状态、健康解释样本与入住评估推理记录。',
+              },
+              {
+                href: '/ai-assistant/rules',
+                title: '规则治理页',
+                description: '查看规则启停、治理边界和回滚路径。',
+              },
+              {
+                href: '/ai-assistant/logs',
+                title: '问答日志页',
+                description: '查看按场景沉淀的 AI 问答与结果日志。',
+              },
+              {
+                href: '/ai-assistant/staff-app',
+                title: '员工 APP + AI 预览',
+                description: '验证班次摘要、任务 Copilot、报警响应和交接班草稿。',
+              },
+              {
+                href: '/ai-assistant/family-app',
+                title: '家属 APP + AI 预览',
+                description: '验证今日状态摘要、健康解释、探视助手与护理问答。',
+              },
+            ].map(item => (
+              <Link
+                key={item.href}
+                href={appendAiTrackingContext(item.href, trackingContext ? {
+                  ...trackingContext,
+                  target: item.href.endsWith('/rules') ? 'rules' : item.href.endsWith('/logs') ? 'logs' : item.href.endsWith('/inference') ? 'inference' : trackingContext.target,
+                } : null)}
+                style={{ textDecoration: 'none' }}
+              >
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                    <Tag variant={trackingContext?.target && item.href.endsWith(`/${trackingContext.target}`) ? 'warning' : 'primary'}><ChevronRight size={12} /></Tag>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.description}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </DataCard>
       </div>
+
+      <DataCard icon={<BrainCircuit size={16} />} title="当前摘要信号" subtitle="保留总览级风险摘要，详细治理与审计进入子页面查看。">
+        <div style={{ display: 'grid', gap: 10 }}>
+          {dashboardInsights.map(item => (
+            <div key={item.id} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                <Tag variant={item.variant}>{item.value}</Tag>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+            </div>
+          ))}
+        </div>
+      </DataCard>
     </div>
   )
 }

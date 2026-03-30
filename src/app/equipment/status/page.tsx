@@ -1,6 +1,9 @@
 "use client"
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
-import { AlertTriangle, Battery, CheckCircle2, Monitor, Search, Wifi, XCircle } from "lucide-react"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getEquipmentStatusAiInsights, getEquipmentStatusNarratives } from "@/lib/mock/admin-ai"
+import { AlertTriangle, Battery, Bot, CheckCircle2, Monitor, Search, Wifi, XCircle } from "lucide-react"
+import Link from "next/link"
 import { useState } from "react"
 
 const DEVICES = [
@@ -20,8 +23,17 @@ const STATUS_LABEL: Record<string, string> = { online: "正常", offline: "离�
 export default function EquipmentStatusPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("全部")
+  const aiInsights = getEquipmentStatusAiInsights(DEVICES)
+  const aiNarratives = getEquipmentStatusNarratives(DEVICES)
   const filtered = DEVICES.filter(d => (d.name.includes(search) || d.room.includes(search)) && (statusFilter === "全部" || d.status === statusFilter))
   const stats = { total: DEVICES.length, online: DEVICES.filter(d => d.status === "online").length, offline: DEVICES.filter(d => d.status === "offline").length, warning: DEVICES.filter(d => d.status === "warning").length }
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'equipment-status',
+    entityId: 'equipment-status-board',
+    entityName: '设备状态',
+    focus,
+    target,
+  })
 
   const signalBar = (s: number) => (
     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -69,6 +81,48 @@ export default function EquipmentStatusPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="page-grid-2" style={{ alignItems: "start", marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 状态解释"
+          subtitle="把离线、弱信号和低电量翻译成班次可执行动作。"
+          badge={<Tag variant="warning">需人工排查</Tag>}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
+                  <Tag variant={item.variant}>{item.variant === "danger" ? "高风险" : "需处理"}</Tag>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('equipment-risk', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="AI 巡检动作"
+          subtitle="强调处理顺序和班次影响，不只看设备参数。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('equipment-patrol', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <div className="filter-bar">

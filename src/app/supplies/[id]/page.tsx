@@ -1,6 +1,8 @@
 "use client"
-import { Tag, type TagVariant } from "@/components/nh"
-import { ArrowLeft, Edit, TrendingUp } from "lucide-react"
+import { DataCard, Tag, type TagVariant } from "@/components/nh"
+import { buildAiAssistantHref } from "@/lib/ai-context"
+import { getSupplyDetailAiInsight, getSupplyProcurementInsight } from "@/lib/mock/admin-ai"
+import { ArrowLeft, Bot, Edit, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
@@ -27,6 +29,35 @@ export default function SupplyDetailPage() {
   const params = useParams()
   const id = params.id as string
   const data: SupplyDetail = id in SUPPLY_DATA ? SUPPLY_DATA[id as keyof typeof SUPPLY_DATA] : SUPPLY_DATA["SP001"]
+  const aiInsight = getSupplyDetailAiInsight({
+    id: data.id,
+    name: data.name,
+    category: data.category,
+    stock: data.stock,
+    minStock: data.minStock,
+    supplier: data.supplier,
+    lastPurchase: data.lastPurchase,
+    status: data.status,
+    history: data.history.map(item => ({ ...item })),
+  })
+  const procurementInsight = getSupplyProcurementInsight({
+    id: data.id,
+    name: data.name,
+    category: data.category,
+    stock: data.stock,
+    minStock: data.minStock,
+    supplier: data.supplier,
+    lastPurchase: data.lastPurchase,
+    status: data.status,
+    history: data.history.map(item => ({ ...item })),
+  })
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
+    source: 'supply-detail',
+    entityId: data.id,
+    entityName: data.name,
+    focus,
+    target,
+  })
 
   return (
     <div className="page-root animate-fade-up">
@@ -49,9 +80,57 @@ export default function SupplyDetailPage() {
         </div>
       </div>
 
+      <DataCard
+        icon={<Bot size={16} />}
+        title={aiInsight.title}
+        subtitle="把库存缺口、出库节奏和供应商信息转成补货建议。"
+        badge={<Tag variant="warning">Supply AI</Tag>}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {aiInsight.summary}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {aiInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {aiInsight.confidence}%</div>
+            <Link href={buildAiHref('restock-gap', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
+
+      <DataCard
+        icon={<Bot size={16} />}
+        title={procurementInsight.title}
+        subtitle="把库存与供应商节奏转成采购侧可跟进动作。"
+        badge={<Tag variant="info">Procurement</Tag>}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+            {procurementInsight.summary}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {procurementInsight.actions.map(action => (
+              <div key={action} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>
+                {action}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {procurementInsight.confidence}%</div>
+            <Link href={buildAiHref('procurement-follow-up', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </div>
+      </DataCard>
+
       {/* Stock overview */}
-      <div className="data-card">
-        <div className="data-card-body">
+      <DataCard>
+        <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             {[
               { label: "当前库存", value: `${data.stock}${data.unit}`, sub: `最低 ${data.minStock}${data.unit}` },
@@ -67,16 +146,10 @@ export default function SupplyDetailPage() {
             ))}
           </div>
         </div>
-      </div>
+      </DataCard>
 
       {/* History */}
-      <div className="data-card">
-        <div className="data-card-header">
-          <div className="data-card-title">
-            <div className="data-card-icon-wrap"><TrendingUp size={15} /></div>
-            <div className="text-sm font-bold">进出库记录</div>
-          </div>
-        </div>
+      <DataCard icon={<TrendingUp size={15} />} title="进出库记录">
         <div style={{ overflowX: "auto" }}>
           <table className="table">
             <thead><tr><th>日期</th><th>入库</th><th>出库</th><th>结存</th></tr></thead>
@@ -92,7 +165,7 @@ export default function SupplyDetailPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </DataCard>
     </div>
   )
 }

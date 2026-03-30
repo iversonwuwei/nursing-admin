@@ -1,8 +1,10 @@
 'use client'
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
 import { organizations } from '@/lib/data'
-import { ChevronRight, DoorOpen, Plus, Search } from 'lucide-react'
+import { getRoomAiInsights, getRoomAiNarratives } from '@/lib/mock/admin-ai'
+import { Bot, ChevronRight, DoorOpen, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -23,6 +25,15 @@ export default function RoomsPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+  const aiInsights = getRoomAiInsights(ROOMS)
+  const aiNarratives = getRoomAiNarratives(ROOMS)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'rooms-list',
+    entityId: 'room-board',
+    entityName: '房间管理',
+    focus,
+    target,
+  })
   const filtered = ROOMS.filter(r => !search || r.name.includes(search))
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
   const totalBeds = ROOMS.reduce((s, r) => s + r.capacity, 0)
@@ -47,6 +58,50 @@ export default function RoomsPage() {
         <StatCard icon={<DoorOpen size={18} />} label="总床位数" value={totalBeds} sub={`已入住 ${occupied}`} color="info" />
         <StatCard icon={<DoorOpen size={18} />} label="入住率" value={`${occupancy}%`} sub="整体床位使用" color="success" />
         <StatCard icon={<DoorOpen size={18} />} label="可入住" value={ROOMS.filter(r => r.status === '可入住').length} sub="房间可立即入住" color="warning" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 排房摘要"
+          subtitle="优先解释承接能力和可分配资源，不自动替代排房决策。"
+          badge={<Tag variant="info">Allocation Assist</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>{item.summary}</div>
+                  </div>
+                  <Tag variant={item.variant}>{item.metric}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('room-allocation', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<DoorOpen size={16} />}
+          title="AI 分配建议"
+          subtitle="把房间列表翻译成入住承接建议和机构级差异。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('room-capacity', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <FilterBar>

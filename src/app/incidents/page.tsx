@@ -1,7 +1,9 @@
 'use client'
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
-import { AlertTriangle, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getIncidentListAiInsights, getIncidentListNarratives } from '@/lib/mock/admin-ai'
+import { AlertTriangle, Bot, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -20,6 +22,15 @@ export default function IncidentsPage() {
   const [levelFilter, setLevelFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+  const aiInsights = getIncidentListAiInsights(INCIDENTS)
+  const aiNarratives = getIncidentListNarratives(INCIDENTS)
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'incidents-list',
+    entityId: 'incident-board',
+    entityName: '事故报告',
+    focus,
+    target,
+  })
 
   const filtered = INCIDENTS.filter(i => {
     if (search && !i.title.includes(search) && !i.id.includes(search)) return false
@@ -46,6 +57,48 @@ export default function IncidentsPage() {
         <StatCard icon={<AlertTriangle size={18} />} label="严重事故" value={INCIDENTS.filter(i => i.level === '严重').length} color="danger" />
         <StatCard icon={<ShieldAlert size={18} />} label="处理中" value={INCIDENTS.filter(i => i.status === '处理中').length} sub="需立即处理" color="warning" />
         <StatCard icon={<ShieldAlert size={18} />} label="本月结案" value={INCIDENTS.filter(i => i.status === '已结案').length} color="success" />
+      </div>
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<Bot size={16} />}
+          title="AI 事故摘要"
+          subtitle="帮助管理层快速看见处理中事件与复盘重点，不替代正式事故认定。"
+          badge={<Tag variant="warning">需人工复盘</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiInsights.map(item => (
+              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                  <Tag variant={item.variant}>{item.variant === 'danger' ? '优先关注' : item.variant === 'warning' ? '需复盘' : '稳定'}</Tag>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.summary}</div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('incident-review', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="AI 复盘建议"
+          subtitle="把事故列表翻译成管理动作，而不是只看数量。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {aiNarratives.map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Link href={buildAiHref('incident-retrospective', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+          </div>
+        </DataCard>
       </div>
 
       <FilterBar>

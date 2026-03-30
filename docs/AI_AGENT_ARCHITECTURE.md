@@ -444,11 +444,19 @@ AI Orchestrator 在调用工具前必须先做权限校验。
 ### 9.1 当前仓库优先承接的 AI 页面
 
 - `/ai-assistant`：AI 统一入口页
+- `/ai-assistant/inference`：AI 推理详情页
+- `/ai-assistant/rules`：AI 规则治理页
+- `/ai-assistant/logs`：AI 问答日志页
+- `/ai-assistant/staff-app`：员工 APP + AI 预览页
+- `/ai-assistant/family-app`：家属 APP + AI 预览页
 - `/dashboard`：风险摘要卡片、AI 建议卡片
 - `/elderly/checkin`：入住评估、护理级别建议与确认面板
+- `/elderly/[id]`：老人详情 AI 状态摘要、家属摘要草稿、后续跟进建议
 - `/health`：风险解释与趋势说明
 - `/alerts`：报警解释与处理建议
 - `/staff/tasks`：AI 任务优先级建议
+- `/staff/[id]`：员工班次摘要、工作负荷提示、交接班草稿
+- `/elderly/visits`：探视建议、家属沟通建议、视频探视引导
 - `/analytics/report`：AI 周报 / 月报摘要
 
 ### 9.2 当前仓库优先接入的 AI 数据形态
@@ -463,12 +471,23 @@ AI Orchestrator 在调用工具前必须先做权限校验。
 - 报警解释
 - 周报摘要
 
+当前仓库也可优先承接“APP + AI 的 Web 预览形态”，用于先验证：
+
+- 员工 APP 首页 AI 班次摘要
+- 员工 APP 任务页 AI 优先级与执行建议
+- 员工 APP 报警页 AI 响应提示与交接摘要
+- 家属 APP 今日状态 AI 总结
+- 家属 APP 健康解释与护理说明
+- 家属 APP 探视与视频沟通 AI 引导
+
 这样可以先验证：
 
 - 页面承载方式
 - 信息密度
 - 用户接受度
 - 人工复核流程
+- APP 场景的信息压缩方式
+- 家属友好表达与员工可执行表达的差异
 
 ### 9.3 当前仓库不建议直接承担的 AI 能力
 
@@ -486,6 +505,12 @@ Admin 只做：
 - AI 配置管理
 - AI 日志查看
 - AI 反馈运营入口
+
+当前 Admin 仓库还可以额外承担：
+
+- 员工 APP + AI 的高保真预览页
+- 家属 APP + AI 的高保真预览页
+- 跨端共享 AI 文案、解释模板与结果型数据原型
 
 ---
 
@@ -507,6 +532,8 @@ Admin 只做：
 - 家属问答 Agent
 - 护理助手 Agent
 - 运营分析 Agent
+- 员工 APP 班次摘要与交接助手
+- 家属 APP 今日状态卡片与护理说明草稿
 
 ### 阶段 3：AI 事件驱动
 
@@ -517,6 +544,12 @@ Admin 只做：
 - 周期性智能周报
 
 ### 阶段 4：AI 治理平台化
+
+优先交付：
+
+- 跨端统一 AI 规则启停与版本状态
+- 员工端 / 家属端 / Admin 端统一审计日志
+- AI 反馈闭环与人工采纳率分析
 
 优先交付：
 

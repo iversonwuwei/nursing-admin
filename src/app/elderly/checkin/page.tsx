@@ -2,395 +2,129 @@
 
 import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag } from '@/components/nh'
 import {
+  addAdmissionApplication,
+  CARE_LEVELS,
+  COGNITIVE_LEVELS,
+  confirmAdmissionPlan,
+  EMPTY_FORM,
+  getAdmissionApplicationsSnapshot,
+  getLevelVariant,
+  getReminderItems,
+  getReminderStatusVariant,
+  getStaffTaskItems,
+  getStatusVariant,
+  getTaskStatusVariant,
+  markAdmissionAsAdmitted,
+  subscribeAdmissionWorkflow,
+  type AdmissionApplication,
+  type AdmissionFormState,
+  type CareLevel,
+} from '@/lib/mock/admission-workflow'
+import {
   Bot,
   CheckCircle2,
   ClipboardCheck,
+  Eye,
   Home as HomeIcon,
   Plus,
   Search,
   Shield,
   UserPlus,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
-const CARE_LEVELS = ['特级护理', '一级护理', '二级护理', '三级护理'] as const
-const COGNITIVE_LEVELS = ['清晰', '轻度受损', '中度受损', '重度受损'] as const
+type LoopStage = '待生成' | '待启动' | '执行中' | '已闭环'
 
-type CareLevel = (typeof CARE_LEVELS)[number]
-type CognitiveLevel = (typeof COGNITIVE_LEVELS)[number]
-type AdmissionStatus = '待人工确认' | '计划已生成' | '已入住'
-
-interface AdmissionFormState {
-  name: string
-  age: string
-  gender: '' | '男' | '女'
-  phone: string
-  emergency: string
-  room: string
-  requestedLevel: CareLevel
-  chronicConditions: string
-  medicationSummary: string
-  allergySummary: string
-  adlScore: string
-  cognitiveLevel: '' | CognitiveLevel
-  riskNotes: string
+function getLoopStageVariant(stage: LoopStage) {
+  if (stage === '已闭环') return 'success'
+  if (stage === '执行中') return 'primary'
+  if (stage === '待启动') return 'warning'
+  return 'neutral'
 }
 
-interface CareTaskPreview {
-  id: string
-  time: string
-  title: string
-  owner: string
-  reminder: string
+function parseDateValue(value?: string) {
+  if (!value) {
+    return null
+  }
+
+  const direct = new Date(value)
+  if (!Number.isNaN(direct.getTime())) {
+    return direct
+  }
+
+  const shortPattern = /^(\d{2})\/(\d{2})\s(\d{2}):(\d{2})$/
+  const matched = value.match(shortPattern)
+  if (!matched) {
+    return null
+  }
+
+  const [, month, day, hour, minute] = matched
+  const now = new Date()
+  return new Date(now.getFullYear(), Number(month) - 1, Number(day), Number(hour), Number(minute))
 }
 
-interface AiRecommendation {
-  recommendedLevel: CareLevel
-  confidence: number
-  assessmentScore: number
-  reasonSummary: string
-  reasons: string[]
-  focusTags: string[]
-  planTemplateCode: string
+function formatElapsedLabel(isoOrDate?: string | null) {
+  const target = parseDateValue(isoOrDate ?? undefined)
+  if (!target) {
+    return '暂无'
+  }
+
+  const diffMs = Math.max(0, Date.now() - target.getTime())
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  const days = Math.floor(hours / 24)
+  const remainHours = hours % 24
+
+  if (days > 0) {
+    return `${days}天${remainHours}小时`
+  }
+
+  const minutes = Math.max(1, Math.floor(diffMs / (1000 * 60)))
+  if (hours > 0) {
+    return `${hours}小时`
+  }
+
+  return `${minutes}分钟`
 }
 
-interface AdmissionApplication {
-  id: string
-  name: string
-  age: number
-  gender: '男' | '女'
-  phone: string
-  emergency: string
-  room: string
-  createdAt: string
-  requestedLevel: CareLevel
-  status: AdmissionStatus
-  chronicConditions: string
-  medicationSummary: string
-  allergySummary: string
-  adlScore: number
-  cognitiveLevel: CognitiveLevel
-  riskNotes: string
-  aiRecommendation: AiRecommendation
-  confirmedCareLevel?: CareLevel
-  reviewNote?: string
-  confirmedAt?: string
-  confirmedBy?: string
-  carePlan?: CareTaskPreview[]
+function formatRecentTimeLabel(isoOrDate?: string | null) {
+  const target = parseDateValue(isoOrDate ?? undefined)
+  if (!target) {
+    return '暂无'
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(target)
 }
 
-const EMPTY_FORM: AdmissionFormState = {
-  name: '',
-  age: '',
-  gender: '',
-  phone: '',
-  emergency: '',
-  room: '',
-  requestedLevel: '二级护理',
-  chronicConditions: '',
-  medicationSummary: '',
-  allergySummary: '',
-  adlScore: '',
-  cognitiveLevel: '',
-  riskNotes: '',
+function isBlockedOverdue(stage: LoopStage, isoOrDate?: string | null) {
+  if (stage === '已闭环' || stage === '待生成') {
+    return false
+  }
+
+  const target = parseDateValue(isoOrDate ?? undefined)
+  if (!target) {
+    return false
+  }
+
+  return Date.now() - target.getTime() >= 24 * 60 * 60 * 1000
 }
-
-function splitList(value: string) {
-  return value
-    .split(/[，,、\n]/)
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-function getLevelVariant(level: CareLevel) {
-  if (level === '特级护理') return 'danger'
-  if (level === '一级护理') return 'warning'
-  if (level === '二级护理') return 'info'
-  return 'success'
-}
-
-function getStatusVariant(status: AdmissionStatus) {
-  if (status === '待人工确认') return 'warning'
-  if (status === '计划已生成') return 'primary'
-  return 'success'
-}
-
-function deriveCareLevel(score: number): CareLevel {
-  if (score >= 7) return '特级护理'
-  if (score >= 5) return '一级护理'
-  if (score >= 3) return '二级护理'
-  return '三级护理'
-}
-
-function buildCarePlan(level: CareLevel, focusTags: string[]): CareTaskPreview[] {
-  const sharedFocus = focusTags.slice(0, 2).join(' / ') || '常规入住观察'
-
-  if (level === '特级护理') {
-    return [
-      { id: 'task-1', time: '06:30', title: '晨间生命体征巡检', owner: '责任护士', reminder: '提前 15 分钟提醒' },
-      { id: 'task-2', time: '10:00', title: `高频巡视与体位调整 · ${sharedFocus}`, owner: '护理员', reminder: '到点提醒 + 超时升级' },
-      { id: 'task-3', time: '14:30', title: '吞咽/进食风险跟踪', owner: '康复师', reminder: '午后复核提醒' },
-      { id: 'task-4', time: '20:30', title: '夜间风险巡视与离床预警确认', owner: '夜班护士', reminder: '夜班开始前提醒' },
-    ]
-  }
-
-  if (level === '一级护理') {
-    return [
-      { id: 'task-1', time: '07:00', title: '晨间体征测量与用药核对', owner: '责任护士', reminder: '提前 10 分钟提醒' },
-      { id: 'task-2', time: '11:30', title: `午间护理观察 · ${sharedFocus}`, owner: '护理员', reminder: '到点提醒' },
-      { id: 'task-3', time: '16:00', title: '康复训练与步态观察', owner: '康复师', reminder: '康复时段提醒' },
-      { id: 'task-4', time: '21:00', title: '夜间安睡巡视', owner: '夜班护理员', reminder: '夜巡前提醒' },
-    ]
-  }
-
-  if (level === '二级护理') {
-    return [
-      { id: 'task-1', time: '08:00', title: '晨间巡房与血压复核', owner: '护理员', reminder: '班次开始提醒' },
-      { id: 'task-2', time: '13:30', title: `午后活动陪同 · ${sharedFocus}`, owner: '护理员', reminder: '活动前提醒' },
-      { id: 'task-3', time: '19:30', title: '晚间用药与睡前观察', owner: '责任护士', reminder: '睡前提醒' },
-    ]
-  }
-
-  return [
-    { id: 'task-1', time: '09:00', title: '常规巡房与自理能力观察', owner: '护理员', reminder: '班中提醒' },
-    { id: 'task-2', time: '15:00', title: `活动参与记录 · ${sharedFocus}`, owner: '活动专员', reminder: '活动前提醒' },
-    { id: 'task-3', time: '20:00', title: '晚间状态确认', owner: '责任护士', reminder: '晚间提醒' },
-  ]
-}
-
-function generateAiRecommendation(input: {
-  age: number
-  chronicConditions: string
-  adlScore: number
-  cognitiveLevel: CognitiveLevel
-  riskNotes: string
-}): AiRecommendation {
-  const chronicList = splitList(input.chronicConditions)
-  const riskText = input.riskNotes
-  const reasons: string[] = []
-  const focusTags = new Set<string>()
-  let score = 0
-
-  if (input.age >= 85) {
-    score += 1
-    reasons.push('高龄入住，建议提高日常巡视与夜间观察频次。')
-    focusTags.add('高龄巡视')
-  }
-
-  if (input.adlScore > 0 && input.adlScore <= 40) {
-    score += 3
-    reasons.push('ADL 评分偏低，提示日常生活依赖度较高。')
-    focusTags.add('失能照护')
-  } else if (input.adlScore <= 60) {
-    score += 2
-    reasons.push('ADL 中度受限，需要增加协助类护理动作。')
-    focusTags.add('协助起居')
-  } else if (input.adlScore <= 80) {
-    score += 1
-    reasons.push('ADL 轻度受限，建议保留日常活动与体征复核。')
-    focusTags.add('活动观察')
-  }
-
-  if (input.cognitiveLevel === '重度受损') {
-    score += 2
-    reasons.push('认知状态较差，需要重点防走失、防误服和夜间巡查。')
-    focusTags.add('认知照护')
-  } else if (input.cognitiveLevel === '中度受损') {
-    score += 1
-    reasons.push('认知状态存在明显下降，建议增加提醒与陪护频次。')
-    focusTags.add('提醒陪护')
-  }
-
-  if (chronicList.length >= 3) {
-    score += 2
-    reasons.push('慢病负担较重，需要更密集的体征监测与用药核对。')
-    focusTags.add('慢病监测')
-  } else if (chronicList.length >= 1) {
-    score += 1
-    reasons.push('存在基础慢病，建议将血压/血糖等复测纳入计划。')
-    focusTags.add('基础慢病')
-  }
-
-  if (riskText.includes('跌倒')) {
-    score += 1
-    reasons.push('既往存在跌倒风险线索，需加入离床与步态观察任务。')
-    focusTags.add('跌倒预防')
-  }
-
-  if (riskText.includes('吞咽')) {
-    score += 1
-    reasons.push('存在吞咽相关风险，餐前餐后应纳入专项观察。')
-    focusTags.add('吞咽观察')
-  }
-
-  if (riskText.includes('压疮') || riskText.includes('失眠')) {
-    score += 1
-    reasons.push('风险备注提示长期观察项，需要形成定时提醒。')
-    focusTags.add('重点提醒')
-  }
-
-  const recommendedLevel = deriveCareLevel(score)
-  const confidence = Math.min(96, 68 + score * 4 + Math.min(chronicList.length, 3))
-  const planTemplateCode =
-    recommendedLevel === '特级护理'
-      ? 'CARE-CRITICAL-24H'
-      : recommendedLevel === '一级护理'
-        ? 'CARE-HIGH-RISK'
-        : recommendedLevel === '二级护理'
-          ? 'CARE-STANDARD-PLUS'
-          : 'CARE-ROUTINE'
-
-  return {
-    recommendedLevel,
-    confidence,
-    assessmentScore: score,
-    reasonSummary: `系统基于 ADL、自理能力、认知状态、慢病负担和风险备注，建议先按${recommendedLevel}进入入住观察，并同步生成首周护理任务与提醒。`,
-    reasons,
-    focusTags: Array.from(focusTags),
-    planTemplateCode,
-  }
-}
-
-function createApplicationFromForm(form: AdmissionFormState): AdmissionApplication {
-  const age = Number(form.age)
-  const adlScore = Number(form.adlScore)
-  const aiRecommendation = generateAiRecommendation({
-    age,
-    chronicConditions: form.chronicConditions,
-    adlScore,
-    cognitiveLevel: form.cognitiveLevel || '清晰',
-    riskNotes: form.riskNotes,
-  })
-
-  return {
-    id: `E${Date.now().toString().slice(-6)}`,
-    name: form.name,
-    age,
-    gender: form.gender || '女',
-    phone: form.phone,
-    emergency: form.emergency,
-    room: form.room,
-    createdAt: new Date().toISOString().slice(0, 10),
-    requestedLevel: form.requestedLevel,
-    status: '待人工确认',
-    chronicConditions: form.chronicConditions,
-    medicationSummary: form.medicationSummary,
-    allergySummary: form.allergySummary,
-    adlScore,
-    cognitiveLevel: form.cognitiveLevel || '清晰',
-    riskNotes: form.riskNotes,
-    aiRecommendation,
-  }
-}
-
-function buildSeededApplication(input: {
-  id: string
-  name: string
-  age: number
-  gender: '男' | '女'
-  phone: string
-  emergency: string
-  room: string
-  createdAt: string
-  requestedLevel: CareLevel
-  chronicConditions: string
-  medicationSummary: string
-  allergySummary: string
-  adlScore: number
-  cognitiveLevel: CognitiveLevel
-  riskNotes: string
-  status: AdmissionStatus
-  confirmedCareLevel?: CareLevel
-  reviewNote?: string
-  confirmedAt?: string
-  confirmedBy?: string
-}): AdmissionApplication {
-  const aiRecommendation = generateAiRecommendation({
-    age: input.age,
-    chronicConditions: input.chronicConditions,
-    adlScore: input.adlScore,
-    cognitiveLevel: input.cognitiveLevel,
-    riskNotes: input.riskNotes,
-  })
-
-  return {
-    ...input,
-    aiRecommendation,
-    carePlan: input.confirmedCareLevel ? buildCarePlan(input.confirmedCareLevel, aiRecommendation.focusTags) : undefined,
-  }
-}
-
-const INITIAL_APPLICATIONS: AdmissionApplication[] = [
-  buildSeededApplication({
-    id: 'E001',
-    name: '张桂英',
-    age: 82,
-    gender: '女',
-    phone: '13812345678',
-    emergency: '张敏 13900001111',
-    room: '201-1',
-    createdAt: '2026-03-29',
-    requestedLevel: '一级护理',
-    chronicConditions: '高血压, 糖尿病, 冠心病',
-    medicationSummary: '缬沙坦、阿司匹林、二甲双胍',
-    allergySummary: '青霉素过敏',
-    adlScore: 38,
-    cognitiveLevel: '中度受损',
-    riskNotes: '近半年有跌倒史，夜间失眠，吞咽功能下降',
-    status: '待人工确认',
-  }),
-  buildSeededApplication({
-    id: 'E002',
-    name: '王建国',
-    age: 78,
-    gender: '男',
-    phone: '13922223333',
-    emergency: '王丽 13688889999',
-    room: '203-2',
-    createdAt: '2026-03-28',
-    requestedLevel: '二级护理',
-    chronicConditions: '高血压, 慢阻肺',
-    medicationSummary: '厄贝沙坦、吸入剂',
-    allergySummary: '无',
-    adlScore: 58,
-    cognitiveLevel: '轻度受损',
-    riskNotes: '夜间偶发气促，需要氧饱和度观察',
-    status: '计划已生成',
-    confirmedCareLevel: '一级护理',
-    reviewNote: '因夜间气促频次增加，人工上调一级护理。',
-    confirmedAt: '2026-03-28 16:20',
-    confirmedBy: '陈护士长',
-  }),
-  buildSeededApplication({
-    id: 'E003',
-    name: '李秀兰',
-    age: 85,
-    gender: '女',
-    phone: '13766667777',
-    emergency: '李楠 13511112222',
-    room: '205-1',
-    createdAt: '2026-03-26',
-    requestedLevel: '二级护理',
-    chronicConditions: '骨质疏松',
-    medicationSummary: '钙片、维生素D',
-    allergySummary: '无',
-    adlScore: 72,
-    cognitiveLevel: '清晰',
-    riskNotes: '步态不稳，需要活动陪同',
-    status: '已入住',
-    confirmedCareLevel: '二级护理',
-    reviewNote: '按 AI 建议确认，维持常规活动陪同。',
-    confirmedAt: '2026-03-26 10:10',
-    confirmedBy: '陈护士长',
-  }),
-]
 
 export default function CheckinPage() {
-  const initialSelectedApplication = INITIAL_APPLICATIONS[0]
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
+  const initialSelectedApplication = applications[0]
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [overdueOnly, setOverdueOnly] = useState(false)
   const [form, setForm] = useState<AdmissionFormState>(EMPTY_FORM)
-  const [applications, setApplications] = useState<AdmissionApplication[]>(INITIAL_APPLICATIONS)
   const [selectedId, setSelectedId] = useState(initialSelectedApplication?.id ?? '')
   const [formError, setFormError] = useState('')
   const [reviewLevel, setReviewLevel] = useState<CareLevel>(
@@ -403,13 +137,6 @@ export default function CheckinPage() {
     [applications, selectedId],
   )
 
-  const filteredApplications = useMemo(
-    () => applications.filter(application => (
-      application.name.includes(search) || application.id.includes(search) || application.room.includes(search)
-    )),
-    [applications, search],
-  )
-
   const stats = useMemo(() => ({
     submitted: applications.length,
     pendingConfirmation: applications.filter(application => application.status === '待人工确认').length,
@@ -417,14 +144,91 @@ export default function CheckinPage() {
     admitted: applications.filter(application => application.status === '已入住').length,
   }), [applications])
 
+  const allTaskItems = useMemo(() => getStaffTaskItems(applications), [applications])
+  const allReminderItems = useMemo(() => getReminderItems(applications), [applications])
+
+  const applicationProgressMap = useMemo(() => Object.fromEntries(applications.map(application => {
+    const taskItems = allTaskItems.filter(task => task.sourceId === application.id)
+    const reminderItems = allReminderItems.filter(reminder => reminder.sourceId === application.id)
+    const completedTasks = taskItems.filter(task => task.status === '已完成').length
+    const handledReminders = reminderItems.filter(reminder => reminder.status === '已处理').length
+    const totalUnits = taskItems.length + reminderItems.length
+    const completedUnits = completedTasks + handledReminders
+    const percent = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0
+    const activeTasks = taskItems.filter(task => task.status === '执行中').length
+    const readReminders = reminderItems.filter(reminder => reminder.status === '已读').length
+    const stage: LoopStage = totalUnits === 0
+      ? '待生成'
+      : percent === 100
+        ? '已闭环'
+        : activeTasks > 0 || readReminders > 0 || completedUnits > 0
+          ? '执行中'
+          : '待启动'
+    const activityCandidates = [
+      application.confirmedAt,
+      application.createdAt,
+      ...taskItems.map(task => task.handledAtIso ?? task.handledAt),
+      ...reminderItems.map(reminder => reminder.handledAtIso ?? reminder.handledAt),
+    ]
+    const latestActivityDate = activityCandidates
+      .map(candidate => parseDateValue(candidate))
+      .filter((candidate): candidate is Date => Boolean(candidate))
+      .sort((left, right) => right.getTime() - left.getTime())[0] ?? null
+    const latestActivityIso = latestActivityDate?.toISOString() ?? null
+
+    return [application.id, {
+      taskItems,
+      reminderItems,
+      completedTasks,
+      handledReminders,
+      percent,
+      stage,
+      latestActivityIso,
+      latestActivityLabel: formatRecentTimeLabel(latestActivityIso ?? application.createdAt),
+      blockedDurationLabel: stage === '已闭环' ? '0分钟' : formatElapsedLabel(latestActivityIso ?? application.createdAt),
+      blockedOverdue: isBlockedOverdue(stage, latestActivityIso ?? application.createdAt),
+    }]
+  })), [allReminderItems, allTaskItems, applications])
+
+  const filteredApplications = useMemo(
+    () => applications
+      .filter(application => (
+        application.name.includes(search) || application.id.includes(search) || application.room.includes(search)
+      ))
+      .filter(application => (!overdueOnly || Boolean(applicationProgressMap[application.id]?.blockedOverdue)))
+      .sort((left, right) => {
+        const leftTime = parseDateValue(applicationProgressMap[left.id]?.latestActivityIso ?? left.createdAt)?.getTime() ?? 0
+        const rightTime = parseDateValue(applicationProgressMap[right.id]?.latestActivityIso ?? right.createdAt)?.getTime() ?? 0
+        return rightTime - leftTime
+      }),
+    [applicationProgressMap, applications, overdueOnly, search],
+  )
+
+  const selectedTaskItems = useMemo(
+    () => selectedApplication ? applicationProgressMap[selectedApplication.id]?.taskItems ?? [] : [],
+    [applicationProgressMap, selectedApplication],
+  )
+
+  const selectedReminderItems = useMemo(
+    () => selectedApplication ? applicationProgressMap[selectedApplication.id]?.reminderItems ?? [] : [],
+    [applicationProgressMap, selectedApplication],
+  )
+
+  const executionReceipt = useMemo(() => ({
+    totalTasks: selectedTaskItems.length,
+    completedTasks: selectedTaskItems.filter(task => task.status === '已完成').length,
+    activeTasks: selectedTaskItems.filter(task => task.status === '执行中').length,
+    handledReminders: selectedReminderItems.filter(reminder => reminder.status === '已处理').length,
+    readReminders: selectedReminderItems.filter(reminder => reminder.status === '已读').length,
+  }), [selectedReminderItems, selectedTaskItems])
+
+  const overdueCount = useMemo(
+    () => applications.filter(application => Boolean(applicationProgressMap[application.id]?.blockedOverdue)).length,
+    [applicationProgressMap, applications],
+  )
+
   function updateForm<K extends keyof AdmissionFormState>(key: K, value: AdmissionFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
-  }
-
-  function updateApplication(id: string, updater: (current: AdmissionApplication) => AdmissionApplication) {
-    setApplications(current => current.map(application => (
-      application.id === id ? updater(application) : application
-    )))
   }
 
   function syncReviewDraft(application: AdmissionApplication) {
@@ -444,8 +248,7 @@ export default function CheckinPage() {
       return
     }
 
-    const application = createApplicationFromForm(form)
-    setApplications(current => [application, ...current])
+    const application = addAdmissionApplication(form)
     syncReviewDraft(application)
     setShowForm(false)
     setForm(EMPTY_FORM)
@@ -462,17 +265,10 @@ export default function CheckinPage() {
       return
     }
 
-    const generatedPlan = buildCarePlan(reviewLevel, selectedApplication.aiRecommendation.focusTags)
-
-    updateApplication(selectedApplication.id, current => ({
-      ...current,
-      status: '计划已生成',
-      confirmedCareLevel: reviewLevel,
-      reviewNote: reviewNote.trim() || '按 AI 建议确认。',
-      confirmedAt: '2026-03-30 09:30',
-      confirmedBy: '陈护士长',
-      carePlan: generatedPlan,
-    }))
+    const updated = confirmAdmissionPlan(selectedApplication.id, reviewLevel, reviewNote)
+    if (updated) {
+      syncReviewDraft(updated)
+    }
 
     setFormError('')
   }
@@ -482,10 +278,10 @@ export default function CheckinPage() {
       return
     }
 
-    updateApplication(selectedApplication.id, current => ({
-      ...current,
-      status: '已入住',
-    }))
+    const updated = markAdmissionAsAdmitted(selectedApplication.id)
+    if (updated) {
+      syncReviewDraft(updated)
+    }
   }
 
   return (
@@ -510,8 +306,8 @@ export default function CheckinPage() {
 
       <DataCard
         title="本次 Demo 交付范围"
-        subtitle="面向护理主管的入住首条闭环，当前数据全部由页面内 mock 生成。"
-        badge={<Tag variant="info">Demo Data</Tag>}
+        subtitle="面向护理主管的入住首条闭环，当前数据由共享 mock workflow service 承载。"
+        badge={<Tag variant="info">Shared Mock Store</Tag>}
       >
         <div
           style={{
@@ -522,9 +318,9 @@ export default function CheckinPage() {
         >
           {[
             { title: '1. 入住录入', description: '补充慢病、用药、过敏、ADL 和认知状态，作为 AI 输入。' },
-            { title: '2. AI 建议', description: '根据自理能力、认知和风险备注推荐护理级别与计划模板。' },
+            { title: '2. AI 建议', description: '规则 mock service 统一输出护理级别、理由、置信度和模板编码。' },
             { title: '3. 人工确认', description: '护理主管可保持 AI 建议，也可调整级别并写明原因。' },
-            { title: '4. 计划提醒', description: '确认后生成护理计划预览和到点提醒，供员工任务中心承接。' },
+            { title: '4. 跨页同步', description: '确认后的计划会同步到员工任务页与提醒中心页。' },
           ].map(item => (
             <div
               key={item.title}
@@ -555,12 +351,19 @@ export default function CheckinPage() {
             />
           </div>
         </FilterItem>
+        <FilterItem label="阻塞筛选">
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} />
+            仅看超时关注
+            <Tag variant={overdueCount > 0 ? 'danger' : 'neutral'}>{overdueCount}</Tag>
+          </label>
+        </FilterItem>
       </FilterBar>
 
       {showForm && (
         <DataCard
           title="入住登记与 AI 评估输入"
-          subtitle="当前为 demo mock 流程，提交后会立即生成 AI 护理分级建议。"
+          subtitle="提交后会写入共享 mock store，并立即生成 AI 护理分级建议。"
           badge={<Tag variant="primary">AI Ready</Tag>}
         >
           <div className="form-section">
@@ -664,6 +467,7 @@ export default function CheckinPage() {
                   <th>ADL</th>
                   <th>AI 建议</th>
                   <th>人工确认</th>
+                  <th>闭环进度</th>
                   <th>申请日期</th>
                   <th>状态</th>
                   <th style={{ textAlign: 'right' }}>操作</th>
@@ -674,7 +478,13 @@ export default function CheckinPage() {
                   <tr
                     key={application.id}
                     className="table-hover-row"
-                    style={{ background: application.id === selectedId ? 'rgba(13,148,136,0.06)' : undefined }}
+                    style={{
+                      background: application.id === selectedId
+                        ? 'rgba(13,148,136,0.06)'
+                        : applicationProgressMap[application.id]?.blockedOverdue
+                          ? 'rgba(239,68,68,0.05)'
+                          : undefined,
+                    }}
                   >
                     <td><span className="table-row-num">{index + 1}</span></td>
                     <td>
@@ -700,6 +510,31 @@ export default function CheckinPage() {
                       ) : (
                         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>待确认</span>
                       )}
+                    </td>
+                    <td>
+                      {(() => {
+                        const progress = applicationProgressMap[application.id]
+                        return progress && (progress.taskItems.length > 0 || progress.reminderItems.length > 0) ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Tag variant={getLoopStageVariant(progress.stage)}>{progress.stage}</Tag>
+                              {progress.blockedOverdue ? <Tag variant="danger">超时关注</Tag> : null}
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{progress.percent}%</span>
+                            </div>
+                            <div style={{ height: 6, borderRadius: 999, background: 'rgba(15,23,42,0.08)', overflow: 'hidden' }}>
+                              <div style={{ width: `${progress.percent}%`, height: '100%', background: progress.blockedOverdue ? 'var(--color-danger)' : 'var(--color-primary)' }} />
+                            </div>
+                            <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
+                              任务 {progress.completedTasks}/{progress.taskItems.length} · 提醒 {progress.handledReminders}/{progress.reminderItems.length}
+                            </span>
+                            <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
+                              最近更新 {progress.latestActivityLabel} · 阻塞 {progress.blockedDurationLabel}
+                            </span>
+                          </div>
+                        ) : (
+                          <Tag variant={getLoopStageVariant('待生成')}>待生成</Tag>
+                        )
+                      })()}
                     </td>
                     <td><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{application.createdAt}</span></td>
                     <td><Tag variant={getStatusVariant(application.status)}>{application.status}</Tag></td>
@@ -760,7 +595,7 @@ export default function CheckinPage() {
               <div>
                 <div className="info-row"><span className="info-label">申请护理等级</span><span className="info-value">{selectedApplication.requestedLevel}</span></div>
                 <div className="info-row"><span className="info-label">ADL / 认知状态</span><span className="info-value">{selectedApplication.adlScore} / {selectedApplication.cognitiveLevel}</span></div>
-                <div className="info-row"><span className="info-label">慢病数量</span><span className="info-value">{splitList(selectedApplication.chronicConditions).length || 0} 项</span></div>
+                <div className="info-row"><span className="info-label">慢病数量</span><span className="info-value">{selectedApplication.chronicConditions.split(/[，,、\n]/).filter(Boolean).length || 0} 项</span></div>
                 <div className="info-row"><span className="info-label">模板编码</span><span className="info-value">{selectedApplication.aiRecommendation.planTemplateCode}</span></div>
               </div>
 
@@ -828,7 +663,7 @@ export default function CheckinPage() {
 
           <DataCard
             title="护理计划与提醒预览"
-            subtitle="当前为 demo 预览，后续可直接对接任务中心与消息中心。"
+            subtitle="当前为共享 mock 预览，确认后会同步到员工任务页和提醒中心页。"
             badge={<Tag variant={selectedApplication.carePlan ? 'success' : 'neutral'}>{selectedApplication.carePlan ? '已生成' : '待生成'}</Tag>}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -852,7 +687,7 @@ export default function CheckinPage() {
                 </div>
                 <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--color-muted)' }}>
                   {selectedApplication.carePlan
-                    ? `已生成 ${selectedApplication.carePlan.length} 条护理任务，并为责任护士/护理员创建同数量提醒。`
+                    ? `已生成 ${selectedApplication.carePlan.length} 条护理任务，并同步写入员工任务页与提醒中心页。`
                     : '当前尚未确认护理等级，计划与提醒会在人工确认后生成。'}
                 </div>
               </div>
@@ -891,7 +726,7 @@ export default function CheckinPage() {
                     lineHeight: 1.7,
                   }}
                 >
-                  护理计划、任务和到点提醒将在护理主管确认后生成。当前页仅展示 demo 预览，不写入后端。
+                    护理计划、任务和到点提醒将在护理主管确认后生成。当前页仅展示共享 mock 预览，不写入真实后端。
                 </div>
               )}
 
@@ -918,24 +753,119 @@ export default function CheckinPage() {
                 <div className="info-row"><span className="info-label">过敏史</span><span className="info-value">{selectedApplication.allergySummary || '无'}</span></div>
                 <div className="info-row"><span className="info-label">风险备注</span><span className="info-value">{selectedApplication.riskNotes || '常规观察'}</span></div>
               </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>执行回执与提醒反馈</div>
+                  <Tag variant="info">Admission Feedback Loop</Tag>
+                </div>
+
+                {selectedTaskItems.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>任务总数</div>
+                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-text)' }}>{executionReceipt.totalTasks}</div>
+                      </div>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>已完成</div>
+                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-success)' }}>{executionReceipt.completedTasks}</div>
+                      </div>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>执行中</div>
+                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-primary)' }}>{executionReceipt.activeTasks}</div>
+                      </div>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>提醒已处理</div>
+                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-success)' }}>{executionReceipt.handledReminders}</div>
+                      </div>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>最近更新</div>
+                        <div style={{ marginTop: 6, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{selectedApplication ? applicationProgressMap[selectedApplication.id]?.latestActivityLabel ?? '暂无' : '暂无'}</div>
+                      </div>
+                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>阻塞时长</div>
+                        <div style={{ marginTop: 6, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{selectedApplication ? applicationProgressMap[selectedApplication.id]?.blockedDurationLabel ?? '暂无' : '暂无'}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                      {selectedTaskItems.map(task => {
+                        const reminder = selectedReminderItems.find(item => item.id === `reminder-${task.id}`)
+                        return (
+                          <div
+                            key={task.id}
+                            style={{
+                              border: '1px solid var(--color-border)',
+                              borderRadius: 'var(--radius-md)',
+                              padding: 14,
+                              background: 'var(--color-card)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                              <div>
+                                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{task.title}</div>
+                                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{task.owner} · {task.scheduledTime} · {task.room}</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                <Tag variant={getTaskStatusVariant(task.status)}>{task.status}</Tag>
+                                {reminder ? <Tag variant={getReminderStatusVariant(reminder.status)}>{reminder.status}</Tag> : null}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, marginTop: 10 }}>
+                              <div className="info-row"><span className="info-label">任务提醒</span><span className="info-value">{task.reminder}</span></div>
+                              <div className="info-row"><span className="info-label">提醒接收人</span><span className="info-value">{reminder?.recipient ?? task.owner}</span></div>
+                              <div className="info-row"><span className="info-label">提醒状态</span><span className="info-value">{reminder ? `${reminder.status} · ${reminder.policy}` : '尚未生成提醒回执'}</span></div>
+                              <div className="info-row"><span className="info-label">任务回执</span><span className="info-value">{task.handledBy && task.handledAt ? `${task.handledBy} · ${task.handledAt}` : '尚未形成执行回执'}</span></div>
+                              <div className="info-row"><span className="info-label">提醒回执</span><span className="info-value">{reminder?.handledBy && reminder?.handledAt ? `${reminder.handledBy} · ${reminder.handledAt}` : '尚未形成提醒回执'}</span></div>
+                              <div className="info-row"><span className="info-label">操作说明</span><span className="info-value">{task.actionNote ?? reminder?.actionNote ?? '暂无说明'}</span></div>
+                              <div className="info-row"><span className="info-label">异常原因</span><span className="info-value">{task.exceptionReason ?? reminder?.exceptionReason ?? (reminder?.status === '需升级' ? '触发超时升级策略，需要主管介入。' : '无异常升级记录')}</span></div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                      <Eye size={14} />
+                      入住页现在会回流员工任务和提醒中心的处理结果，护理主管无需切页即可确认首轮执行闭环。
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      border: '1px dashed var(--color-border-strong)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: 18,
+                      textAlign: 'center',
+                      fontSize: 12.5,
+                      color: 'var(--color-muted)',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    当前尚无可回流的执行回执。请先确认护理计划，并在员工任务页或提醒中心完成执行/处理动作。
+                  </div>
+                )}
+              </div>
             </div>
           </DataCard>
         </div>
       ) : null}
 
-      <DataCard title="发布与回滚说明" subtitle="当前只影响 Demo 页状态，不影响其他业务模块。">
+      <DataCard title="发布与回滚说明" subtitle="当前只影响 Demo 页与共享 mock store，不影响其他真实业务模块。">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>受影响用户</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>管理端护理主管与入住审核人员，可在单页内走完整个 demo 闭环。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>管理端护理主管、员工任务查看人员、提醒中心查看人员。</div>
           </div>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>验证门禁</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>本次以 ESLint / TypeScript 静态校验为主，不引入新依赖、不接入真实 API。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>本次以 TypeScript / ESLint 静态校验为主，目标是确认跨页同步逻辑无错误。</div>
           </div>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>回滚路径</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>若需要回退，只需恢复本页的 mock 状态逻辑，不涉及数据库、配置或跨模块契约。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>若需要回退，只需恢复入住页、员工任务页和提醒中心页对共享 mock store 的接入。</div>
           </div>
         </div>
       </DataCard>
