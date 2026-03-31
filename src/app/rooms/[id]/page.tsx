@@ -70,7 +70,7 @@ export default function RoomDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.id}</h1>
               <Tag variant={TYPE_TAG[data.type]}>{data.type}</Tag>
-              <Tag variant={data.status === "空闲" ? "success" : "neutral"}>{data.status}</Tag>
+              <Tag variant="neutral">{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               {data.floorName} · {data.facilities.join(" · ")}

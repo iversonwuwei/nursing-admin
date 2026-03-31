@@ -44,6 +44,8 @@ const ALERT_HISTORY = [
   { time: "14:20", device: "体温监测仪", room: "206-1床", type: "warning", msg: "体温持续偏高" },
 ]
 
+type MonitorPoint = (typeof MONITOR_POINTS)[number]
+
 function MetricCard({ icon: Icon, label, value, unit, color }: {
   icon: LucideIcon; label: string; value: number | string | null; unit: string; color: string
 }) {
@@ -74,7 +76,7 @@ export default function MonitorPage() {
     setTimeout(() => setRefreshing(false), 1200)
   }
 
-  const getEqCardClass = (eq: typeof MONITOR_POINTS[0]) => {
+  const getEqCardClass = (eq: MonitorPoint) => {
     const classes = ["eq-card"]
     if (eq.status === "offline") classes.push("eq-card-offline")
     if (eq.alert?.level === "danger") classes.push("eq-card-alert-danger")

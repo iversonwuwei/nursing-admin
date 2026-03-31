@@ -594,6 +594,7 @@ function hydrateState() {
     if (
       parsed
       && typeof parsed === 'object'
+      && !Array.isArray(parsed)
       && Array.isArray(parsed.applications)
     ) {
       workflowState = {

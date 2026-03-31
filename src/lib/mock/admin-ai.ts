@@ -1161,12 +1161,13 @@ export function getAiTaskRecommendations(tasks: StaffTaskItem[]) {
         (task.priority === '高' ? 6 : task.priority === '中' ? 4 : 2)
         + (task.status === '执行中' ? 3 : task.status === '已生成' ? 2 : task.status === '待执行' ? 1 : 0)
         + (task.sourceStatus === '计划已生成' ? 2 : 1)
+      const level: AiTaskRecommendation['level'] = score >= 9 ? '立即处理' : score >= 6 ? '本班关注' : '按计划推进'
 
       return {
         taskId: task.id,
         title: task.title,
         elderlyName: task.elderlyName,
-        level: score >= 9 ? '立即处理' : score >= 6 ? '本班关注' : '按计划推进',
+        level,
         reason:
           task.priority === '高'
             ? `该任务来自${task.careLevel}，且提醒策略为${task.reminder}，更适合优先进入当班看板。`

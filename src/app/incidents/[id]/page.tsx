@@ -49,9 +49,14 @@ export default function IncidentDetailPage() {
   const params = useParams()
   const id = params.id as string
   const data: IncidentDetail = id in INCIDENT_DATA ? INCIDENT_DATA[id as keyof typeof INCIDENT_DATA] : INCIDENT_DATA["I001"]
+  const incidentAiInput = {
+    ...data,
+    handling: [...data.handling],
+    attachments: [...data.attachments],
+  }
   const [activeTab, setActiveTab] = useState("info")
-  const aiInsight = getIncidentAiInsight(data)
-  const followupInsight = getIncidentFollowupInsight(data)
+  const aiInsight = getIncidentAiInsight(incidentAiInput)
+  const followupInsight = getIncidentFollowupInsight(incidentAiInput)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'incident-detail',
     entityId: data.id,

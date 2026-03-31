@@ -38,6 +38,14 @@ npm install
 npm run docs:build
 ```
 
+## Harness 交付模板
+
+当前仓库没有独立 docs 目录，管理端页面和路由改动默认使用根目录的 FRONTEND_DELIVERY_TEMPLATE.md 作为本地交付模板入口；跨工程模板总表仍以 nursing-documents/templates/ 为准。
+
+route-level 交付正文现已统一归档到 ../nursing-documents/docs/ui/admin-delivery/index.md。
+
+本地交付入口索引见 DELIVERY_INDEX.md，本地仍保留验证清单、路由清单和执行门禁说明。
+
 ## 仓库边界
 
 本仓库负责管理后台前端实现与本地开发配置；跨项目说明、需求沉淀、架构设计、接口文档与发布手册统一在 nursing-documents 中维护。
