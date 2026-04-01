@@ -18,8 +18,11 @@ This file inventories the current admin app routes so delivery planning can be d
 - src/app/elderly/[id]/page.tsx
 - src/app/elderly/[id]/edit/page.tsx
 - src/app/elderly/health/page.tsx
+- src/app/elderly/health/new/page.tsx
 - src/app/elderly/vitals/page.tsx
+- src/app/elderly/vitals/new/page.tsx
 - src/app/elderly/visits/page.tsx
+- src/app/elderly/visits/new/page.tsx
 - src/app/elderly/checkin/page.tsx
 - src/app/health/page.tsx
 - src/app/health/[metric]/page.tsx
@@ -39,6 +42,7 @@ This file inventories the current admin app routes so delivery planning can be d
 ## Staff, Organizations, Rooms
 
 - src/app/staff/page.tsx
+- src/app/staff/new/page.tsx
 - src/app/staff/[id]/page.tsx
 - src/app/staff/tasks/page.tsx
 - src/app/staff/schedule/page.tsx
@@ -59,6 +63,7 @@ This file inventories the current admin app routes so delivery planning can be d
 - src/app/devices/stats/page.tsx
 - src/app/devices/status/page.tsx
 - src/app/equipment/page.tsx
+- src/app/equipment/new/page.tsx
 - src/app/equipment/[id]/page.tsx
 - src/app/equipment/monitor/page.tsx
 - src/app/equipment/stats/page.tsx
@@ -68,6 +73,7 @@ This file inventories the current admin app routes so delivery planning can be d
 
 - src/app/financial/page.tsx
 - src/app/supplies/page.tsx
+- src/app/supplies/new/page.tsx
 - src/app/supplies/[id]/page.tsx
 - src/app/analytics/page.tsx
 - src/app/analytics/report/page.tsx
@@ -84,6 +90,6 @@ This file inventories the current admin app routes so delivery planning can be d
 
 ## Current Status
 
-- Implemented: repository rules, local delivery template, thin local delivery index, route inventory, route-level delivery docs archived in nursing-documents through batch fifteen, a reviewer-facing route verification checklist, and first-pass smoke automation for critical routes
-- Not yet completed: expand automated route verification beyond the current root/login/AI assistant/compatibility/elderly-create/master-data smoke slice
+- Implemented: repository rules, local delivery template, thin local delivery index, route inventory, route-level delivery docs archived in nursing-documents through batch sixteen, a reviewer-facing route verification checklist, and first-pass smoke automation for critical routes including elderly, staff, and visits create loops plus master-data stability
+- Not yet completed: expand automated route verification beyond the current root/login/AI assistant/compatibility/elderly-create/staff-create/visits-create/master-data smoke slice
 - Default verification gates: `npm run lint`, plus `npm run build` for behavior-changing work

@@ -1,34 +1,35 @@
 "use client"
+import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getEquipmentDetailAiInsight, getEquipmentMaintenanceNarratives } from "@/lib/mock/admin-ai"
+import { findLiveEquipmentById, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { ArrowLeft, Bot, Edit, Monitor } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
-const DEVICE_DATA = {
-  "EQ001": {
-    id: "EQ001", name: "心电监护仪 #1", room: "201-1床", type: "医疗设备",
-    model: "Philips IntelliVue MX450", serialNumber: "PH-2024-00123",
-    status: "online", signal: 92, battery: 85, uptime: 720,
-    metrics: { hr: 72, bp: "120/80", temp: 36.5, spo2: 98 },
-    history: [
-      { time: "16:00", hr: 72, spo2: 98, note: "数据正常" },
-      { time: "14:00", hr: 75, spo2: 97, note: "轻微波动" },
-      { time: "12:00", hr: 70, spo2: 98, note: "正常" },
-    ],
-    maintenance: { last: "2026-02-15", next: "2026-05-15", cycle: "3个月" },
-  },
-} as const
-
-type DeviceDetail = (typeof DEVICE_DATA)[keyof typeof DEVICE_DATA]
-
-const STATUS_TAG: Record<string, TagVariant> = { "online": "success", "offline": "danger", "warning": "warning" }
+const STATUS_TAG: Record<string, TagVariant> = { '正常': 'success', '待维修': 'warning', '维修中': 'warning', '已报废': 'danger' }
 
 export default function EquipmentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: DeviceDetail = id in DEVICE_DATA ? DEVICE_DATA[id as keyof typeof DEVICE_DATA] : DEVICE_DATA["EQ001"]
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const data = useMemo(
+    () => findLiveEquipmentById(id, snapshot) ?? snapshot.equipment[0],
+    [id, snapshot],
+  )
+  const maintenance = useMemo(
+    () => ({
+      last: data.activatedAt?.slice(0, 10) ?? data.purchaseDate,
+      next: data.maintenanceDate,
+      cycle: `${data.maintenanceCycle}个月`,
+    }),
+    [data.activatedAt, data.maintenanceCycle, data.maintenanceDate, data.purchaseDate],
+  )
   const aiInsight = getEquipmentDetailAiInsight({
     id: data.id,
     name: data.name,
@@ -38,7 +39,7 @@ export default function EquipmentDetailPage() {
     signal: data.signal,
     battery: data.battery,
     uptime: data.uptime,
-    maintenance: { ...data.maintenance },
+    maintenance,
     history: data.history.map(item => ({ ...item })),
   })
   const maintenanceNarratives = getEquipmentMaintenanceNarratives({
@@ -50,7 +51,7 @@ export default function EquipmentDetailPage() {
     signal: data.signal,
     battery: data.battery,
     uptime: data.uptime,
-    maintenance: { ...data.maintenance },
+    maintenance,
     history: data.history.map(item => ({ ...item })),
   })
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
@@ -65,14 +66,14 @@ export default function EquipmentDetailPage() {
     <div className="page-root animate-fade-up">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/devices" className="btn btn-ghost btn-icon btn-icon-sm btn-icon">
+          <Link href="/equipment" className="btn btn-ghost btn-icon btn-icon-sm btn-icon">
             <ArrowLeft size={16} />
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.name}</h1>
               <Tag variant="neutral">{data.type}</Tag>
-              <Tag variant={STATUS_TAG[data.status]}>{data.status === "online" ? "在线" : data.status === "offline" ? "离线" : "异常"}</Tag>
+              <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               编号: {data.id} · {data.room}
@@ -194,9 +195,9 @@ export default function EquipmentDetailPage() {
               { label: "设备型号", value: data.model },
               { label: "序列号", value: data.serialNumber },
               { label: "安装位置", value: data.room },
-              { label: "最近维护", value: data.maintenance.last },
-              { label: "下次维护", value: data.maintenance.next },
-              { label: "维护周期", value: data.maintenance.cycle },
+              { label: "最近维护", value: maintenance.last },
+              { label: "下次维护", value: maintenance.next },
+              { label: "维护周期", value: maintenance.cycle },
             ].map(({ label, value }) => (
               <div key={label}>
                 <div className="text-xs font-semibold" style={{ color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>

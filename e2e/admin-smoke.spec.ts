@@ -148,6 +148,66 @@ test('elderly create flow reaches checkin and registry list', async ({ page }) =
   await expect(page.getByText(name).first()).toBeVisible()
 })
 
+test('staff create flow reaches pending onboarding and active roster', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  const suffix = Date.now().toString().slice(-4)
+  const staffName = `自动化员工${suffix}`
+
+  await page.goto('/staff/new')
+  await page.getByPlaceholder('请输入姓名').fill(staffName)
+  await page.getByPlaceholder('如 护士').fill('护士')
+  await page.getByPlaceholder('如 护理部').fill('护理部')
+  await page.locator('select').selectOption('女')
+  await page.getByPlaceholder('请输入手机号').fill('13900003333')
+  await page.getByPlaceholder('请输入邮箱').fill(`staff${suffix}@example.com`)
+  await page.getByPlaceholder('如 32').fill('32')
+  await page.getByRole('button', { name: '提交并进入待入职' }).click()
+
+  await expect(page).toHaveURL(/\/staff\?selected=.*entry=staff-new/)
+  await expect(page.getByText('来自新增员工页')).toBeVisible()
+  await expect(page.getByText(staffName).first()).toBeVisible()
+  await expect(page.getByText('待入职').first()).toBeVisible()
+
+  await page.getByRole('button', { name: '确认入职' }).click()
+  await expect(page.getByRole('link', { name: '查看详情' })).toBeVisible()
+  await expect(page.getByText('已入职').first()).toBeVisible()
+
+  await page.getByPlaceholder('搜索姓名/工号...').fill(staffName)
+  const staffRow = page.locator('tr', { hasText: staffName }).first()
+  await expect(staffRow).toBeVisible()
+  await expect(staffRow).toContainText('在职')
+})
+
+test('visit create flow reaches pending approval and registered list', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  const suffix = Date.now().toString().slice(-4)
+  const visitorName = `自动访客${suffix}`
+
+  await page.goto('/elderly/visits/new')
+  await page.locator('select').nth(0).selectOption('E001')
+  await page.getByPlaceholder('请输入访客姓名').fill(visitorName)
+  await page.getByPlaceholder('如 女儿').fill('女儿')
+  await page.getByPlaceholder('请输入手机号').fill('13900004444')
+  await page.locator('input[type="date"]').fill('2026-04-02')
+  await page.locator('input[type="time"]').fill('15:30')
+  await page.getByRole('button', { name: '提交并进入待审核' }).click()
+
+  await expect(page).toHaveURL(/\/elderly\/visits\?selected=.*entry=elderly-visits-new/)
+  await expect(page.getByText('来自预约探视页')).toBeVisible()
+  await expect(page.getByText(visitorName).first()).toBeVisible()
+  await expect(page.getByText('待审核').first()).toBeVisible()
+
+  await page.getByRole('button', { name: '通过预约' }).click()
+  await expect(page.getByText('已审核').first()).toBeVisible()
+
+  await page.getByPlaceholder('搜索老人姓名或探视人...').fill(visitorName)
+  const visitRow = page.locator('tr', { hasText: visitorName }).first()
+  await expect(visitRow).toBeVisible()
+  await expect(visitRow).toContainText('已登记')
+})
+
 test('master data routes render without sync external store snapshot loops', async ({ page }) => {
   await loginAsAdmin(page)
   const syncLoopSignals = trackSyncExternalStoreLoopSignals(page)

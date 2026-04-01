@@ -1,34 +1,49 @@
 "use client"
 import { DataCard, FilterBar, FilterItem, PageHeader, StatCard } from "@/components/nh"
+import { getCareServiceSnapshot, subscribeCareServiceWorkflow } from '@/lib/mock/care-service-workflow'
 import { Activity, Minus, Plus, Search, TrendingDown, TrendingUp } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
-
-const RECORDS = [
-  { id: "V001", elder: "张桂英", room: "201-1", bp: "135/85", hr: 72, temp: 36.5, spo2: 97, bloodSugar: 5.8, recordedBy: "陈美华", time: "08:30" },
-  { id: "V002", elder: "王建国", room: "203-2", bp: "120/78", hr: 68, temp: 36.4, spo2: 98, bloodSugar: 6.1, recordedBy: "刘建国", time: "08:25" },
-  { id: "V003", elder: "李秀兰", room: "205-1", bp: "128/82", hr: 65, temp: 36.8, spo2: 95, bloodSugar: 7.2, recordedBy: "赵晓敏", time: "08:20" },
-  { id: "V004", elder: "赵德明", room: "202-1", bp: "118/75", hr: 70, temp: 36.3, spo2: 99, bloodSugar: 5.4, recordedBy: "陈美华", time: "08:15" },
-  { id: "V005", elder: "周桂芳", room: "203-1", bp: "122/80", hr: 73, temp: 36.6, spo2: 96, bloodSugar: 5.9, recordedBy: "刘建国", time: "08:10" },
-]
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from "react"
 
 const TREND = (v: number, n: number) => v > n ? { icon: TrendingUp, color: "var(--color-danger)", label: "偏高" } : v < n ? { icon: TrendingDown, color: "var(--color-info)", label: "偏低" } : { icon: Minus, color: "var(--color-success)", label: "正常" }
 
 export default function VitalsPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'elderly-vitals-new'
+  const snapshot = useSyncExternalStore(
+    subscribeCareServiceWorkflow,
+    getCareServiceSnapshot,
+    getCareServiceSnapshot,
+  )
+  const records = snapshot.vitalsEntries
   const [search, setSearch] = useState("")
-  const filtered = RECORDS.filter(r => r.elder.includes(search) || r.room.includes(search))
+  const selectedRecord = useMemo(
+    () => records.find(item => item.id === preselectedId) ?? null,
+    [preselectedId, records],
+  )
+  const filtered = records.filter(r => r.elder.includes(search) || r.room.includes(search))
 
   return (
     <div className="page-root animate-fade-up">
       <PageHeader
         title="指标更新"
-        subtitle={`今日已录入 ${RECORDS.length} 条生命体征记录`}
+        subtitle={`今日已录入 ${records.length} 条生命体征记录`}
         actions={
-          <button className="btn btn-primary btn-sm flex items-center gap-2">
+          <Link href="/elderly/vitals/new" className="btn btn-primary btn-sm flex items-center gap-2">
             <Plus size={14} />批量录入
-          </button>
+          </Link>
         }
       />
+
+      {selectedRecord && fromNew ? (
+        <DataCard title="来自体征录入页" subtitle={`${selectedRecord.elder} 的生命体征已写入当班列表，可继续用于巡诊和异常识别。`}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+            记录人 {selectedRecord.recordedBy}，记录时间 {selectedRecord.time}，房间 {selectedRecord.room}。
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
@@ -99,7 +114,7 @@ export default function VitalsPage() {
                     </td>
                     <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{r.recordedBy}</span></td>
                     <td><span className="text-xs" style={{ color: "var(--color-muted)" }}>{r.time}</span></td>
-                    <td><Link href={`/elderly/${r.id.replace('V', 'E')}`} className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>详情</Link></td>
+                    <td><Link href={`/elderly/${r.elderlyId}`} className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>详情</Link></td>
                   </tr>
                 )
               })}

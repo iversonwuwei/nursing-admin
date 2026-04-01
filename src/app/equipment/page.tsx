@@ -1,12 +1,14 @@
 'use client'
 
+import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { equipmentAlarms, equipmentList } from '@/lib/data'
+import { equipmentAlarms } from '@/lib/data'
 import { getEquipmentListAiInsights, getEquipmentListAiNarratives } from '@/lib/mock/admin-ai'
+import { confirmEquipmentAcceptance, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { AlertTriangle, Bot, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
 
 const CATEGORY_TAG: Record<string, TagVariant> = {
   '医疗设备': 'info', '康复设备': 'warning', '生活设备': 'primary', '智能设备': 'purple',
@@ -16,12 +18,26 @@ const STATUS_TAG: Record<string, TagVariant> = {
 }
 
 export default function EquipmentPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'equipment-new'
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const equipment = snapshot.equipment
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
 
-  const filtered = equipmentList.filter(e => {
+  const selectedEquipment = useMemo(
+    () => equipment.find(item => item.id === preselectedId) ?? null,
+    [equipment, preselectedId],
+  )
+
+  const filtered = equipment.filter(e => {
     if (search && !e.name.includes(search) && !e.id.includes(search)) return false
     if (catFilter && e.category !== catFilter) return false
     return true
@@ -29,15 +45,15 @@ export default function EquipmentPage() {
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const stats = {
-    total: equipmentList.length,
-    normal: equipmentList.filter(e => e.status === '正常').length,
+    total: equipment.length,
+    normal: equipment.filter(e => e.status === '正常').length,
     alarm: equipmentAlarms.filter(a => a.status === '待处理').length,
-    repair: equipmentList.filter(e => e.status === '维修中' || e.status === '待维修').length,
+    repair: equipment.filter(e => e.status === '维修中' || e.status === '待维修').length,
   }
 
-  const categories = [...new Set(equipmentList.map(e => e.category))]
-  const aiInsights = getEquipmentListAiInsights(equipmentList, equipmentAlarms)
-  const aiNarratives = getEquipmentListAiNarratives(equipmentList, equipmentAlarms)
+  const categories = [...new Set(equipment.map(e => e.category))]
+  const aiInsights = getEquipmentListAiInsights(equipment, equipmentAlarms)
+  const aiNarratives = getEquipmentListAiNarratives(equipment, equipmentAlarms)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'equipment-list',
     entityId: 'equipment-board',
@@ -51,13 +67,34 @@ export default function EquipmentPage() {
 
       <PageHeader
         title="设备列表"
-        subtitle={`共 ${equipmentList.length} 台设备`}
+        subtitle={`共 ${equipment.length} 台设备${selectedEquipment && fromNew ? ' · 包含最新待验收设备' : ''}`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/equipment/new" className="btn btn-primary btn-sm">
             <Plus size={13} />添加设备
-          </button>
+          </Link>
         }
       />
+
+      {selectedEquipment && fromNew ? (
+        <DataCard
+          title="来自新增设备页"
+          subtitle={`${selectedEquipment.name} 已进入待验收闭环。确认后再纳入设备台账。`}
+          badge={<Tag variant={selectedEquipment.lifecycleStatus === '待验收' ? 'warning' : 'success'}>{selectedEquipment.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前分类 {selectedEquipment.category}，位置 {selectedEquipment.location}，序列号 {selectedEquipment.serialNumber}。
+            </div>
+            {selectedEquipment.lifecycleStatus === '待验收' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => confirmEquipmentAcceptance(selectedEquipment.id)}>
+                完成验收
+              </button>
+            ) : (
+              <Link href={`/equipment/${selectedEquipment.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="kpi-grid">
         <StatCard icon={<Wifi size={18} />} label="设备总数" value={stats.total} color="primary" />
@@ -183,7 +220,7 @@ export default function EquipmentPage() {
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.purchaseDate}</span></td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                      <Link href={`/devices/${e.id}`} className="btn btn-ghost btn-sm">详情</Link>
+                      <Link href={`/equipment/${e.id}`} className="btn btn-ghost btn-sm">详情</Link>
                       <Link href="/devices/realtime" className="btn btn-ghost btn-sm">监控</Link>
                     </div>
                   </td>

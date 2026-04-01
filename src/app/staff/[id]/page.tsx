@@ -1,38 +1,28 @@
 "use client"
+import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getStaffDetailActionAiInsight } from "@/lib/mock/admin-ai"
 import { getStaffAiProfile } from "@/lib/mock/app-ai"
+import { findLiveStaffById, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
-const STAFF_DATA = {
-  "S001": {
-    id: "S001", name: "陈美华", role: "护士长", department: "护理部",
-    phone: "138****0001", email: "chenmh@nursinghome.com",
-    gender: "女", age: 38, status: "在职",
-    performance: 92, attendance: 98, satisfaction: 95,
-    hireDate: "2019-06-01",
-    schedule: [
-      { day: "周一", shift: "白班" }, { day: "周二", shift: "白班" },
-      { day: "周三", shift: "白班" }, { day: "周四", shift: "休息" },
-      { day: "周五", shift: "白班" }, { day: "周六", shift: "白班" },
-      { day: "周日", shift: "休息" },
-    ],
-    certificates: ["护士执业证书", "护理管理培训证书", "急救证书"],
-    bonus: "¥2,000",
-  },
-} as const
-
-type StaffDetail = (typeof STAFF_DATA)[keyof typeof STAFF_DATA]
-
-const ROLE_TAG: Record<string, TagVariant> = { "护士长": "primary", "护士": "info", "护工": "warning", "医生": "danger", "后勤": "neutral" }
+const ROLE_TAG: Record<string, TagVariant> = { "护理主管": "primary", "护士": "info", "后勤主管": "warning", "心理咨询师": "purple", "厨师长": "neutral" }
 
 export default function StaffDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: StaffDetail = id in STAFF_DATA ? STAFF_DATA[id as keyof typeof STAFF_DATA] : STAFF_DATA["S001"]
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const data = useMemo(
+    () => findLiveStaffById(id, snapshot) ?? snapshot.staff[0],
+    [id, snapshot],
+  )
   const aiProfile = getStaffAiProfile(data.id)
   const actionInsight = getStaffDetailActionAiInsight({
     id: data.id,
@@ -66,7 +56,7 @@ export default function StaffDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.name}</h1>
               <Tag variant={ROLE_TAG[data.role]}>{data.role}</Tag>
-              <Tag variant="success">{data.status}</Tag>
+              <Tag variant={data.status === '在职' ? 'success' : data.status === '待入职' ? 'warning' : 'neutral'}>{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               工号: {data.id} · {data.department}

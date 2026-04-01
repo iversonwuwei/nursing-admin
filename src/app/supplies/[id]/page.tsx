@@ -1,34 +1,27 @@
 "use client"
+import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getSupplyDetailAiInsight, getSupplyProcurementInsight } from "@/lib/mock/admin-ai"
+import { findLiveSupplyById, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { ArrowLeft, Bot, Edit, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
-const SUPPLY_DATA = {
-  "SP001": {
-    id: "SP001", name: "成人护理垫", category: "护理用品", unit: "包",
-    stock: 45, minStock: 50, price: "¥38", supplier: "稳健医疗",
-    contact: "李经理 138****1234", lastPurchase: "2026-03-10",
-    status: "库存不足",
-    history: [
-      { date: "2026-03-10", in: 50, out: 8, balance: 45 },
-      { date: "2026-02-25", in: 0, out: 12, balance: 53 },
-      { date: "2026-02-15", in: 60, out: 10, balance: 65 },
-      { date: "2026-02-01", in: 0, out: 15, balance: 55 },
-    ]
-  },
-} as const
-
-type SupplyDetail = (typeof SUPPLY_DATA)[keyof typeof SUPPLY_DATA]
-
-const STATUS_TAG: Record<string, TagVariant> = { "正常": "success", "库存不足": "danger", "即将过期": "warning" }
+const STATUS_TAG: Record<string, TagVariant> = { "正常": "success", "库存不足": "danger", "待上架": "warning" }
 
 export default function SupplyDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: SupplyDetail = id in SUPPLY_DATA ? SUPPLY_DATA[id as keyof typeof SUPPLY_DATA] : SUPPLY_DATA["SP001"]
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const data = useMemo(
+    () => findLiveSupplyById(id, snapshot) ?? snapshot.supplies[0],
+    [id, snapshot],
+  )
   const aiInsight = getSupplyDetailAiInsight({
     id: data.id,
     name: data.name,

@@ -1,16 +1,11 @@
 "use client"
 import { DataCard, Tag } from "@/components/nh"
 import { getHealthArchiveAiInsights, getMedicationAiSummary } from "@/lib/mock/admin-ai"
+import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { confirmHealthArchive, getCareServiceSnapshot, subscribeCareServiceWorkflow } from '@/lib/mock/care-service-workflow'
 import { Activity, AlertCircle, Bot, FileHeart, Heart, Pill, Plus, Search, Stethoscope } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
-
-const HEALTH_RECORDS = [
-  { id: "HR001", name: "张桂英", room: "201-1", age: 82, bp: "135/85", hr: 72, temp: 36.5, bloodSugar: 5.8, o2: 97, lastCheck: "2026-03-28", alert: "血压偏高" },
-  { id: "HR002", name: "王建国", room: "203-2", age: 78, bp: "120/78", hr: 68, temp: 36.4, bloodSugar: 6.1, o2: 98, lastCheck: "2026-03-27", alert: null },
-  { id: "HR003", name: "李秀兰", room: "205-1", age: 85, bp: "128/82", hr: 65, temp: 36.8, bloodSugar: 7.2, o2: 95, lastCheck: "2026-03-25", alert: "血糖偏高" },
-  { id: "HR004", name: "赵德明", room: "202-1", age: 80, bp: "118/75", hr: 70, temp: 36.3, bloodSugar: 5.4, o2: 99, lastCheck: "2026-03-26", alert: null },
-]
 
 const MEDICATIONS = [
   { name: "硝苯地平缓释片", dose: "20mg × 2次/日", patient: "张桂英", nextTime: "08:00", status: "待服用" },
@@ -19,10 +14,23 @@ const MEDICATIONS = [
 ]
 
 export default function HealthPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'elderly-health-new'
+  const snapshot = useSyncExternalStore(
+    subscribeCareServiceWorkflow,
+    getCareServiceSnapshot,
+    getCareServiceSnapshot,
+  )
+  const healthRecords = snapshot.healthArchives
   const [search, setSearch] = useState("")
 
-  const filtered = HEALTH_RECORDS.filter(r => r.name.includes(search) || r.id.includes(search))
-  const aiInsights = getHealthArchiveAiInsights(HEALTH_RECORDS)
+  const selectedRecord = useMemo(
+    () => healthRecords.find(item => item.id === preselectedId) ?? null,
+    [healthRecords, preselectedId],
+  )
+  const filtered = healthRecords.filter(r => r.name.includes(search) || r.id.includes(search))
+  const aiInsights = getHealthArchiveAiInsights(healthRecords)
   const medicationAiSummary = getMedicationAiSummary(MEDICATIONS)
 
   const vitalTag = (val: string | null, warn: string | null, normal: string, warnThresh: { high: string; low: string }) => {
@@ -37,19 +45,38 @@ export default function HealthPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.03em" }}>健康档案</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>老人健康数据汇总 · 共 {HEALTH_RECORDS.length} 位老人</p>
+          <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>老人健康数据汇总 · 共 {healthRecords.length} 位老人</p>
         </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
+        <Link href="/elderly/health/new" className="btn btn-primary btn-sm flex items-center gap-2">
           <Plus size={14} />新建档案
-        </button>
+        </Link>
       </div>
+
+      {selectedRecord && fromNew ? (
+        <DataCard
+          title="来自健康建档页"
+          subtitle={`${selectedRecord.name} 已写入健康档案闭环。确认后再纳入稳定巡诊口径。`}
+          badge={<Tag variant={selectedRecord.lifecycleStatus === '待建档' ? 'warning' : 'success'}>{selectedRecord.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前房间 {selectedRecord.room}，最近测量 {selectedRecord.lastCheck}，提醒项 {selectedRecord.alert ?? '无'}。
+            </div>
+            {selectedRecord.lifecycleStatus === '待建档' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => confirmHealthArchive(selectedRecord.id)}>
+                完成建档
+              </button>
+            ) : null}
+          </div>
+        </DataCard>
+      ) : null}
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
         {[
-          { label: "建档老人", value: 124, icon: FileHeart, color: "var(--color-primary)", bg: "var(--color-primary-light)" },
-          { label: "今日测量", value: 38, icon: Activity, color: "var(--color-info)", bg: "rgba(59,130,246,0.1)" },
-          { label: "异常提醒", value: 6, icon: AlertCircle, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)" },
+          { label: "建档老人", value: healthRecords.filter(item => item.lifecycleStatus === '已建档').length, icon: FileHeart, color: "var(--color-primary)", bg: "var(--color-primary-light)" },
+          { label: "今日测量", value: healthRecords.filter(item => item.lastCheck === '2026-03-28' || item.lastCheck === '2026-03-29').length, icon: Activity, color: "var(--color-info)", bg: "rgba(59,130,246,0.1)" },
+          { label: "异常提醒", value: healthRecords.filter(item => item.alert).length, icon: AlertCircle, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)" },
           { label: "用药中", value: 21, icon: Pill, color: "var(--color-purple)", bg: "rgba(139,92,246,0.1)" },
           { label: "本周巡诊", value: 12, icon: Stethoscope, color: "var(--color-success)", bg: "rgba(34,197,94,0.1)" },
         ].map(({ label, value, icon: Icon, color, bg }) => (
@@ -144,7 +171,7 @@ export default function HealthPage() {
                   <td>{vitalTag(String(r.o2), r.alert, String(r.o2), { high: "100", low: "95" })}</td>
                   <td><span className="text-xs" style={{ color: "var(--color-muted)" }}>{r.lastCheck}</span></td>
                   <td>{r.alert ? <Tag variant="warning">{r.alert}</Tag> : <span style={{ fontSize: 12, color: "var(--color-muted)" }}>正常</span>}</td>
-                  <td><Link href={`/elderly/${r.id.replace('HR', 'E')}`} className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>详情</Link></td>
+                  <td><Link href={`/elderly/${r.elderlyId}`} className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}>详情</Link></td>
                 </tr>
               ))}
             </tbody>

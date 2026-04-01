@@ -1,30 +1,37 @@
 'use client'
 
+import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getSupplyAiInsights, getSupplyAiNarratives } from '@/lib/mock/admin-ai'
+import { confirmSupplyStocking, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { AlertTriangle, Bot, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
 
-const SUPPLIES = [
-  { id: 'SP001', name: '成人护理垫', category: '护理用品', unit: '包', stock: 45, minStock: 50, price: '¥38', supplier: '稳健医疗', status: '库存不足' },
-  { id: 'SP002', name: '一次性手套', category: '防护用品', unit: '盒', stock: 120, minStock: 80, price: '¥25', supplier: '蓝帆医疗', status: '正常' },
-  { id: 'SP003', name: '医用酒精', category: '消毒用品', unit: '瓶', stock: 28, minStock: 30, price: '¥15', supplier: '利尔康', status: '库存不足' },
-  { id: 'SP004', name: '纸尿裤L码', category: '护理用品', unit: '包', stock: 85, minStock: 60, price: '¥68', supplier: '可靠股份', status: '正常' },
-  { id: 'SP005', name: '创可贴', category: '医疗用品', unit: '盒', stock: 200, minStock: 50, price: '¥12', supplier: '云南白药', status: '正常' },
-]
-
-const STATUS_TAG: Record<string, TagVariant> = { '库存不足': 'danger', '正常': 'success' }
+const STATUS_TAG: Record<string, TagVariant> = { '库存不足': 'danger', '正常': 'success', '待上架': 'warning' }
 const CAT_TAG: Record<string, TagVariant> = { '护理用品': 'primary', '防护用品': 'warning', '消毒用品': 'info', '医疗用品': 'purple' }
 
 export default function SuppliesPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'supplies-new'
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const supplies = snapshot.supplies
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
-  const aiInsights = getSupplyAiInsights(SUPPLIES)
-  const aiNarratives = getSupplyAiNarratives(SUPPLIES)
+  const selectedSupply = useMemo(
+    () => supplies.find(item => item.id === preselectedId) ?? null,
+    [preselectedId, supplies],
+  )
+  const aiInsights = getSupplyAiInsights(supplies)
+  const aiNarratives = getSupplyAiNarratives(supplies)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'supplies-list',
     entityId: 'supply-board',
@@ -33,8 +40,8 @@ export default function SuppliesPage() {
     target,
   })
 
-  const lowStock = SUPPLIES.filter(s => s.status === '库存不足').length
-  const filtered = SUPPLIES.filter(s => {
+  const lowStock = supplies.filter(s => s.status === '库存不足').length
+  const filtered = supplies.filter(s => {
     if (search && !s.name.includes(search)) return false
     if (catFilter && s.category !== catFilter) return false
     return true
@@ -46,18 +53,39 @@ export default function SuppliesPage() {
 
       <PageHeader
         title="物资管理"
-        subtitle={`共 ${SUPPLIES.length} 种物资`}
+        subtitle={`共 ${supplies.length} 种物资${selectedSupply && fromNew ? ' · 包含最新入库记录' : ''}`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/supplies/new" className="btn btn-primary btn-sm">
             <Plus size={13} />采购入库
-          </button>
+          </Link>
         }
       />
 
+      {selectedSupply && fromNew ? (
+        <DataCard
+          title="来自采购入库页"
+          subtitle={`${selectedSupply.name} 已回流物资列表。请确认上架后再计入稳定库存口径。`}
+          badge={<Tag variant={selectedSupply.lifecycleStatus === '待上架' ? 'warning' : 'success'}>{selectedSupply.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              最近一次入库 {selectedSupply.lastIntakeQuantity ?? 0}{selectedSupply.unit}，当前库存 {selectedSupply.stock}{selectedSupply.unit}。
+            </div>
+            {selectedSupply.lifecycleStatus === '待上架' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => confirmSupplyStocking(selectedSupply.id)}>
+                确认上架
+              </button>
+            ) : (
+              <Link href={`/supplies/${selectedSupply.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
+
       <div className="kpi-grid">
-        <StatCard icon={<Package size={18} />} label="物品种类" value={SUPPLIES.length} color="primary" />
+        <StatCard icon={<Package size={18} />} label="物品种类" value={supplies.length} color="primary" />
         <StatCard icon={<AlertTriangle size={18} />} label="库存不足" value={lowStock} sub="需立即采购" color="danger" />
-        <StatCard icon={<Package size={18} />} label="库存正常" value={SUPPLIES.length - lowStock} color="success" />
+        <StatCard icon={<Package size={18} />} label="库存正常" value={supplies.filter(s => s.status === '正常').length} color="success" />
         <StatCard icon={<Package size={18} />} label="本月采购" value={12} sub="采购次数" color="info" />
       </div>
 
@@ -126,7 +154,7 @@ export default function SuppliesPage() {
             style={{ minWidth: 130 }}
           >
             <option value="">全部分类</option>
-            {[...new Set(SUPPLIES.map(s => s.category))].map(c => (
+            {[...new Set(supplies.map(s => s.category))].map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>

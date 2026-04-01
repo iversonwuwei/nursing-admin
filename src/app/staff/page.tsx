@@ -1,35 +1,41 @@
 'use client'
 
+import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getStaffAiInsights, getStaffAiNarratives } from '@/lib/mock/admin-ai'
+import { confirmStaffOnboarding, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { Bot, Plus, Search, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
-
-const STAFF = [
-  { id: 'S001', name: '王美丽', role: '护理主管', department: '护理部', phone: '13800138001', status: '在职', gender: '女' },
-  { id: 'S002', name: '李建国', role: '护士', department: '护理部', phone: '13800138002', status: '在职', gender: '男' },
-  { id: 'S003', name: '赵晓红', role: '护士', department: '护理部', phone: '13800138003', status: '在职', gender: '女' },
-  { id: 'S004', name: '周明', role: '后勤主管', department: '后勤部', phone: '13800138004', status: '在职', gender: '男' },
-  { id: 'S005', name: '吴静', role: '心理咨询师', department: '心理部', phone: '13800138005', status: '在职', gender: '女' },
-  { id: 'S006', name: '郑伟', role: '厨师长', department: '后勤部', phone: '13800138006', status: '休假', gender: '男' },
-]
 
 const ROLE_TAG: Record<string, TagVariant> = {
   '护理主管': 'primary', '护士': 'info', '后勤主管': 'warning',
   '心理咨询师': 'purple', '厨师长': 'neutral',
 }
-const STATUS_TAG: Record<string, TagVariant> = { '在职': 'success', '休假': 'warning', '离职': 'danger' }
+const STATUS_TAG: Record<string, TagVariant> = { '在职': 'success', '休假': 'warning', '离职': 'danger', '待入职': 'info' }
 
 export default function StaffPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'staff-new'
+  const snapshot = useSyncExternalStore(
+    subscribeResourceWorkflow,
+    getResourceSnapshot,
+    getResourceSnapshot,
+  )
+  const staff = snapshot.staff
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
-  const departments = [...new Set(STAFF.map(s => s.department))]
-  const aiInsights = getStaffAiInsights(STAFF)
-  const aiNarratives = getStaffAiNarratives(STAFF)
+  const departments = [...new Set(staff.map(s => s.department))]
+  const selectedStaff = useMemo(
+    () => staff.find(item => item.id === preselectedId) ?? null,
+    [preselectedId, staff],
+  )
+  const aiInsights = getStaffAiInsights(staff)
+  const aiNarratives = getStaffAiNarratives(staff)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'staff-list',
     entityId: 'staff-board',
@@ -38,7 +44,7 @@ export default function StaffPage() {
     target,
   })
 
-  const filtered = STAFF.filter(s => {
+  const filtered = staff.filter(s => {
     if (search && !s.name.includes(search) && !s.id.includes(search)) return false
     if (deptFilter && s.department !== deptFilter) return false
     return true
@@ -50,20 +56,41 @@ export default function StaffPage() {
 
       <PageHeader
         title="员工列表"
-        subtitle={`共 ${STAFF.length} 名员工`}
+        subtitle={`共 ${staff.length} 名员工${selectedStaff && fromNew ? ' · 包含最新待入职记录' : ''}`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/staff/new" className="btn btn-primary btn-sm">
             <Plus size={13} />添加员工
-          </button>
+          </Link>
         }
       />
 
       <div className="kpi-grid">
-        <StatCard icon={<UserCheck size={18} />} label="员工总数" value={STAFF.length} color="primary" />
-        <StatCard icon={<ShieldCheck size={18} />} label="在职" value={STAFF.filter(s => s.status === '在职').length} color="success" />
-        <StatCard icon={<UserCheck size={18} />} label="护理团队" value={STAFF.filter(s => s.department === '护理部').length} sub="护理部" color="info" />
-        <StatCard icon={<UserCheck size={18} />} label="休假中" value={STAFF.filter(s => s.status === '休假').length} color="warning" />
+        <StatCard icon={<UserCheck size={18} />} label="员工总数" value={staff.length} color="primary" />
+        <StatCard icon={<ShieldCheck size={18} />} label="在职" value={staff.filter(s => s.status === '在职').length} color="success" />
+        <StatCard icon={<UserCheck size={18} />} label="护理团队" value={staff.filter(s => s.department === '护理部').length} sub="护理部" color="info" />
+        <StatCard icon={<UserCheck size={18} />} label="待入职" value={staff.filter(s => s.lifecycleStatus === '待入职').length} color="warning" />
       </div>
+
+      {selectedStaff && fromNew ? (
+        <DataCard
+          title="来自新增员工页"
+          subtitle={`${selectedStaff.name} 已进入待入职闭环。确认后再纳入排班与任务口径。`}
+          badge={<Tag variant={selectedStaff.lifecycleStatus === '待入职' ? 'warning' : 'success'}>{selectedStaff.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前角色 {selectedStaff.role}，部门 {selectedStaff.department}，联系电话 {selectedStaff.phone}。
+            </div>
+            {selectedStaff.lifecycleStatus === '待入职' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => confirmStaffOnboarding(selectedStaff.id)}>
+                确认入职
+              </button>
+            ) : (
+              <Link href={`/staff/${selectedStaff.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
