@@ -3,27 +3,17 @@
 import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getOrganizationBedAiInsight, getOrganizationDetailAiInsight, getOrganizationStaffAiInsight } from '@/lib/mock/admin-ai'
+import {
+  activateOrganizationDraft,
+  findLiveOrganizationById,
+  getMasterDataSnapshot,
+  getOrganizationStaffRecords,
+  subscribeMasterDataWorkflow,
+} from '@/lib/mock/master-data-workflow'
 import { ArrowLeft, Bed, Bot, Building2, Edit, Star, Users } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
-
-const orgData = {
-  id: '1', name: '静安分院', address: '上海市静安区静安寺路100号',
-  phone: '021-62880001', beds: 80, occupied: 76, staff: 28,
-  manager: '张主任', established: '2018-06-01', area: '3000㎡',
-}
-const staffData = [
-  { id: '1', name: '张主任', role: '院长', gender: '女', age: 45, phone: '13800001001', status: '在职' },
-  { id: '2', name: '李医生', role: '主治医师', gender: '男', age: 38, phone: '13800001002', status: '在职' },
-  { id: '3', name: '王护士', role: '护士长', gender: '女', age: 32, phone: '13800001003', status: '在职' },
-  { id: '4', name: '赵护理', role: '护理员', gender: '女', age: 28, phone: '13800001004', status: '在职' },
-  { id: '5', name: '钱后勤', role: '后勤主管', gender: '男', age: 42, phone: '13800001005', status: '在职' },
-]
-const bedData = Array.from({ length: 12 }, (_, i) => ({
-  id: `${i + 1}`,
-  room: `${Math.floor(i / 4) + 1}号楼-${String((i % 4) + 1).padStart(3, '0')}`,
-  status: i < 9 ? 'occupied' : i < 10 ? 'reserved' : 'available',
-}))
+import { useParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const TABS = [
   { id: 'overview', label: '机构概览' },
@@ -32,8 +22,40 @@ const TABS = [
 ]
 
 export default function OrgDetailPage() {
+  const params = useParams()
+  const id = params.id as string
+  const snapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
   const [activeTab, setActiveTab] = useState('overview')
-  const occupancy = Math.round((orgData.occupied / orgData.beds) * 100)
+  const orgRecord = useMemo(
+    () => findLiveOrganizationById(id, snapshot) ?? snapshot.organizations[0],
+    [id, snapshot],
+  )
+  const staffData = useMemo(() => getOrganizationStaffRecords(orgRecord.id), [orgRecord.id])
+  const bedData = useMemo(() => {
+    const rooms = snapshot.rooms.filter(room => room.organizationId === orgRecord.id)
+    return rooms.flatMap(room => room.bedsInfo.map((bed, index) => ({
+      id: `${room.id}-${index + 1}`,
+      room: `${room.id}-${index + 1}`,
+      status: bed.status === 'occupied' ? 'occupied' : bed.status === 'maintenance' ? 'reserved' : 'available',
+    })))
+  }, [orgRecord.id, snapshot.rooms])
+  const occupancy = orgRecord.totalBeds > 0 ? Math.round((orgRecord.occupiedBeds / orgRecord.totalBeds) * 100) : 0
+  const orgData = {
+    id: orgRecord.id,
+    name: orgRecord.name,
+    address: orgRecord.address,
+    phone: orgRecord.phone,
+    beds: orgRecord.totalBeds,
+    occupied: orgRecord.occupiedBeds,
+    staff: orgRecord.staffCount,
+    manager: orgRecord.manager,
+    established: orgRecord.establishedDate,
+    area: orgRecord.description,
+  }
   const aiInsight = getOrganizationDetailAiInsight(orgData)
   const reservedBeds = bedData.filter(item => item.status === 'reserved').length
   const availableBeds = bedData.filter(item => item.status === 'available').length
@@ -64,9 +86,15 @@ export default function OrgDetailPage() {
             <Link href="/organizations" className="btn btn-secondary btn-sm">
               <ArrowLeft size={13} />返回
             </Link>
-            <button className="btn btn-primary btn-sm">
-              <Edit size={13} />编辑
-            </button>
+            {orgRecord.lifecycleStatus === '待启用' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => activateOrganizationDraft(orgRecord.id)}>
+                <Edit size={13} />启用机构
+              </button>
+            ) : (
+                <button className="btn btn-primary btn-sm">
+                  <Edit size={13} />编辑
+                </button>
+            )}
           </div>
         }
       />
@@ -74,8 +102,16 @@ export default function OrgDetailPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
         <StatCard icon={<Bed size={18} />} label="床位总数" value={orgData.beds} sub="总床位数" color="info" />
         <StatCard icon={<Users size={18} />} label="入住人数" value={orgData.occupied} sub="当前入住" color="success" />
-        <StatCard icon={<Users size={18} />} label="入住率" value={`${occupancy}%`} sub={`空床 ${orgData.beds - orgData.occupied} 个`} color={occupancy >= 90 ? 'danger' : occupancy >= 70 ? 'warning' : 'success'} />
-        <StatCard icon={<Building2 size={18} />} label="员工数" value={orgData.staff} sub="在职员工" color="primary" />
+        <StatCard icon={<Users size={18} />} label="入住率" value={`${occupancy}%`} sub={`空床 ${Math.max(0, orgData.beds - orgData.occupied)} 个`} color={occupancy >= 90 ? 'danger' : occupancy >= 70 ? 'warning' : 'success'} />
+        <StatCard icon={<Building2 size={18} />} label="员工数" value={orgData.staff} sub={orgRecord.lifecycleStatus === '待启用' ? '启用后补录' : '在职员工'} color="primary" />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <DataCard title="机构状态" subtitle="新建机构先进入待启用，再计入经营口径。" badge={<Tag variant={orgRecord.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{orgRecord.lifecycleStatus}</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+            当前状态为 {orgRecord.status}。{orgRecord.activationNote ? `最近说明：${orgRecord.activationNote}` : '尚未记录额外说明。'}
+          </div>
+        </DataCard>
       </div>
 
       <DataCard
@@ -135,7 +171,7 @@ export default function OrgDetailPage() {
                 { label: '地址', value: orgData.address },
                 { label: '联系电话', value: orgData.phone },
                 { label: '成立日期', value: orgData.established },
-                { label: '占地面积', value: orgData.area },
+                { label: '机构说明', value: orgData.area },
                 { label: '负责人', value: orgData.manager },
               ].map(item => (
                 <div key={item.label}>
@@ -241,7 +277,7 @@ export default function OrgDetailPage() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>姓名</th><th>职位</th><th>性别</th><th>年龄</th><th>联系电话</th><th>状态</th></tr>
+                  <tr><th>姓名</th><th>职位</th><th>部门</th><th>联系电话</th><th>状态</th></tr>
                 </thead>
                 <tbody>
                   {staffData.map(s => (
@@ -255,8 +291,7 @@ export default function OrgDetailPage() {
                         </div>
                       </td>
                       <td><span className="text-sm">{s.role}</span></td>
-                      <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.gender}</span></td>
-                      <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.age}岁</span></td>
+                      <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{s.department}</span></td>
                       <td><span className="text-sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.phone}</span></td>
                       <td><Tag variant="success">{s.status}</Tag></td>
                     </tr>

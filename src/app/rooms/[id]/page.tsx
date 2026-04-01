@@ -1,55 +1,51 @@
 "use client"
+
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getRoomCareActionInsight, getRoomDetailAiInsight } from "@/lib/mock/admin-ai"
+import { activateRoomDraft, findLiveRoomById, getMasterDataSnapshot, subscribeMasterDataWorkflow } from "@/lib/mock/master-data-workflow"
 import { ArrowLeft, Bot, DoorOpen, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useMemo, useSyncExternalStore } from "react"
 
-const ROOM_DATA = {
-  "R201": {
-    id: "R201", floor: 2, floorName: "二楼东", type: "单人间",
-    beds: 1, occupied: 1,
-    facilities: ["空调", "独立卫浴", "紧急呼叫"],
-    status: "正常",
-    beds_info: [{ id: 1, elder: { name: "张桂英", id: "E001", careLevel: "特级护理", checkIn: "2022-03-15" }, status: "occupied" }],
-    clean_status: "已清洁",
-    last_clean: "2026-03-29 06:00",
-    next_clean: "2026-03-30 06:00",
-  },
-} as const
-
-type RoomDetail = (typeof ROOM_DATA)[keyof typeof ROOM_DATA]
-
-const TYPE_TAG: Record<string, TagVariant> = { "单人间": "info", "双人间": "primary", "VIP套房": "warning" }
+const TYPE_TAG: Record<string, TagVariant> = { "单人间": "info", "双人间": "primary", "护理间": "warning", "套间": "success" }
 
 export default function RoomDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: RoomDetail = id in ROOM_DATA ? ROOM_DATA[id as keyof typeof ROOM_DATA] : ROOM_DATA["R201"]
+  const snapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
+  const data = useMemo(
+    () => findLiveRoomById(id, snapshot) ?? snapshot.rooms[0],
+    [id, snapshot],
+  )
   const aiInsight = getRoomDetailAiInsight({
     id: data.id,
     type: data.type,
-    beds: data.beds,
+    beds: data.capacity,
     occupied: data.occupied,
     status: data.status,
-    cleanStatus: data.clean_status,
-    lastClean: data.last_clean,
-    nextClean: data.next_clean,
+    cleanStatus: data.cleanStatus,
+    lastClean: data.lastClean,
+    nextClean: data.nextClean,
     facilities: [...data.facilities],
-    bedOccupants: data.beds_info.map(item => ({ careLevel: item.elder?.careLevel, elderName: item.elder?.name })),
+    bedOccupants: data.bedsInfo.map(item => ({ careLevel: item.elder?.careLevel, elderName: item.elder?.name })),
   })
   const careInsight = getRoomCareActionInsight({
     id: data.id,
     type: data.type,
-    beds: data.beds,
+    beds: data.capacity,
     occupied: data.occupied,
     status: data.status,
-    cleanStatus: data.clean_status,
-    lastClean: data.last_clean,
-    nextClean: data.next_clean,
+    cleanStatus: data.cleanStatus,
+    lastClean: data.lastClean,
+    nextClean: data.nextClean,
     facilities: [...data.facilities],
-    bedOccupants: data.beds_info.map(item => ({ careLevel: item.elder?.careLevel, elderName: item.elder?.name })),
+    bedOccupants: data.bedsInfo.map(item => ({ careLevel: item.elder?.careLevel, elderName: item.elder?.name })),
   })
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
     source: 'room-detail',
@@ -70,17 +66,29 @@ export default function RoomDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.id}</h1>
               <Tag variant={TYPE_TAG[data.type]}>{data.type}</Tag>
-              <Tag variant="neutral">{data.status}</Tag>
+              <Tag variant={data.status === '已满' ? 'danger' : data.status === '可入住' ? 'success' : 'warning'}>{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               {data.floorName} · {data.facilities.join(" · ")}
             </p>
           </div>
         </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Edit size={14} />编辑房间
-        </button>
+        {data.lifecycleStatus === '待启用' ? (
+          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => activateRoomDraft(data.id)}>
+            <Edit size={14} />启用房间
+          </button>
+        ) : (
+            <button className="btn btn-primary btn-sm flex items-center gap-2">
+              <Edit size={14} />编辑房间
+            </button>
+        )}
       </div>
+
+      <DataCard title="房间状态" subtitle="新建房间先进入待启用，再纳入排房资源池。" badge={<Tag variant={data.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{data.lifecycleStatus}</Tag>}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+          {data.activationNote ?? '当前暂无额外说明。'}
+        </div>
+      </DataCard>
 
       <DataCard
         icon={<Bot size={16} />}
@@ -134,8 +142,8 @@ export default function RoomDetailPage() {
       <DataCard>
         <div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {[...Array(data.beds)].map((_, i) => {
-              const bed = data.beds_info[i]
+            {[...Array(data.capacity)].map((_, i) => {
+              const bed = data.bedsInfo[i]
               const isOccupied = bed?.status === "occupied"
               return (
                 <div key={i} style={{
@@ -178,9 +186,9 @@ export default function RoomDetailPage() {
               { label: "房间编号", value: data.id },
               { label: "楼层", value: data.floorName },
               { label: "房间类型", value: data.type },
-              { label: "床位数", value: `${data.beds}床` },
-              { label: "清洁状态", value: data.clean_status },
-              { label: "上次清洁", value: data.last_clean },
+              { label: "床位数", value: `${data.capacity}床` },
+              { label: "清洁状态", value: data.cleanStatus },
+              { label: "上次清洁", value: data.lastClean },
             ].map(({ label, value }) => (
               <div key={label}>
                 <div className="text-xs font-semibold" style={{ color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>

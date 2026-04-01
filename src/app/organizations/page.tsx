@@ -2,14 +2,29 @@
 
 import { DataCard, PageHeader, ProgressBar, StatCard, Tag } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { organizations, totalStats } from '@/lib/data'
 import { getOrganizationAiInsights, getOrganizationAiNarratives } from '@/lib/mock/admin-ai'
+import { activateOrganizationDraft, getMasterDataSnapshot, getOrganizationStats, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import { Bed, Bot, Building2, ChevronRight, MapPin, Phone, Users } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 export default function OrganizationsPage() {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'organizations-new'
+  const snapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
+  const organizations = snapshot.organizations
+  const totalStats = useMemo(() => getOrganizationStats(organizations), [organizations])
+  const [selectedId, setSelectedId] = useState<string | null>(preselectedId)
+  const selectedOrganization = useMemo(
+    () => organizations.find(item => item.id === selectedId) ?? organizations.find(item => item.id === preselectedId) ?? null,
+    [organizations, preselectedId, selectedId],
+  )
   const aiInsights = getOrganizationAiInsights(organizations)
   const aiNarratives = getOrganizationAiNarratives(organizations)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
@@ -30,7 +45,7 @@ export default function OrganizationsPage() {
         title="机构管理"
         subtitle={`共 ${organizations.length} 家连锁机构`}
         actions={
-          <button className="btn btn-primary btn-sm">新增机构</button>
+          <Link href="/organizations/new" className="btn btn-primary btn-sm">新增机构</Link>
         }
       />
 
@@ -40,6 +55,27 @@ export default function OrganizationsPage() {
         <StatCard icon={<Users size={18} />} label="入住人数" value={totalStats.totalElderly} color="success" />
         <StatCard icon={<Building2 size={18} />} label="平均入住率" value={`${totalStats.avgOccupancy}%`} color="warning" />
       </div>
+
+      {selectedOrganization && fromNew ? (
+        <DataCard
+          title="来自新增机构页"
+          subtitle={`${selectedOrganization.name} 已进入待启用闭环。完成复核后再纳入机构经营台账。`}
+          badge={<Tag variant={selectedOrganization.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{selectedOrganization.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前机构状态为 {selectedOrganization.status}，床位数 {selectedOrganization.totalBeds}，负责人 {selectedOrganization.manager}。
+            </div>
+            {selectedOrganization.lifecycleStatus === '待启用' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => activateOrganizationDraft(selectedOrganization.id)}>
+                启用机构
+              </button>
+            ) : (
+              <Link href={`/organizations/${selectedOrganization.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -109,6 +145,7 @@ export default function OrganizationsPage() {
               }
               badge={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Tag variant={org.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{org.lifecycleStatus}</Tag>
                   <ProgressBar
                     value={rate}
                     color={rate >= 90 ? 'danger' : rate >= 70 ? 'warning' : 'success'}
@@ -152,9 +189,16 @@ export default function OrganizationsPage() {
                     ))}
                   </div>
                   <div style={{ marginTop: 12 }}>
-                    <Link href={`/organizations/${org.id}`} className="btn btn-ghost btn-sm">
-                      查看详情 <ChevronRight size={12} />
-                    </Link>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {org.lifecycleStatus === '待启用' ? (
+                        <button className="btn btn-primary btn-sm" onClick={() => activateOrganizationDraft(org.id)}>
+                          启用机构
+                        </button>
+                      ) : null}
+                      <Link href={`/organizations/${org.id}`} className="btn btn-ghost btn-sm">
+                        查看详情 <ChevronRight size={12} />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               )}

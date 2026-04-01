@@ -1,73 +1,106 @@
-'use client'
+"use client"
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { getActivityStats, getOperationsSnapshot, publishActivityDraft, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
 import { CalendarHeart, ChevronRight, Clock, Plus, Search, Users } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
-
-const ACTIVITIES = [
-  { id: 'A001', name: '太极晨练', category: '运动健身', date: '2026-03-29', time: '07:00', duration: 60, participants: 28, capacity: 30, location: '院内花园', status: '进行中' },
-  { id: 'A002', name: '手工编织课', category: '文娱活动', date: '2026-03-29', time: '09:00', duration: 90, participants: 15, capacity: 20, location: '三楼活动室', status: '报名中' },
-  { id: 'A003', name: '健康讲座', category: '健康教育', date: '2026-03-29', time: '14:00', duration: 120, participants: 42, capacity: 50, location: '二楼会议室', status: '报名中' },
-  { id: 'A004', name: '棋牌活动', category: '文娱活动', date: '2026-03-28', time: '15:00', duration: 120, participants: 18, capacity: 20, location: '一楼棋牌室', status: '已完成' },
-  { id: 'A005', name: '生日会', category: '节日活动', date: '2026-03-30', time: '15:00', duration: 90, participants: 0, capacity: 60, location: '多功能厅', status: '报名中' },
-]
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = {
-  '进行中': 'success', '报名中': 'info', '已完成': 'neutral',
+  '待发布': 'warning',
+  '进行中': 'success',
+  '报名中': 'info',
+  '已完成': 'neutral',
 }
 
 export default function ActivitiesPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'activities-new'
+  const activities = useSyncExternalStore(
+    subscribeOperationsWorkflow,
+    () => getOperationsSnapshot().activities,
+    () => getOperationsSnapshot().activities,
+  )
   const [search, setSearch] = useState('')
-  const todayActs = ACTIVITIES.filter(a => a.date === '2026-03-29')
-  const inProgress = todayActs.filter(a => a.status === '进行中').length
-  const filtered = ACTIVITIES.filter(a => !search || a.name.includes(search))
+  const stats = useMemo(() => getActivityStats(activities), [activities])
+  const selectedActivity = useMemo(
+    () => activities.find(item => item.id === preselectedId) ?? null,
+    [activities, preselectedId],
+  )
+  const filtered = activities.filter(activity => {
+    if (!search) {
+      return true
+    }
+
+    return [activity.name, activity.id, activity.category, activity.location].some(field => field.includes(search))
+  })
 
   return (
     <div className="animate-fade-up">
 
       <PageHeader
         title="活动管理"
-        subtitle={`今日 ${todayActs.length} 场 · 共 ${ACTIVITIES.length} 项计划`}
+        subtitle={`今日 ${stats.todayCount} 场 · 共 ${stats.total} 项计划`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/activities/new" className="btn btn-primary btn-sm">
             <Plus size={14} />新建活动
-          </button>
+          </Link>
         }
       />
 
-      {/* Stat Cards Row */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard
           icon={<CalendarHeart size={18} />}
           label="今日活动"
-          value={todayActs.length}
+          value={stats.todayCount}
           sub="正在开展"
           color="primary"
         />
         <StatCard
           icon={<Users size={18} />}
           label="参与人次"
-          value={todayActs.reduce((s, a) => s + a.participants, 0)}
+          value={stats.todayParticipants}
           sub="今日累计"
           color="success"
         />
         <StatCard
           icon={<Clock size={18} />}
           label="进行中"
-          value={inProgress}
+          value={stats.inProgress}
           sub="正在开展"
           color="warning"
         />
         <StatCard
           icon={<CalendarHeart size={18} />}
-          label="本月场次"
-          value={38}
-          sub="已完成 32 场"
-          trend={{ value: '+6', direction: 'up' }}
-          color="purple"
+          label="待发布"
+          value={stats.pendingPublication}
+          sub="等待运营复核"
+          color="info"
         />
       </div>
+
+      {selectedActivity && fromNew ? (
+        <DataCard
+          title="来自新建活动页"
+          subtitle={`${selectedActivity.name} 已进入待发布闭环。确认排期和场地后再开放报名。`}
+          badge={<Tag variant={selectedActivity.lifecycleStatus === '待发布' ? 'warning' : 'success'}>{selectedActivity.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前计划安排在 {selectedActivity.date} {selectedActivity.time}，场地为 {selectedActivity.location}，负责人 {selectedActivity.teacher}。
+            </div>
+            {selectedActivity.lifecycleStatus === '待发布' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => publishActivityDraft(selectedActivity.id)}>
+                发布活动
+              </button>
+            ) : (
+              <Link href={`/activities/${selectedActivity.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <FilterBar>
         <FilterItem label="搜索">

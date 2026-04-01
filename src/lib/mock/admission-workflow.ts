@@ -147,6 +147,41 @@ export const EMPTY_FORM: AdmissionFormState = {
   riskNotes: '',
 }
 
+export function validateAdmissionForm(form: AdmissionFormState) {
+  if (
+    !form.name.trim()
+    || !form.age.trim()
+    || !form.gender
+    || !form.phone.trim()
+    || !form.emergency.trim()
+    || !form.room.trim()
+    || !form.adlScore.trim()
+    || !form.cognitiveLevel
+  ) {
+    return '请先补齐姓名、年龄、性别、联系电话、紧急联系人、房间、ADL 评分和认知状态。'
+  }
+
+  const age = Number(form.age)
+  if (Number.isNaN(age) || age < 55 || age > 120) {
+    return '年龄需填写为 55 到 120 岁之间的有效数字。'
+  }
+
+  const adlScore = Number(form.adlScore)
+  if (Number.isNaN(adlScore) || adlScore < 0 || adlScore > 100) {
+    return 'ADL 评分必须是 0 到 100 之间的有效数字。'
+  }
+
+  if (form.phone.trim().replace(/\D/g, '').length < 11) {
+    return '联系电话至少填写 11 位有效手机号。'
+  }
+
+  if (form.requestedLevel === '特级护理' && !form.riskNotes.trim()) {
+    return '特级护理申请请补充风险备注，便于护理主管复核。'
+  }
+
+  return ''
+}
+
 const STORAGE_KEY = 'nursing-admin-v2/admission-workflow'
 
 function splitList(value: string) {

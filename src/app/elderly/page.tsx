@@ -1,11 +1,12 @@
 'use client'
 
-import { EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
-import { elderlyList } from '@/lib/data'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
+import { buildLiveElderlyList } from '@/lib/mock/elderly-registry'
 import { ChevronRight, Home, UserPlus as NewUser, Plus, Search, UserCheck, UserPlus, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const LEVEL_TAG: Record<string, TagVariant> = {
   '特级护理': 'danger', '全护理': 'warning', '半自理': 'info', '自理': 'success',
@@ -16,13 +17,24 @@ const STATUS_TAG: Record<string, TagVariant> = {
 
 export default function ElderlyPage() {
   const router = useRouter()
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
 
-  const filtered = elderlyList.filter(e => {
+  const liveElderlyList = useMemo(() => buildLiveElderlyList(applications), [applications])
+  const pendingConfirmation = applications.filter(item => item.status === '待人工确认').length
+  const planGenerated = applications.filter(item => item.status === '计划已生成').length
+  const admittedCount = applications.filter(item => item.status === '已入住').length
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  const filtered = liveElderlyList.filter(e => {
     if (search && !e.name.includes(search) && !e.id.includes(search)) return false
     if (statusFilter && e.status !== statusFilter) return false
     if (levelFilter && e.careLevel !== levelFilter) return false
@@ -34,25 +46,25 @@ export default function ElderlyPage() {
 
   // Top stats
   const totalBeds = 360
-  const occupiedBeds = elderlyList.filter(e => e.status === '入住').length
+  const occupiedBeds = liveElderlyList.filter(e => e.status === '入住').length
   const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0
-  const critical = elderlyList.filter(e => e.careLevel === '特级护理').length
-  const newThisMonth = 2
+  const critical = liveElderlyList.filter(e => e.careLevel === '特级护理').length
+  const newThisMonth = applications.filter(item => item.createdAt.startsWith(currentMonth)).length
 
   return (
     <div className="animate-fade-up">
 
       <PageHeader
         title="老人列表"
-        subtitle={`共 ${elderlyList.length} 位老人登记在册`}
+        subtitle={`共 ${liveElderlyList.length} 位老人登记在册 · ${pendingConfirmation + planGenerated} 位处于新建闭环中`}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm">
-              <UserPlus size={13} />批量导入
-            </button>
-            <button className="btn btn-primary btn-sm">
+            <Link href="/elderly/checkin" className="btn btn-secondary btn-sm">
+              <UserPlus size={13} />入住审核 {pendingConfirmation + planGenerated > 0 ? `(${pendingConfirmation + planGenerated})` : ''}
+            </Link>
+            <Link href="/elderly/new" className="btn btn-primary btn-sm">
               <Plus size={13} />新增老人
-            </button>
+            </Link>
           </div>
         }
       />
@@ -69,7 +81,7 @@ export default function ElderlyPage() {
         <StatCard
           icon={<Users size={18} />}
           label="登记总数"
-          value={elderlyList.length}
+          value={liveElderlyList.length}
           color="success"
         />
         <StatCard
@@ -88,6 +100,26 @@ export default function ElderlyPage() {
           color="info"
         />
       </div>
+
+      <DataCard
+        title="新建数据闭环"
+        subtitle="首期先落地老人创建流程：从录入、审核到任务提醒和在住列表统一走同一条治理链路。"
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          {[
+            { title: '新建录入', value: applications.length, description: '录入后写入共享 workflow store' },
+            { title: '待人工确认', value: pendingConfirmation, description: '等待护理主管确认最终级别' },
+            { title: '计划已生成', value: planGenerated, description: '已同步任务页与提醒中心' },
+            { title: '已进入在住', value: admittedCount, description: '已可在老人列表和详情中追踪' },
+          ].map(item => (
+            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.title}</div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 700, color: 'var(--color-text)' }}>{item.value}</div>
+              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.description}</div>
+            </div>
+          ))}
+        </div>
+      </DataCard>
 
       <FilterBar>
         <FilterItem label="">

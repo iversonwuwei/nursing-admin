@@ -1,23 +1,99 @@
 "use client"
+
 import { DataCard, Tag } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
+import { elderlyList } from "@/lib/data"
 import { getElderDetailActionAiInsight } from "@/lib/mock/admin-ai"
+import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from "@/lib/mock/admission-workflow"
 import { getElderAiProfile } from "@/lib/mock/app-ai"
+import { findLiveElderlyById } from "@/lib/mock/elderly-registry"
 import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useMemo, useSyncExternalStore } from "react"
 
-const ELDER_DATA = {
-  "1": { id: "1", name: "张桂英", gender: "女", age: 82, idCard: "310***********1234", phone: "138****1234", roomNumber: "201-1", careLevel: "特级护理", checkInDate: "2022-03-15", birthday: "1942-08-15", emergencyContact: "张伟 139****1234", status: "入住", medicalHistory: ["高血压", "糖尿病"], allergies: ["青霉素"], habits: ["吸烟史10年"], height: 165, weight: 68 },
-  "E001": { id: "E001", name: "张桂英", gender: "女", age: 82, idCard: "310***********1234", phone: "138****1234", roomNumber: "201-1", careLevel: "特级护理", checkInDate: "2022-03-15", birthday: "1942-08-15", emergencyContact: "张伟 139****1234", status: "入住", medicalHistory: ["高血压", "糖尿病"], allergies: ["青霉素"], habits: ["吸烟史10年"], height: 165, weight: 68 },
-} as const
+type ElderDetail = {
+  id: string
+  name: string
+  gender: "男" | "女"
+  age: number
+  idCard: string
+  phone: string
+  roomNumber: string
+  careLevel: string
+  checkInDate: string
+  birthday: string
+  emergencyContact: string
+  status: "入住" | "离院" | "待入住"
+  medicalHistory: string[]
+  allergies: string[]
+  habits: string[]
+  height: number
+  weight: number
+}
 
-type ElderDetail = (typeof ELDER_DATA)[keyof typeof ELDER_DATA]
+function maskPhone(value: string) {
+  if (!value || value.startsWith('待补录') || value.includes('*')) {
+    return value || '待补录'
+  }
+
+  if (value.length < 7) {
+    return value
+  }
+
+  return `${value.slice(0, 3)}****${value.slice(-4)}`
+}
+
+function maskIdCard(value: string) {
+  if (!value || value.startsWith('待补录') || value.includes('*')) {
+    return value || '待补录'
+  }
+
+  if (value.length < 8) {
+    return value
+  }
+
+  return `${value.slice(0, 3)}***********${value.slice(-4)}`
+}
+
+function formatRoom(roomNumber: string, bedNumber: string) {
+  return bedNumber && bedNumber !== '-' ? `${roomNumber}-${bedNumber}` : roomNumber
+}
+
+function buildDetail(id: string, applications: ReturnType<typeof getAdmissionApplicationsSnapshot>): ElderDetail {
+  const fallback = elderlyList[0]
+  const record = findLiveElderlyById(id, applications) ?? fallback
+
+  return {
+    id: record.id,
+    name: record.name,
+    gender: record.gender,
+    age: record.age,
+    idCard: maskIdCard(record.idCard),
+    phone: maskPhone(record.phone),
+    roomNumber: formatRoom(record.roomNumber, record.bedNumber),
+    careLevel: record.careLevel,
+    checkInDate: record.checkInDate,
+    birthday: record.birthDate,
+    emergencyContact: `${record.emergencyContact} ${maskPhone(record.emergencyPhone)}`.trim(),
+    status: record.status,
+    medicalHistory: record.medicalHistory.length > 0 ? record.medicalHistory : ['待补录'],
+    allergies: record.allergies.length > 0 ? record.allergies : ['无'],
+    habits: record.remarks ? [record.remarks] : ['待补录'],
+    height: 165,
+    weight: 60,
+  }
+}
 
 export default function ElderlyDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: ElderDetail = id in ELDER_DATA ? ELDER_DATA[id as keyof typeof ELDER_DATA] : ELDER_DATA["E001"]
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
+  const data = useMemo(() => buildDetail(id, applications), [applications, id])
   const aiProfile = getElderAiProfile(data.id)
   const actionInsight = getElderDetailActionAiInsight({
     id: data.id,

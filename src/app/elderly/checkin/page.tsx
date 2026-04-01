@@ -16,6 +16,7 @@ import {
   getTaskStatusVariant,
   markAdmissionAsAdmitted,
   subscribeAdmissionWorkflow,
+  validateAdmissionForm,
   type AdmissionApplication,
   type AdmissionFormState,
   type CareLevel,
@@ -31,6 +32,7 @@ import {
   Shield,
   UserPlus,
 } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 
 type LoopStage = '待生成' | '待启动' | '执行中' | '已闭环'
@@ -115,12 +117,15 @@ function isBlockedOverdue(stage: LoopStage, isoOrDate?: string | null) {
 }
 
 export default function CheckinPage() {
+  const searchParams = useSearchParams()
+  const selectedFromQuery = searchParams.get('selected')
+  const selectedFromNew = searchParams.get('entry') === 'elderly-new'
   const applications = useSyncExternalStore(
     subscribeAdmissionWorkflow,
     getAdmissionApplicationsSnapshot,
     getAdmissionApplicationsSnapshot,
   )
-  const initialSelectedApplication = applications[0]
+  const initialSelectedApplication = applications.find(application => application.id === selectedFromQuery) ?? applications[0]
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [overdueOnly, setOverdueOnly] = useState(false)
@@ -133,8 +138,10 @@ export default function CheckinPage() {
   const [reviewNote, setReviewNote] = useState(initialSelectedApplication?.reviewNote ?? '')
 
   const selectedApplication = useMemo(
-    () => applications.find(application => application.id === selectedId) ?? applications[0],
-    [applications, selectedId],
+    () => applications.find(application => application.id === selectedId)
+      ?? applications.find(application => application.id === selectedFromQuery)
+      ?? applications[0],
+    [applications, selectedFromQuery, selectedId],
   )
 
   const stats = useMemo(() => ({
@@ -238,13 +245,9 @@ export default function CheckinPage() {
   }
 
   function handleCreateApplication() {
-    if (!form.name.trim() || !form.age.trim() || !form.gender || !form.room.trim() || !form.adlScore.trim() || !form.cognitiveLevel) {
-      setFormError('请先补齐姓名、年龄、性别、房间、ADL 评分和认知状态。')
-      return
-    }
-
-    if (Number.isNaN(Number(form.age)) || Number.isNaN(Number(form.adlScore))) {
-      setFormError('年龄和 ADL 评分必须是有效数字。')
+    const validationError = validateAdmissionForm(form)
+    if (validationError) {
+      setFormError(validationError)
       return
     }
 
@@ -309,6 +312,14 @@ export default function CheckinPage() {
         subtitle="面向护理主管的入住首条闭环，当前数据由共享 mock workflow service 承载。"
         badge={<Tag variant="info">Shared Mock Store</Tag>}
       >
+
+        {selectedFromNew && selectedApplication ? (
+          <DataCard
+            title="来自新增老人页"
+            subtitle={`已将 ${selectedApplication.name} 带入入住审核闭环。下一步请确认护理等级并生成计划。`}
+            badge={<Tag variant="success">New Entry Synced</Tag>}
+          />
+        ) : null}
         <div
           style={{
             display: 'grid',

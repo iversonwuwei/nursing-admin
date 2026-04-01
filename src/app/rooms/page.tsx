@@ -2,31 +2,35 @@
 
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { organizations } from '@/lib/data'
 import { getRoomAiInsights, getRoomAiNarratives } from '@/lib/mock/admin-ai'
+import { activateRoomDraft, getMasterDataSnapshot, getRoomStats, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import { Bot, ChevronRight, DoorOpen, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
-const ROOMS: Array<{
-  id: string; name: string; floor: number; type: string
-  capacity: number; occupied: number; status: string; org: string
-}> = [
-  { id: 'R001', name: '阳光单人间', floor: 2, type: '单人间', capacity: 1, occupied: 1, status: '已满', org: '静安分院' },
-  { id: 'R002', name: '温馨双人间', floor: 2, type: '双人间', capacity: 2, occupied: 1, status: '可入住', org: '静安分院' },
-  { id: 'R003', name: '豪华套房', floor: 3, type: '套间', capacity: 2, occupied: 0, status: '可入住', org: '静安分院' },
-  { id: 'R004', name: '标准双人间', floor: 2, type: '双人间', capacity: 2, occupied: 2, status: '已满', org: '浦东分院' },
-  { id: 'R005', name: '单人护理间', floor: 1, type: '护理间', capacity: 1, occupied: 1, status: '已满', org: '浦东分院' },
-]
-
-const STATUS_TAG: Record<string, TagVariant> = { '已满': 'danger', '可入住': 'success', '维护中': 'warning' }
+const STATUS_TAG: Record<string, TagVariant> = { '已满': 'danger', '可入住': 'success', '维护中': 'warning', '待启用': 'warning' }
 
 export default function RoomsPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'rooms-new'
+  const snapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
+  const rooms = snapshot.rooms
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
-  const aiInsights = getRoomAiInsights(ROOMS)
-  const aiNarratives = getRoomAiNarratives(ROOMS)
+  const selectedRoom = useMemo(
+    () => rooms.find(item => item.id === preselectedId) ?? null,
+    [preselectedId, rooms],
+  )
+  const aiInsights = getRoomAiInsights(rooms)
+  const aiNarratives = getRoomAiNarratives(rooms)
+  const stats = useMemo(() => getRoomStats(rooms), [rooms])
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'rooms-list',
     entityId: 'room-board',
@@ -34,31 +38,49 @@ export default function RoomsPage() {
     focus,
     target,
   })
-  const filtered = ROOMS.filter(r => !search || r.name.includes(search))
+  const filtered = rooms.filter(r => !search || r.name.includes(search) || r.id.includes(search))
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
-  const totalBeds = ROOMS.reduce((s, r) => s + r.capacity, 0)
-  const occupied = ROOMS.reduce((s, r) => s + r.occupied, 0)
-  const occupancy = Math.round((occupied / totalBeds) * 100)
 
   return (
     <div className="animate-fade-up">
 
       <PageHeader
         title="房间管理"
-        subtitle={`共 ${ROOMS.length} 间房间 · ${organizations.length} 家分院`}
+        subtitle={`共 ${rooms.length} 间房间 · ${snapshot.organizations.length} 家分院`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/rooms/new" className="btn btn-primary btn-sm">
             <Plus size={13} />新增房间
-          </button>
+          </Link>
         }
       />
 
       <div className="kpi-grid">
-        <StatCard icon={<DoorOpen size={18} />} label="房间总数" value={ROOMS.length} color="primary" />
-        <StatCard icon={<DoorOpen size={18} />} label="总床位数" value={totalBeds} sub={`已入住 ${occupied}`} color="info" />
-        <StatCard icon={<DoorOpen size={18} />} label="入住率" value={`${occupancy}%`} sub="整体床位使用" color="success" />
-        <StatCard icon={<DoorOpen size={18} />} label="可入住" value={ROOMS.filter(r => r.status === '可入住').length} sub="房间可立即入住" color="warning" />
+        <StatCard icon={<DoorOpen size={18} />} label="房间总数" value={stats.totalRooms} color="primary" />
+        <StatCard icon={<DoorOpen size={18} />} label="总床位数" value={stats.totalBeds} sub={`已入住 ${stats.occupied}`} color="info" />
+        <StatCard icon={<DoorOpen size={18} />} label="入住率" value={`${stats.occupancy}%`} sub="整体床位使用" color="success" />
+        <StatCard icon={<DoorOpen size={18} />} label="可入住" value={stats.availableRooms} sub={`待启用 ${stats.pendingActivation} 间`} color="warning" />
       </div>
+
+      {selectedRoom && fromNew ? (
+        <DataCard
+          title="来自新增房间页"
+          subtitle={`${selectedRoom.id} 已进入待启用闭环。复核后才会进入可排房资源池。`}
+          badge={<Tag variant={selectedRoom.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{selectedRoom.lifecycleStatus}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前房型 {selectedRoom.type}，床位 {selectedRoom.capacity}，所属机构 {selectedRoom.org}。
+            </div>
+            {selectedRoom.lifecycleStatus === '待启用' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => activateRoomDraft(selectedRoom.id)}>
+                启用房间
+              </button>
+            ) : (
+              <Link href={`/rooms/${selectedRoom.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -180,9 +202,16 @@ export default function RoomsPage() {
                   </td>
                   <td><Tag variant={STATUS_TAG[r.status]}>{r.status}</Tag></td>
                   <td style={{ textAlign: 'right' }}>
-                    <Link href={`/rooms/${r.id}`} className="btn btn-ghost btn-sm">
-                      查看 <ChevronRight size={12} />
-                    </Link>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+                      {r.lifecycleStatus === '待启用' ? (
+                        <button className="btn btn-primary btn-sm" onClick={() => activateRoomDraft(r.id)}>
+                          启用
+                        </button>
+                      ) : null}
+                      <Link href={`/rooms/${r.id}`} className="btn btn-ghost btn-sm">
+                        查看 <ChevronRight size={12} />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

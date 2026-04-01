@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3002',
     trace: 'on-first-retry',
   },
   projects: [
@@ -17,8 +17,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'AUTH_SECRET=playwright-smoke-secret AUTH_TRUST_HOST=true NEXTAUTH_URL=http://localhost:3000 npm run dev',
-    url: 'http://localhost:3000',
+    command: 'AUTH_SECRET=playwright-smoke-secret AUTH_TRUST_HOST=true NEXTAUTH_URL=http://localhost:3002 npm run dev -- --port 3002',
+    url: 'http://localhost:3002',
     reuseExistingServer: true,
     timeout: 120000,
   },

@@ -1,20 +1,31 @@
 "use client"
-import { StatCard } from "@/components/nh/StatCard"
-import { ArrowLeft, Edit } from "lucide-react"
-import Link from "next/link"
-import { useParams } from "next/navigation"
 
-const ACTIVITY_DATA = {
-  "A001": { id: "A001", name: "太极晨练", category: "运动健身", date: "2026-03-29", time: "07:00", duration: 60, participants: 28, capacity: 30, location: "院内花园", status: "进行中", teacher: "李老师", desc: "每日早晨在花园进行太极拳锻炼，助于老人舒筋活络、修身养性。" },
-  "A002": { id: "A002", name: "手工编织课", category: "文娱活动", date: "2026-03-29", time: "09:00", duration: 90, participants: 15, capacity: 20, location: "三楼活动室", status: "报名中", teacher: "王老师", desc: "教老人制作简单编织品，锻炼手部精细动作，丰富业余生活。" },
-} as const
+import { DataCard, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { findLiveActivityById, getOperationsSnapshot, publishActivityDraft, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { ArrowLeft, Edit } from 'lucide-react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useMemo, useSyncExternalStore } from 'react'
 
-type ActivityDetail = (typeof ACTIVITY_DATA)[keyof typeof ACTIVITY_DATA]
+const STATUS_TAG: Record<string, TagVariant> = {
+  '待发布': 'warning',
+  '报名中': 'info',
+  '进行中': 'success',
+  '已完成': 'neutral',
+}
 
 export default function ActivityDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: ActivityDetail = id in ACTIVITY_DATA ? ACTIVITY_DATA[id as keyof typeof ACTIVITY_DATA] : ACTIVITY_DATA["A001"]
+  const activities = useSyncExternalStore(
+    subscribeOperationsWorkflow,
+    () => getOperationsSnapshot().activities,
+    () => getOperationsSnapshot().activities,
+  )
+  const data = useMemo(
+    () => findLiveActivityById(id, getOperationsSnapshot()) ?? activities[0],
+    [activities, id],
+  )
 
   return (
     <div className="page-root animate-fade-up">
@@ -28,17 +39,29 @@ export default function ActivityDetailPage() {
             <div className="page-subtitle">{data.date} {data.time} · {data.location}</div>
           </div>
         </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Edit size={13} />编辑活动
-        </button>
+        {data.lifecycleStatus === '待发布' ? (
+          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => publishActivityDraft(data.id)}>
+            <Edit size={13} />发布活动
+          </button>
+        ) : (
+            <button className="btn btn-primary btn-sm flex items-center gap-2">
+              <Edit size={13} />编辑活动
+            </button>
+        )}
       </div>
 
       <div className="kpi-grid">
         <StatCard label="参与人数" value={`${data.participants}/${data.capacity}`} sub="报名/容量" color="primary" />
         <StatCard label="活动时长" value={`${data.duration}分钟`} color="info" />
         <StatCard label="负责老师" value={data.teacher} color="purple" />
-        <StatCard label="状态" value={data.status} color={data.status === "进行中" ? "success" : data.status === "报名中" ? "warning" : "info"} />
+        <StatCard label="状态" value={data.status} color={data.status === '进行中' ? 'success' : data.status === '报名中' ? 'warning' : data.status === '待发布' ? 'info' : 'purple'} />
       </div>
+
+      <DataCard title="活动状态" subtitle="新增活动先进入待发布，再开放报名和执行。" badge={<Tag variant={data.lifecycleStatus === '待发布' ? 'warning' : 'success'}>{data.lifecycleStatus}</Tag>}>
+        <div className="text-sm text-muted" style={{ lineHeight: 1.7 }}>
+          {data.publishNote ?? '当前暂无额外说明。'}
+        </div>
+      </DataCard>
 
       <div className="card">
         <div className="card-header">
@@ -46,6 +69,11 @@ export default function ActivityDetailPage() {
         </div>
         <div className="card-body">
           <p className="text-sm text-muted" style={{ lineHeight: 1.7 }}>{data.desc}</p>
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
+            <span className="text-xs" style={{ color: 'var(--color-muted)' }}>创建于 {data.createdAt}</span>
+            {data.publishedAt ? <span className="text-xs" style={{ color: 'var(--color-muted)' }}>发布于 {data.publishedAt}</span> : null}
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12, marginTop: 16 }}>
             {[
               { label: "活动类型", value: data.category },

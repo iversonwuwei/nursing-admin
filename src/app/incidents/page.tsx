@@ -1,29 +1,41 @@
-'use client'
+"use client"
 
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getIncidentListAiInsights, getIncidentListNarratives } from '@/lib/mock/admin-ai'
+import { getIncidentStats, getOperationsSnapshot, startIncidentHandling, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
 import { AlertTriangle, Bot, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
-
-const INCIDENTS = [
-  { id: 'I001', title: '老人摔倒', level: '严重', elder: '张桂英', room: '201-1', time: '2026-03-28 16:30', status: '处理中', desc: '如厕时不慎摔倒，右臂擦伤，已送医处理' },
-  { id: 'I002', title: '设备故障', level: '一般', elder: null, room: '三楼走廊', time: '2026-03-27 09:15', status: '已结案', desc: '三楼走廊照明灯故障，后勤当日修复' },
-  { id: 'I003', title: '老人走失', level: '严重', elder: '王建国', room: '203-2', time: '2026-03-26 14:00', status: '已结案', desc: '私自外出，30分钟后在附近公园找到' },
-  { id: 'I004', title: '食物过敏', level: '轻微', elder: '李秀兰', room: '205-1', time: '2026-03-25 12:00', status: '已结案', desc: '午餐后出现皮疹，医务室处理后好转' },
-]
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const LEVEL_TAG: Record<string, TagVariant> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
-const STATUS_TAG: Record<string, TagVariant> = { '处理中': 'warning', '已结案': 'success' }
+const STATUS_TAG: Record<string, TagVariant> = { '待分派': 'info', '处理中': 'warning', '已结案': 'success' }
 
 export default function IncidentsPage() {
+  const searchParams = useSearchParams()
+  const preselectedId = searchParams.get('selected')
+  const fromNew = searchParams.get('entry') === 'incidents-new'
+  const incidents = useSyncExternalStore(
+    subscribeOperationsWorkflow,
+    () => getOperationsSnapshot().incidents,
+    () => getOperationsSnapshot().incidents,
+  )
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
-  const aiInsights = getIncidentListAiInsights(INCIDENTS)
-  const aiNarratives = getIncidentListNarratives(INCIDENTS)
+  const selectedIncident = useMemo(
+    () => incidents.find(item => item.id === preselectedId) ?? null,
+    [incidents, preselectedId],
+  )
+  const stats = useMemo(() => getIncidentStats(incidents), [incidents])
+  const aiIncidents = useMemo(
+    () => incidents.map(item => item.status === '待分派' ? { ...item, status: '处理中' } : item),
+    [incidents],
+  )
+  const aiInsights = getIncidentListAiInsights(aiIncidents)
+  const aiNarratives = getIncidentListNarratives(aiIncidents)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'incidents-list',
     entityId: 'incident-board',
@@ -32,9 +44,9 @@ export default function IncidentsPage() {
     target,
   })
 
-  const filtered = INCIDENTS.filter(i => {
-    if (search && !i.title.includes(search) && !i.id.includes(search)) return false
-    if (levelFilter && i.level !== levelFilter) return false
+  const filtered = incidents.filter(incident => {
+    if (search && ![incident.title, incident.id, incident.room, incident.reporter, incident.elder ?? ''].some(field => field.includes(search))) return false
+    if (levelFilter && incident.level !== levelFilter) return false
     return true
   })
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -44,20 +56,41 @@ export default function IncidentsPage() {
 
       <PageHeader
         title="事故报告"
-        subtitle={`共 ${INCIDENTS.length} 条记录 · ${INCIDENTS.filter(i => i.status === '处理中').length} 条处理中`}
+        subtitle={`共 ${stats.total} 条记录 · ${stats.pending} 条待分派 · ${stats.processing} 条处理中`}
         actions={
-          <button className="btn btn-primary btn-sm">
+          <Link href="/incidents/new" className="btn btn-primary btn-sm">
             <Plus size={13} />新增报告
-          </button>
+          </Link>
         }
       />
 
       <div className="kpi-grid">
-        <StatCard icon={<ShieldAlert size={18} />} label="事故总数" value={INCIDENTS.length} color="primary" />
-        <StatCard icon={<AlertTriangle size={18} />} label="严重事故" value={INCIDENTS.filter(i => i.level === '严重').length} color="danger" />
-        <StatCard icon={<ShieldAlert size={18} />} label="处理中" value={INCIDENTS.filter(i => i.status === '处理中').length} sub="需立即处理" color="warning" />
-        <StatCard icon={<ShieldAlert size={18} />} label="本月结案" value={INCIDENTS.filter(i => i.status === '已结案').length} color="success" />
+        <StatCard icon={<ShieldAlert size={18} />} label="事故总数" value={stats.total} color="primary" />
+        <StatCard icon={<AlertTriangle size={18} />} label="严重事故" value={stats.severe} color="danger" />
+        <StatCard icon={<ShieldAlert size={18} />} label="待分派" value={stats.pending} sub="等待值班主管接单" color="info" />
+        <StatCard icon={<ShieldAlert size={18} />} label="处理中" value={stats.processing} sub="需立即处理" color="warning" />
       </div>
+
+      {selectedIncident && fromNew ? (
+        <DataCard
+          title="来自新增报告页"
+          subtitle={`${selectedIncident.title} 已进入待分派闭环。请尽快指定责任人并启动处置。`}
+          badge={<Tag variant={STATUS_TAG[selectedIncident.status]}>{selectedIncident.status}</Tag>}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前级别 {selectedIncident.level}，地点 {selectedIncident.room}，报告人 {selectedIncident.reporter}（{selectedIncident.reporterRole}）。
+            </div>
+            {selectedIncident.status === '待分派' ? (
+              <button className="btn btn-primary btn-sm" onClick={() => startIncidentHandling(selectedIncident.id)}>
+                开始处置
+              </button>
+            ) : (
+              <Link href={`/incidents/${selectedIncident.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
+            )}
+          </div>
+        </DataCard>
+      ) : null}
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard

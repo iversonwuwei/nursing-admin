@@ -1,43 +1,16 @@
 "use client"
-import { DataCard, Tag, type TagVariant } from "@/components/nh"
-import { buildAiAssistantHref } from "@/lib/ai-context"
-import { getIncidentAiInsight, getIncidentFollowupInsight } from "@/lib/mock/admin-ai"
-import { ArrowLeft, Bot, Edit } from "lucide-react"
-import Link from "next/link"
-import { useParams } from "next/navigation"
-import { useState } from "react"
 
-const INCIDENT_DATA = {
-  "I001": {
-    id: "I001", title: "老人摔倒", level: "严重", elder: "张桂英", room: "201-1",
-    reporter: "刘建国", reporterRole: "护工", time: "2026-03-28 16:30",
-    status: "处理中", desc: "老人在如厕时不慎摔倒，右臂有擦伤，血压偏高。发现后立即通知医护，已送医处理，X光显示无骨折。",
-    handling: ["发现后立即通知医护", "已送至仁济医院急诊", "联系家属告知情况", "安排24小时特护"],
-    nextStep: "持续观察，3天后复诊",
-    attachments: ["现场照片.jpg", "病历卡扫描件.pdf"],
-  },
-  "I002": {
-    id: "I002", title: "设备故障", level: "一般", elder: null, room: "三楼走廊",
-    reporter: "赵晓敏", reporterRole: "护士", time: "2026-03-27 09:15",
-    status: "已结案", desc: "三楼走廊照明灯故障，影响夜间巡查。已联系后勤维修，当日下午修复完成。",
-    handling: ["联系后勤部门报修", "临时增加手电筒照明", "后勤维修人员当天修复", "验收确认恢复正常"],
-    nextStep: null,
-    attachments: ["故障现场.jpg"],
-  },
-  "I003": {
-    id: "I003", title: "老人走失", level: "严重", elder: "王建国", room: "203-2",
-    reporter: "陈美华", reporterRole: "护士长", time: "2026-03-26 14:00",
-    status: "已结案", desc: "老人趁午休时间私自外出，14:00被发现不在房间。启动应急预案，30分钟后在附近公园找到，老人安全。",
-    handling: ["14:05启动走失应急预案", "联系家属确认老人去向", "调取监控确认外出方向", "30分钟后在公园找到"],
-    nextStep: "加强门禁管理，增设离院报警",
-    attachments: ["监控截图.jpg", "找回照片.jpg"],
-  },
-} as const
+import { DataCard, Tag, type TagVariant } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getIncidentAiInsight, getIncidentFollowupInsight } from '@/lib/mock/admin-ai'
+import { closeIncident, findLiveIncidentById, getOperationsSnapshot, startIncidentHandling, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { ArrowLeft, Bot, Edit } from 'lucide-react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
-type IncidentDetail = (typeof INCIDENT_DATA)[keyof typeof INCIDENT_DATA]
-
-const LEVEL_TAG: Record<string, TagVariant> = { "严重": "danger", "一般": "warning", "轻微": "info" }
-const STATUS_TAG: Record<string, TagVariant> = { "处理中": "warning", "已结案": "success" }
+const LEVEL_TAG: Record<string, TagVariant> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
+const STATUS_TAG: Record<string, TagVariant> = { '待分派': 'info', '处理中': 'warning', '已结案': 'success' }
 
 const TABS = [
   { id: "info", label: "事故信息" },
@@ -48,9 +21,18 @@ const TABS = [
 export default function IncidentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const data: IncidentDetail = id in INCIDENT_DATA ? INCIDENT_DATA[id as keyof typeof INCIDENT_DATA] : INCIDENT_DATA["I001"]
+  const incidents = useSyncExternalStore(
+    subscribeOperationsWorkflow,
+    () => getOperationsSnapshot().incidents,
+    () => getOperationsSnapshot().incidents,
+  )
+  const data = useMemo(
+    () => findLiveIncidentById(id, getOperationsSnapshot()) ?? incidents[0],
+    [id, incidents],
+  )
   const incidentAiInput = {
     ...data,
+    status: data.status === '待分派' ? '处理中' : data.status,
     handling: [...data.handling],
     attachments: [...data.attachments],
   }
@@ -84,11 +66,27 @@ export default function IncidentDetailPage() {
         <div className="flex items-center gap-2">
           <Tag variant={LEVEL_TAG[data.level]}>{data.level}</Tag>
           <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
-          <button className="btn btn-primary btn-sm flex items-center gap-2">
-            <Edit size={14} />编辑
-          </button>
+          {data.status === '待分派' ? (
+            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => startIncidentHandling(data.id)}>
+              <Edit size={14} />开始处置
+            </button>
+          ) : data.status === '处理中' ? (
+            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => closeIncident(data.id)}>
+              <Edit size={14} />申请结案
+            </button>
+          ) : (
+                <button className="btn btn-primary btn-sm flex items-center gap-2">
+                  <Edit size={14} />编辑
+                </button>
+          )}
         </div>
       </div>
+
+      <DataCard title="事件状态" subtitle="新增事件先进入待分派，再由值班主管推进处置与结案。" badge={<Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+          {data.statusNote ?? '当前暂无额外说明。'}
+        </div>
+      </DataCard>
 
       <DataCard
         icon={<Bot size={16} />}
@@ -226,12 +224,15 @@ export default function IncidentDetailPage() {
                 ))}
               </div>
               <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }}>更新处理进度</button>
+                {data.status === '待分派' ? (
+                  <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={() => startIncidentHandling(data.id)}>开始处置</button>
+                ) : data.status === '处理中' ? (
+                  <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={() => closeIncident(data.id)}>申请结案</button>
+                ) : (
+                  <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }}>查看结案记录</button>
+                )}
                 <button className="btn btn-secondary btn-sm" style={{ width: "fit-content" }}>通知家属</button>
                 <button className="btn btn-secondary btn-sm" style={{ width: "fit-content" }}>打印事故报告</button>
-                {data.status === "处理中" && (
-                  <button className="btn btn-danger btn-sm" style={{ width: "fit-content" }}>申请结案</button>
-                )}
               </div>
             </div>
           </div>

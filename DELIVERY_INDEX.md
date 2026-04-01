@@ -18,12 +18,12 @@ This file is the thin local delivery entry for nursing-admin-v2. Canonical route
 - Cross-project templates still live in nursing-documents/templates/
 - Route-level delivery note正文已迁移到 nursing-documents/docs/ui/admin-delivery/
 - This repo can use the local frontend template before changing dashboards, filters, lists, forms, route handlers, or server-side data loading
-- Route-level smoke automation is now available via `npm run test:smoke`, and the stronger end-to-end gate is available via `npm run verify:smoke`, for root, login, equipment and devices status compatibility, AI assistant context flow, health compatibility plus metric routing, and analytics alias plus report switching
+- Route-level smoke automation is now available via `npm run test:smoke`, and the stronger end-to-end gate is available via `npm run verify:smoke`, for root, login, equipment and devices status compatibility, AI assistant context flow, health compatibility plus metric routing, analytics alias plus report switching, the elderly create loop, and master-data route stability across rooms and organizations
 - Full route-level history and batch grouping are now maintained in the canonical archive instead of this repo root.
 
 ## Suggested Next Delivery Units
 
-- Expand smoke automation beyond the current governed slice into elderly create, edit, or checkin workflow routes
+- Expand smoke automation beyond the current governed slice into activities or incidents create-loop routes
 - Add a second route batch for equipment detail or monitor behavior once stable selectors are available
 - If admin behavior work starts, add npm run build as the default stronger gate for newly governed routes
 - If test infrastructure is introduced later, map checklist items to automated route coverage instead of replacing delivery notes
