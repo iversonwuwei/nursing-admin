@@ -1,5 +1,4 @@
 "use client"
-import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getSupplyDetailAiInsight, getSupplyProcurementInsight } from "@/lib/mock/admin-ai"
@@ -7,6 +6,7 @@ import { findLiveSupplyById, getResourceSnapshot, subscribeResourceWorkflow } fr
 import { ArrowLeft, Bot, Edit, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useMemo, useSyncExternalStore } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { "正常": "success", "库存不足": "danger", "待上架": "warning" }
 

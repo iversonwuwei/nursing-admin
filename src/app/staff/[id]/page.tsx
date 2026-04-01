@@ -1,5 +1,4 @@
 "use client"
-import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getStaffDetailActionAiInsight } from "@/lib/mock/admin-ai"
@@ -8,6 +7,7 @@ import { findLiveStaffById, getResourceSnapshot, subscribeResourceWorkflow } fro
 import { ArrowLeft, Bot, Edit } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useMemo, useSyncExternalStore } from 'react'
 
 const ROLE_TAG: Record<string, TagVariant> = { "护理主管": "primary", "护士": "info", "后勤主管": "warning", "心理咨询师": "purple", "厨师长": "neutral" }
 

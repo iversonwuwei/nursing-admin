@@ -1,12 +1,12 @@
 'use client'
 
+import { DataCard } from '@/components/nh'
+import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
+import { addEquipmentDraft, EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentCreateFormState } from '@/lib/mock/resource-workflow'
+import { AlertCircle, ArrowLeft, ClipboardCheck, Monitor, Save, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useSyncExternalStore } from 'react'
-import { DataCard } from '@/components/nh'
-import { addEquipmentDraft, EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentCreateFormState } from '@/lib/mock/resource-workflow'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import { AlertCircle, ArrowLeft, ClipboardCheck, Monitor, Save, ShieldCheck } from 'lucide-react'
 
 const inputClass = 'input'
 

@@ -1,12 +1,12 @@
 'use client'
 
+import { DataCard } from '@/components/nh'
+import { elderlyList } from '@/lib/data'
+import { addVitalsEntry, EMPTY_VITALS_FORM, validateVitalsForm, type VitalsCreateFormState } from '@/lib/mock/care-service-workflow'
+import { Activity, AlertCircle, ArrowLeft, Save } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { type FormEvent, useState } from 'react'
-import { elderlyList } from '@/lib/data'
-import { DataCard } from '@/components/nh'
-import { addVitalsEntry, EMPTY_VITALS_FORM, type VitalsCreateFormState, validateVitalsForm } from '@/lib/mock/care-service-workflow'
-import { Activity, AlertCircle, ArrowLeft, Save } from 'lucide-react'
 
 const inputClass = 'input'
 

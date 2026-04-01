@@ -1,5 +1,4 @@
 "use client"
-import { useMemo, useSyncExternalStore } from 'react'
 import { DataCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getEquipmentDetailAiInsight, getEquipmentMaintenanceNarratives } from "@/lib/mock/admin-ai"
@@ -7,6 +6,7 @@ import { findLiveEquipmentById, getResourceSnapshot, subscribeResourceWorkflow }
 import { ArrowLeft, Bot, Edit, Monitor } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useMemo, useSyncExternalStore } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { '正常': 'success', '待维修': 'warning', '维修中': 'warning', '已报废': 'danger' }
 

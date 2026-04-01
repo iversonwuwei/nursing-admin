@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getStaffAiInsights, getStaffAiNarratives } from '@/lib/mock/admin-ai'
 import { confirmStaffOnboarding, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { Bot, Plus, Search, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const ROLE_TAG: Record<string, TagVariant> = {
   '护理主管': 'primary', '护士': 'info', '后勤主管': 'warning',

@@ -1,7 +1,5 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { equipmentAlarms } from '@/lib/data'
@@ -9,6 +7,8 @@ import { getEquipmentListAiInsights, getEquipmentListAiNarratives } from '@/lib/
 import { confirmEquipmentAcceptance, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { AlertTriangle, Bot, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const CATEGORY_TAG: Record<string, TagVariant> = {
   '医疗设备': 'info', '康复设备': 'warning', '生活设备': 'primary', '智能设备': 'purple',

@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getSupplyAiInsights, getSupplyAiNarratives } from '@/lib/mock/admin-ai'
 import { confirmSupplyStocking, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { AlertTriangle, Bot, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { '库存不足': 'danger', '正常': 'success', '待上架': 'warning' }
 const CAT_TAG: Record<string, TagVariant> = { '护理用品': 'primary', '防护用品': 'warning', '消毒用品': 'info', '医疗用品': 'purple' }

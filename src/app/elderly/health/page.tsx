@@ -1,11 +1,11 @@
 "use client"
 import { DataCard, Tag } from "@/components/nh"
 import { getHealthArchiveAiInsights, getMedicationAiSummary } from "@/lib/mock/admin-ai"
-import { useMemo, useState, useSyncExternalStore } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { confirmHealthArchive, getCareServiceSnapshot, subscribeCareServiceWorkflow } from '@/lib/mock/care-service-workflow'
 import { Activity, AlertCircle, Bot, FileHeart, Heart, Pill, Plus, Search, Stethoscope } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from 'next/navigation'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const MEDICATIONS = [
   { name: "硝苯地平缓释片", dose: "20mg × 2次/日", patient: "张桂英", nextTime: "08:00", status: "待服用" },
