@@ -8,6 +8,7 @@ import {
   confirmAdmissionPlan,
   EMPTY_FORM,
   getAdmissionApplicationsSnapshot,
+  getAdmissionSourceLabel,
   getLevelVariant,
   getReminderItems,
   getReminderStatusVariant,
@@ -120,6 +121,7 @@ export default function CheckinPage() {
   const searchParams = useSearchParams()
   const selectedFromQuery = searchParams.get('selected')
   const selectedFromNew = searchParams.get('entry') === 'elderly-new'
+  const selectedFromImport = searchParams.get('entry') === 'elderly-import'
   const applications = useSyncExternalStore(
     subscribeAdmissionWorkflow,
     getAdmissionApplicationsSnapshot,
@@ -320,6 +322,13 @@ export default function CheckinPage() {
             badge={<Tag variant="success">New Entry Synced</Tag>}
           />
         ) : null}
+        {selectedFromImport && selectedApplication ? (
+          <DataCard
+            title="来自资料导入页"
+            subtitle={`已将 ${selectedApplication.name} 的资料识别草稿带入入住审核。下一步请复核字段并确认护理等级。`}
+            badge={<Tag variant="primary">Import Synced</Tag>}
+          />
+        ) : null}
         <div
           style={{
             display: 'grid',
@@ -503,7 +512,10 @@ export default function CheckinPage() {
                         <div className="avatar avatar-sm">{application.name.slice(0, 1)}</div>
                         <div>
                           <div className="font-semibold" style={{ fontSize: 14 }}>{application.name}</div>
-                          <div className="text-xs" style={{ color: 'var(--color-muted)' }}>{application.id} · {application.gender} · {application.age}岁</div>
+                          <div className="text-xs" style={{ color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span>{application.id} · {application.gender} · {application.age}岁</span>
+                            <Tag variant={application.sourceType === 'document-import' ? 'primary' : 'neutral'}>{getAdmissionSourceLabel(application.sourceType)}</Tag>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -604,6 +616,7 @@ export default function CheckinPage() {
               </div>
 
               <div>
+                <div className="info-row"><span className="info-label">录入来源</span><span className="info-value">{selectedApplication.sourceLabel ?? getAdmissionSourceLabel(selectedApplication.sourceType)}</span></div>
                 <div className="info-row"><span className="info-label">申请护理等级</span><span className="info-value">{selectedApplication.requestedLevel}</span></div>
                 <div className="info-row"><span className="info-label">ADL / 认知状态</span><span className="info-value">{selectedApplication.adlScore} / {selectedApplication.cognitiveLevel}</span></div>
                 <div className="info-row"><span className="info-label">慢病数量</span><span className="info-value">{selectedApplication.chronicConditions.split(/[，,、\n]/).filter(Boolean).length || 0} 项</span></div>
@@ -759,6 +772,9 @@ export default function CheckinPage() {
 
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>结构化输入摘要</div>
+                {selectedApplication.sourceDocumentNames?.length ? (
+                  <div className="info-row"><span className="info-label">导入资料</span><span className="info-value">{selectedApplication.sourceDocumentNames.join('、')}</span></div>
+                ) : null}
                 <div className="info-row"><span className="info-label">慢病与病史</span><span className="info-value">{selectedApplication.chronicConditions || '未填写'}</span></div>
                 <div className="info-row"><span className="info-label">长期用药</span><span className="info-value">{selectedApplication.medicationSummary || '未填写'}</span></div>
                 <div className="info-row"><span className="info-label">过敏史</span><span className="info-value">{selectedApplication.allergySummary || '无'}</span></div>

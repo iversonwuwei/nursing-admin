@@ -3,7 +3,7 @@
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
 import { buildLiveElderlyList } from '@/lib/mock/elderly-registry'
-import { ChevronRight, Home, UserPlus as NewUser, Plus, Search, UserCheck, UserPlus, Users } from 'lucide-react'
+import { ChevronRight, FileUp, Home, UserPlus as NewUser, Plus, Search, UserCheck, UserPlus, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useSyncExternalStore } from 'react'
@@ -31,7 +31,6 @@ export default function ElderlyPage() {
   const liveElderlyList = useMemo(() => buildLiveElderlyList(applications), [applications])
   const pendingConfirmation = applications.filter(item => item.status === '待人工确认').length
   const planGenerated = applications.filter(item => item.status === '计划已生成').length
-  const admittedCount = applications.filter(item => item.status === '已入住').length
   const currentMonth = new Date().toISOString().slice(0, 7)
 
   const filtered = liveElderlyList.filter(e => {
@@ -61,6 +60,9 @@ export default function ElderlyPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Link href="/elderly/checkin" className="btn btn-secondary btn-sm">
               <UserPlus size={13} />入住审核 {pendingConfirmation + planGenerated > 0 ? `(${pendingConfirmation + planGenerated})` : ''}
+            </Link>
+            <Link href="/elderly/import" className="btn btn-secondary btn-sm">
+              <FileUp size={13} />资料导入
             </Link>
             <Link href="/elderly/new" className="btn btn-primary btn-sm">
               <Plus size={13} />新增老人
@@ -103,14 +105,14 @@ export default function ElderlyPage() {
 
       <DataCard
         title="新建数据闭环"
-        subtitle="首期先落地老人创建流程：从录入、审核到任务提醒和在住列表统一走同一条治理链路。"
+        subtitle="老人创建与资料导入共用同一条治理链路：先形成结构化草稿，再进入审核、计划和在住管理。"
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           {[
             { title: '新建录入', value: applications.length, description: '录入后写入共享 workflow store' },
+            { title: '资料导入', value: applications.filter(item => item.sourceType === 'document-import').length, description: '来自证件/病历资料识别' },
             { title: '待人工确认', value: pendingConfirmation, description: '等待护理主管确认最终级别' },
             { title: '计划已生成', value: planGenerated, description: '已同步任务页与提醒中心' },
-            { title: '已进入在住', value: admittedCount, description: '已可在老人列表和详情中追踪' },
           ].map(item => (
             <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
               <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.title}</div>

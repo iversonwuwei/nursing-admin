@@ -29,6 +29,7 @@ const NAV_ITEMS = [
     children: [
       { label: '老人列表', href: '/elderly' },
       { label: '办理入住', href: '/elderly/checkin' },
+      { label: '资料导入', href: '/elderly/import' },
       { label: '健康档案', href: '/elderly/health' },
       { label: '人脸录入', href: '/elderly/face' },
       { label: '探视记录', href: '/elderly/visits' },

@@ -6,6 +6,7 @@ export const COGNITIVE_LEVELS = ['清晰', '轻度受损', '中度受损', '重�
 export type CareLevel = (typeof CARE_LEVELS)[number]
 export type CognitiveLevel = (typeof COGNITIVE_LEVELS)[number]
 export type AdmissionStatus = '待人工确认' | '计划已生成' | '已入住'
+export type AdmissionSourceType = 'manual-form' | 'document-import'
 export type TaskPriority = '高' | '中' | '常规'
 export type TaskStatus = '待执行' | '已生成' | '执行中' | '已完成' | '持续跟踪'
 export type ReminderStatus = '待发送' | '已生成' | '已读' | '需升级' | '已处理'
@@ -36,6 +37,8 @@ interface WorkflowState {
 
 export interface AdmissionFormState {
   name: string
+  identityCard: string
+  birthDate: string
   age: string
   gender: '' | '男' | '女'
   phone: string
@@ -71,6 +74,8 @@ export interface AiRecommendation {
 export interface AdmissionApplication {
   id: string
   name: string
+  identityCard?: string
+  birthDate?: string
   age: number
   gender: '男' | '女'
   phone: string
@@ -91,6 +96,17 @@ export interface AdmissionApplication {
   confirmedAt?: string
   confirmedBy?: string
   carePlan?: CareTaskPreview[]
+  sourceType?: AdmissionSourceType
+  sourceLabel?: string
+  sourceDocumentNames?: string[]
+  sourceSummary?: string
+}
+
+export interface CreateAdmissionOptions {
+  sourceType?: AdmissionSourceType
+  sourceLabel?: string
+  sourceDocumentNames?: string[]
+  sourceSummary?: string
 }
 
 export interface StaffTaskItem {
@@ -133,6 +149,8 @@ export interface ReminderItem {
 
 export const EMPTY_FORM: AdmissionFormState = {
   name: '',
+  identityCard: '',
+  birthDate: '',
   age: '',
   gender: '',
   phone: '',
@@ -175,6 +193,10 @@ export function validateAdmissionForm(form: AdmissionFormState) {
     return '联系电话至少填写 11 位有效手机号。'
   }
 
+  if (form.identityCard.trim() && !/^\d{17}[\dXx]$/.test(form.identityCard.trim())) {
+    return '身份证号需填写为 18 位有效证件号码。'
+  }
+
   if (form.requestedLevel === '特级护理' && !form.riskNotes.trim()) {
     return '特级护理申请请补充风险备注，便于护理主管复核。'
   }
@@ -189,6 +211,18 @@ function splitList(value: string) {
     .split(/[，,、\n]/)
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+function deriveBirthDateFromIdentityCard(identityCard: string) {
+  const normalized = identityCard.trim().toUpperCase()
+  if (!/^\d{17}[\dX]$/.test(normalized)) {
+    return ''
+  }
+
+  const year = normalized.slice(6, 10)
+  const month = normalized.slice(10, 12)
+  const day = normalized.slice(12, 14)
+  return `${year}-${month}-${day}`
 }
 
 function deriveCareLevel(score: number): CareLevel {
@@ -209,6 +243,14 @@ export function getLevelVariant(level: CareLevel) {
   if (level === '一级护理') return 'warning'
   if (level === '二级护理') return 'info'
   return 'success'
+}
+
+export function getAdmissionSourceLabel(sourceType?: AdmissionSourceType) {
+  if (sourceType === 'document-import') {
+    return '资料导入'
+  }
+
+  return '人工录入'
 }
 
 export function getStatusVariant(status: AdmissionStatus) {
@@ -446,9 +488,11 @@ export function generateAiRecommendation(input: {
   }
 }
 
-export function createApplicationFromForm(form: AdmissionFormState): AdmissionApplication {
+export function createApplicationFromForm(form: AdmissionFormState, options: CreateAdmissionOptions = {}): AdmissionApplication {
   const age = Number(form.age)
   const adlScore = Number(form.adlScore)
+  const identityCard = form.identityCard.trim()
+  const birthDate = form.birthDate.trim() || (identityCard ? deriveBirthDateFromIdentityCard(identityCard) : '')
   const aiRecommendation = generateAiRecommendation({
     age,
     chronicConditions: form.chronicConditions,
@@ -460,6 +504,8 @@ export function createApplicationFromForm(form: AdmissionFormState): AdmissionAp
   return {
     id: `E${Date.now().toString().slice(-6)}`,
     name: form.name,
+    identityCard: identityCard || undefined,
+    birthDate: birthDate || undefined,
     age,
     gender: form.gender || '女',
     phone: form.phone,
@@ -475,6 +521,10 @@ export function createApplicationFromForm(form: AdmissionFormState): AdmissionAp
     cognitiveLevel: form.cognitiveLevel || '清晰',
     riskNotes: form.riskNotes,
     aiRecommendation,
+    sourceType: options.sourceType ?? 'manual-form',
+    sourceLabel: options.sourceLabel,
+    sourceDocumentNames: options.sourceDocumentNames,
+    sourceSummary: options.sourceSummary,
   }
 }
 
@@ -662,9 +712,9 @@ export function subscribeAdmissionWorkflow(listener: () => void) {
   }
 }
 
-export function addAdmissionApplication(form: AdmissionFormState) {
+export function addAdmissionApplication(form: AdmissionFormState, options?: CreateAdmissionOptions) {
   hydrateState()
-  const application = createApplicationFromForm(form)
+  const application = createApplicationFromForm(form, options)
   workflowState = {
     ...workflowState,
     applications: [application, ...workflowState.applications],

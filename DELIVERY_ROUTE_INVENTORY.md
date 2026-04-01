@@ -15,6 +15,7 @@ This file inventories the current admin app routes so delivery planning can be d
 
 - src/app/elderly/page.tsx
 - src/app/elderly/new/page.tsx
+- src/app/elderly/import/page.tsx
 - src/app/elderly/[id]/page.tsx
 - src/app/elderly/[id]/edit/page.tsx
 - src/app/elderly/health/page.tsx
@@ -90,6 +91,6 @@ This file inventories the current admin app routes so delivery planning can be d
 
 ## Current Status
 
-- Implemented: repository rules, local delivery template, thin local delivery index, route inventory, route-level delivery docs archived in nursing-documents through batch sixteen, a reviewer-facing route verification checklist, and first-pass smoke automation for critical routes including elderly, staff, and visits create loops plus master-data stability
-- Not yet completed: expand automated route verification beyond the current root/login/AI assistant/compatibility/elderly-create/staff-create/visits-create/master-data smoke slice
+- Implemented: repository rules, local delivery template, thin local delivery index, route inventory, route-level delivery docs archived in nursing-documents through batch seventeen, a reviewer-facing route verification checklist, and first-pass smoke automation for critical routes including elderly create or import, staff, and visits create loops plus master-data stability
+- Not yet completed: expand automated route verification beyond the current root/login/AI assistant/compatibility/elderly-create-or-import/staff-create/visits-create/master-data smoke slice
 - Default verification gates: `npm run lint`, plus `npm run build` for behavior-changing work

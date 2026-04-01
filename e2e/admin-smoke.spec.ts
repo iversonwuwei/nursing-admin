@@ -6,7 +6,7 @@ async function loginAsAdmin(page: Page) {
   await page.getByPlaceholder('请输入密码').fill('admin123')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL('http://localhost:3002/')
-  await expect(page.getByText('欢迎回来')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 }
 
 function trackSyncExternalStoreLoopSignals(page: Page) {
@@ -135,6 +135,48 @@ test('elderly create flow reaches checkin and registry list', async ({ page }) =
 
   await expect(page).toHaveURL(/\/elderly\/checkin\?selected=.*entry=elderly-new/)
   await expect(page.getByText('来自新增老人页')).toBeVisible()
+  await expect(page.getByText(name).first()).toBeVisible()
+
+  await page.getByRole('button', { name: '确认等级并生成计划' }).click()
+  await expect(page.getByRole('button', { name: '标记已入住' })).toBeVisible()
+
+  await page.getByRole('button', { name: '标记已入住' }).click()
+  await expect(page.locator('div').filter({ hasText: '已进入在住管理' }).last()).toBeVisible()
+
+  await page.goto('/elderly')
+  await page.getByPlaceholder('搜索姓名/编号...').fill(name)
+  await expect(page.getByText(name).first()).toBeVisible()
+})
+
+test('elderly import flow reaches checkin and registry list', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  const suffix = Date.now().toString().slice(-4)
+  const name = `导入老人${suffix}`
+
+  await page.goto('/elderly/import')
+  await page.getByLabel('资料包模板').selectOption('chronic-followup')
+  await page.getByPlaceholder(/可粘贴 OCR、病历摘要/).fill([
+    `姓名：${name}`,
+    '性别：女',
+    '年龄：81',
+    '联系电话：13900005555',
+    '紧急联系人：张敏 13900006666',
+    '房间：608-1',
+    '身份证：310101194502036666',
+    'ADL：54',
+    '认知状态：轻度受损',
+    '慢病：高血压、糖尿病',
+    '过敏史：无',
+    '风险备注：近半年有跌倒史，需要夜间离床提醒',
+  ].join('\n'))
+  await page.getByRole('button', { name: '开始AI识别' }).click()
+
+  await expect(page.locator(`input[value="${name}"]`).first()).toBeVisible()
+  await page.getByRole('button', { name: '写入入住审核' }).click()
+
+  await expect(page).toHaveURL(/\/elderly\/checkin\?selected=.*entry=elderly-import/)
+  await expect(page.getByText('来自资料导入页')).toBeVisible()
   await expect(page.getByText(name).first()).toBeVisible()
 
   await page.getByRole('button', { name: '确认等级并生成计划' }).click()

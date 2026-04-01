@@ -64,8 +64,8 @@ export function buildElderlyRecordFromAdmission(application: AdmissionApplicatio
     name: application.name,
     age: application.age,
     gender: application.gender,
-    idCard: `待补录-${application.id}`,
-    birthDate: buildBirthDate(application.age),
+      idCard: application.identityCard || `待补录-${application.id}`,
+      birthDate: application.birthDate || buildBirthDate(application.age),
     phone: application.phone || '待补录',
     emergencyContact: emergency.contact,
     emergencyPhone: emergency.phone || application.phone || '待补录',
@@ -77,7 +77,7 @@ export function buildElderlyRecordFromAdmission(application: AdmissionApplicatio
     checkInDate: (application.confirmedAt || application.createdAt).slice(0, 10),
     medicalHistory: splitList(application.chronicConditions),
     allergies: normalizeAllergies(application.allergySummary),
-    remarks: application.riskNotes || application.reviewNote || '来自入住闭环录入',
+      remarks: application.riskNotes || application.reviewNote || application.sourceSummary || '来自入住闭环录入',
   }
 }
 
