@@ -5,7 +5,7 @@ async function loginAsAdmin(page: Page) {
   await page.getByPlaceholder('请输入用户名').fill('admin')
   await page.getByPlaceholder('请输入密码').fill('admin123')
   await page.getByRole('button', { name: '登录' }).click()
-  await expect(page).toHaveURL('http://localhost:3002/')
+  await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 }
 
@@ -248,6 +248,35 @@ test('visit create flow reaches pending approval and registered list', async ({ 
   const visitRow = page.locator('tr', { hasText: visitorName }).first()
   await expect(visitRow).toBeVisible()
   await expect(visitRow).toContainText('已登记')
+})
+
+test('face enrollment flow reaches activated state from elderly detail', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  await page.goto('/elderly/E004')
+  await page.locator('a[href="/elderly/face?selected=E004&entry=elderly-detail"]').click()
+
+  await expect(page).toHaveURL(/\/elderly\/face\?selected=E004&entry=elderly-detail/)
+  await expect(page.getByText('来自老人详情页')).toBeVisible()
+
+  await page.getByPlaceholder('如 前台接待 李敏').fill('自动化前台')
+  await page.getByPlaceholder('如 前台采集终端 A').fill('自动化采集终端')
+  await page.getByTestId('face-capture-front').click()
+  await page.getByTestId('face-capture-left').click()
+  await page.getByTestId('face-capture-right').click()
+
+  await page.getByPlaceholder('填写为什么可以激活，例如已完成三角度采集且光照稳定。').fill('三角度样本齐全，光照稳定，可进入门禁白名单。')
+  await page.getByTestId('face-activate-button').click()
+
+  const faceRow = page.locator('tr', { hasText: '赵德明' }).first()
+  await expect(faceRow).toContainText('已生效')
+  await expect(page.getByText('三角度样本完整，当前模板已生效并可用于门禁或核验。')).toBeVisible()
+
+  await page.goto('/elderly')
+  await page.getByPlaceholder('搜索姓名/编号...').fill('E004')
+  const elderlyRow = page.locator('tr', { hasText: '赵德明' }).first()
+  await expect(elderlyRow).toContainText('已生效')
+  await expect(elderlyRow.getByRole('link', { name: '人脸录入' })).toHaveAttribute('href', /\/elderly\/face\?selected=E004&entry=elderly-list/)
 })
 
 test('master data routes render without sync external store snapshot loops', async ({ page }) => {

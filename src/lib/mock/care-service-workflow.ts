@@ -1,7 +1,7 @@
 import { elderlyList } from '@/lib/data'
 
 export type HealthArchiveLifecycleStatus = '待建档' | '已建档'
-export type VisitLifecycleStatus = '待审核' | '已审核'
+export type VisitLifecycleStatus = '待审核' | '已审核' | '已驳回'
 
 export interface HealthArchiveRecord {
   id: string
@@ -48,10 +48,17 @@ export interface VisitAppointmentRecord {
   date: string
   time: string
   type: '现场' | '视频'
-  status: '待审核' | '已登记' | '已完成'
+  status: '待审核' | '已登记' | '已完成' | '已驳回'
   lifecycleStatus: VisitLifecycleStatus
   createdAt: string
+  source: 'admin' | 'family'
+  reviewMode: '人工审核' | '自动通过'
+  visitorCount: number
+  companions?: string[]
+  aiSummary?: string
+  ruleSummary?: string
   approvalNote?: string
+  rejectionNote?: string
 }
 
 export interface HealthArchiveCreateFormState {
@@ -146,11 +153,13 @@ const BASE_VITALS: VitalEntryRecord[] = [
 ]
 
 const BASE_VISITS: VisitAppointmentRecord[] = [
-  { id: 'VS001', elderlyId: 'E001', elder: '张桂英', room: '201-1', visitor: '张伟', relation: '儿子', phone: '13900001234', date: '2026-03-29', time: '14:30', type: '现场', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-28 10:00' },
-  { id: 'VS002', elderlyId: 'E002', elder: '王建国', room: '203-2', visitor: '王芳', relation: '女儿', phone: '13900005678', date: '2026-03-29', time: '15:00', type: '现场', status: '已登记', lifecycleStatus: '已审核', createdAt: '2026-03-28 10:15' },
-  { id: 'VS003', elderlyId: 'E003', elder: '李秀兰', room: '205-1', visitor: '李强', relation: '儿子', phone: '13900009012', date: '2026-03-28', time: '10:00', type: '视频', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-27 11:00' },
-  { id: 'VS004', elderlyId: 'E004', elder: '赵德明', room: '202-1', visitor: '赵丽', relation: '儿媳', phone: '13900003456', date: '2026-03-28', time: '16:00', type: '现场', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-27 14:00' },
-  { id: 'VS005', elderlyId: 'E005', elder: '周桂芳', room: '203-1', visitor: '周明', relation: '儿子', phone: '13900007890', date: '2026-03-30', time: '09:00', type: '现场', status: '待审核', lifecycleStatus: '待审核', createdAt: '2026-03-29 09:30' },
+  { id: 'VS001', elderlyId: 'E001', elder: '张桂英', room: '201-1', visitor: '张伟', relation: '儿子', phone: '13900001234', date: '2026-03-29', time: '14:30', type: '现场', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-28 10:00', source: 'admin', reviewMode: '人工审核', visitorCount: 1 },
+  { id: 'VS002', elderlyId: 'E002', elder: '王建国', room: '203-2', visitor: '王芳', relation: '女儿', phone: '13900005678', date: '2026-03-29', time: '15:00', type: '现场', status: '已登记', lifecycleStatus: '已审核', createdAt: '2026-03-28 10:15', source: 'admin', reviewMode: '人工审核', visitorCount: 1 },
+  { id: 'VS003', elderlyId: 'E003', elder: '李秀兰', room: '205-1', visitor: '李强', relation: '儿子', phone: '13900009012', date: '2026-03-28', time: '10:00', type: '视频', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-27 11:00', source: 'admin', reviewMode: '人工审核', visitorCount: 1 },
+  { id: 'VS004', elderlyId: 'E004', elder: '赵德明', room: '202-1', visitor: '赵丽', relation: '儿媳', phone: '13900003456', date: '2026-03-28', time: '16:00', type: '现场', status: '已完成', lifecycleStatus: '已审核', createdAt: '2026-03-27 14:00', source: 'admin', reviewMode: '人工审核', visitorCount: 1 },
+  { id: 'VS005', elderlyId: 'E005', elder: '周桂芳', room: '203-1', visitor: '周明', relation: '儿子', phone: '13900007890', date: '2026-03-30', time: '09:00', type: '现场', status: '待审核', lifecycleStatus: '待审核', createdAt: '2026-03-29 09:30', source: 'admin', reviewMode: '人工审核', visitorCount: 1, approvalNote: '预约已登记，等待前台或护理主管审核。', ruleSummary: '前台手工登记预约，需人工确认接待资源。' },
+  { id: 'VS006', elderlyId: 'E001', elder: '张桂英', room: '201-1', visitor: '张小红', relation: '女儿', phone: '13900006666', date: '2026-04-03', time: '09:30', type: '现场', status: '待审核', lifecycleStatus: '待审核', createdAt: '2026-04-02 09:00', source: 'family', reviewMode: '人工审核', visitorCount: 2, companions: ['女婿 陈涛'], aiSummary: '家属端 AI 判断老人晨起恢复不足，建议不要直接自动通过该时段探视。', ruleSummary: '家属端未命中重复预约，但命中 AI 身体状态拦截，已回流 admin 待审核队列。', approvalNote: '请确认是否改到下午时段，或先转视频沟通。' },
+  { id: 'VS007', elderlyId: 'E003', elder: '李秀兰', room: '205-1', visitor: '李敏', relation: '女儿', phone: '13900007777', date: '2026-04-05', time: '14:00', type: '现场', status: '已登记', lifecycleStatus: '已审核', createdAt: '2026-04-02 08:20', source: 'family', reviewMode: '自动通过', visitorCount: 2, companions: ['外孙 李乐'], aiSummary: '家属端 AI 未发现身体不适或护理冲突。', ruleSummary: '未命中重复预约、同日预约和人数限制，已在家属端自动通过。', approvalNote: '家属端自动通过后写回 admin 台账，供前台登记与来访准备。' },
 ]
 
 function nowDate() {
@@ -382,6 +391,10 @@ export function addVisitAppointment(form: VisitCreateFormState) {
     status: '待审核',
     lifecycleStatus: '待审核',
     createdAt: nowStamp(),
+    source: 'admin',
+    reviewMode: '人工审核',
+    visitorCount: 1,
+    ruleSummary: '前台手工录入预约，默认进入待审核。',
     approvalNote: '预约已登记，等待前台或护理主管审核。',
   }
 
@@ -408,6 +421,29 @@ export function approveVisitAppointment(id: string, approvalNote = '预约已审
         status: '已登记',
         lifecycleStatus: '已审核',
         approvalNote,
+      }
+      return updated
+    }),
+  }
+  notifyListeners()
+  return updated
+}
+
+export function rejectVisitAppointment(id: string, rejectionNote = '当前时段不建议到访，请联系家属改约或转视频沟通。') {
+  hydrateState()
+  let updated: VisitAppointmentRecord | undefined
+  workflowState = {
+    ...workflowState,
+    visits: workflowState.visits.map(item => {
+      if (item.id !== id) {
+        return item
+      }
+
+      updated = {
+        ...item,
+        status: '已驳回',
+        lifecycleStatus: '已驳回',
+        rejectionNote,
       }
       return updated
     }),

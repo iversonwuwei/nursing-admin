@@ -3,7 +3,8 @@
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
 import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
 import { buildLiveElderlyList } from '@/lib/mock/elderly-registry'
-import { ChevronRight, FileUp, Home, UserPlus as NewUser, Plus, Search, UserCheck, UserPlus, Users } from 'lucide-react'
+import { findFaceEnrollmentRecordByElderlyId, getFaceEnrollmentSnapshot, subscribeFaceEnrollmentWorkflow, type FaceEnrollmentStatus } from '@/lib/mock/face-enrollment-workflow'
+import { ChevronRight, FileUp, Home, UserPlus as NewUser, Plus, ScanFace, Search, UserCheck, UserPlus, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useSyncExternalStore } from 'react'
@@ -14,6 +15,13 @@ const LEVEL_TAG: Record<string, TagVariant> = {
 const STATUS_TAG: Record<string, TagVariant> = {
   '入住': 'success', '待入住': 'warning', '离院': 'neutral',
 }
+const FACE_STATUS_TAG: Record<FaceEnrollmentStatus, TagVariant> = {
+  '待录入': 'neutral',
+  '采集中': 'warning',
+  '待确认': 'info',
+  '已生效': 'success',
+  '需重录': 'danger',
+}
 
 export default function ElderlyPage() {
   const router = useRouter()
@@ -22,6 +30,11 @@ export default function ElderlyPage() {
     getAdmissionApplicationsSnapshot,
     getAdmissionApplicationsSnapshot,
   )
+  const faceSnapshot = useSyncExternalStore(
+    subscribeFaceEnrollmentWorkflow,
+    getFaceEnrollmentSnapshot,
+    getFaceEnrollmentSnapshot,
+  )
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
@@ -29,6 +42,13 @@ export default function ElderlyPage() {
   const pageSize = 10
 
   const liveElderlyList = useMemo(() => buildLiveElderlyList(applications), [applications])
+  const faceStatusByElderlyId = useMemo(() => {
+    const map = new Map<string, FaceEnrollmentStatus>()
+    liveElderlyList.forEach(elder => {
+      map.set(elder.id, findFaceEnrollmentRecordByElderlyId(elder.id, faceSnapshot)?.status ?? '待录入')
+    })
+    return map
+  }, [faceSnapshot, liveElderlyList])
   const pendingConfirmation = applications.filter(item => item.status === '待人工确认').length
   const planGenerated = applications.filter(item => item.status === '计划已生成').length
   const currentMonth = new Date().toISOString().slice(0, 7)
@@ -58,6 +78,9 @@ export default function ElderlyPage() {
         subtitle={`共 ${liveElderlyList.length} 位老人登记在册 · ${pendingConfirmation + planGenerated} 位处于新建闭环中`}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
+            <Link href="/elderly/face?entry=elderly-list" className="btn btn-secondary btn-sm">
+              <ScanFace size={13} />人脸录入
+            </Link>
             <Link href="/elderly/checkin" className="btn btn-secondary btn-sm">
               <UserPlus size={13} />入住审核 {pendingConfirmation + planGenerated > 0 ? `(${pendingConfirmation + planGenerated})` : ''}
             </Link>
@@ -180,6 +203,7 @@ export default function ElderlyPage() {
                 <th>年龄</th>
                 <th>护理等级</th>
                 <th>状态</th>
+                <th>人脸状态</th>
                 <th>房间</th>
                 <th>入住日期</th>
                 <th style={{ textAlign: 'right' }}>操作</th>
@@ -203,16 +227,26 @@ export default function ElderlyPage() {
                   <td><span className="text-sm">{e.age}岁</span></td>
                   <td><Tag variant={LEVEL_TAG[e.careLevel]}>{e.careLevel}</Tag></td>
                   <td><Tag variant={STATUS_TAG[e.status]}>{e.status}</Tag></td>
+                  <td><Tag variant={FACE_STATUS_TAG[faceStatusByElderlyId.get(e.id) ?? '待录入']}>{faceStatusByElderlyId.get(e.id) ?? '待录入'}</Tag></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.roomNumber}</span></td>
                   <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{e.checkInDate}</span></td>
                   <td style={{ textAlign: 'right' }}>
-                    <Link
-                      href={`/elderly/${e.id}`}
-                      className="btn btn-ghost btn-sm"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      查看 <ChevronRight size={12} />
-                    </Link>
+                    <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Link
+                        href={`/elderly/face?selected=${e.id}&entry=elderly-list`}
+                        className="btn btn-secondary btn-sm"
+                        onClick={event => event.stopPropagation()}
+                      >
+                        人脸录入
+                      </Link>
+                      <Link
+                        href={`/elderly/${e.id}`}
+                        className="btn btn-ghost btn-sm"
+                        onClick={event => event.stopPropagation()}
+                      >
+                        查看 <ChevronRight size={12} />
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

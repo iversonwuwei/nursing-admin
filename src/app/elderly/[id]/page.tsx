@@ -7,7 +7,7 @@ import { getElderDetailActionAiInsight } from "@/lib/mock/admin-ai"
 import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from "@/lib/mock/admission-workflow"
 import { getElderAiProfile } from "@/lib/mock/app-ai"
 import { findLiveElderlyById } from "@/lib/mock/elderly-registry"
-import { ArrowLeft, Bot, Edit } from "lucide-react"
+import { ArrowLeft, Bot, Edit, ScanFace } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useMemo, useSyncExternalStore } from "react"
@@ -129,9 +129,14 @@ export default function ElderlyDetailPage() {
             <div className="page-subtitle">{data.roomNumber} · {data.gender} · {data.age}岁 · {data.careLevel}</div>
           </div>
         </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Edit size={13} />编辑信息
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href={`/elderly/face?selected=${data.id}&entry=elderly-detail`} className="btn btn-secondary btn-sm flex items-center gap-2">
+            <ScanFace size={13} />人脸录入
+          </Link>
+          <button className="btn btn-primary btn-sm flex items-center gap-2">
+            <Edit size={13} />编辑信息
+          </button>
+        </div>
       </div>
 
       {/* Basic info */}
