@@ -1,11 +1,12 @@
 'use client'
 
 import { DataCard } from '@/components/nh'
+import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import { addStaffDraft, EMPTY_STAFF_FORM, validateStaffForm, type StaffCreateFormState } from '@/lib/mock/resource-workflow'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Save, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 
 const inputClass = 'input'
 
@@ -14,6 +15,15 @@ export default function StaffNewPage() {
   const [form, setForm] = useState<StaffCreateFormState>(EMPTY_STAFF_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const masterSnapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
+  const activePartners = useMemo(
+    () => masterSnapshot.partners.filter(item => item.lifecycleStatus === '已启用' && item.institutionType === '护理服务机构'),
+    [masterSnapshot.partners],
+  )
 
   function updateForm<K extends keyof StaffCreateFormState>(key: K, value: StaffCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -41,16 +51,17 @@ export default function StaffNewPage() {
         </Link>
         <div>
           <h1 className="text-xl font-extrabold" style={{ letterSpacing: '-0.02em' }}>添加员工</h1>
-          <p className="text-sm" style={{ color: 'var(--color-muted)' }}>录入基础人事信息后，先进入待入职闭环，再纳入排班与任务口径。</p>
+          <p className="text-sm" style={{ color: 'var(--color-muted)' }}>录入自营或第三方人员信息后，先进入待入职闭环，再纳入排班与任务口径。</p>
         </div>
       </div>
 
-      <DataCard title="员工新建闭环" subtitle="首批流程为录入 -> 人工确认 -> 纳入排班，避免直接混入在岗统计。">
+      <DataCard title="员工新建闭环" subtitle="首批流程为录入 -> 人工确认 -> 纳入排班，并补齐第三方归属。">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
           {[
             { title: '1. 基础录入', description: '采集姓名、角色、部门和联系方式。', icon: <UserCheck size={16} /> },
-            { title: '2. 待入职', description: '提交后先进入待入职，不立即计入在职统计。', icon: <ClipboardCheck size={16} /> },
-            { title: '3. 确认入职', description: '主管复核后再纳入排班与任务台账。', icon: <ShieldCheck size={16} /> },
+            { title: '2. 归属确认', description: '可选择自营或第三方合作，并绑定已启用护理服务机构。', icon: <ClipboardCheck size={16} /> },
+            { title: '3. 待入职', description: '提交后先进入待入职，不立即计入在职统计。', icon: <ClipboardCheck size={16} /> },
+            { title: '4. 确认入职', description: '主管复核后再纳入排班与任务台账。', icon: <ShieldCheck size={16} /> },
           ].map(item => (
             <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
@@ -72,6 +83,25 @@ export default function StaffNewPage() {
           <DataCard icon={<UserCheck size={18} />} title="员工主数据" bodyClassName="form-section">
             <div className="form-grid">
               <div>
+                <label className="form-label">人员来源</label>
+                <select
+                  className={inputClass}
+                  value={form.employmentSource}
+                  onChange={event => {
+                    const nextSource = event.target.value as StaffCreateFormState['employmentSource']
+                    setForm(current => ({
+                      ...current,
+                      employmentSource: nextSource,
+                      partnerAgencyId: nextSource === '第三方合作' ? current.partnerAgencyId : '',
+                      partnerAffiliationRole: nextSource === '第三方合作' ? current.partnerAffiliationRole : '',
+                    }))
+                  }}
+                >
+                  <option value="自营">自营</option>
+                  <option value="第三方合作">第三方合作</option>
+                </select>
+              </div>
+              <div>
                 <label className="form-label">姓名</label>
                 <input className={inputClass} value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="请输入姓名" />
               </div>
@@ -83,6 +113,21 @@ export default function StaffNewPage() {
                 <label className="form-label">部门</label>
                 <input className={inputClass} value={form.department} onChange={event => updateForm('department', event.target.value)} placeholder="如 护理部" />
               </div>
+              {form.employmentSource === '第三方合作' ? (
+                <>
+                  <div>
+                    <label className="form-label">护理服务机构</label>
+                    <select className={inputClass} value={form.partnerAgencyId} onChange={event => updateForm('partnerAgencyId', event.target.value)}>
+                      <option value="">请选择已启用护理服务机构</option>
+                      {activePartners.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">合作角色</label>
+                    <input className={inputClass} value={form.partnerAffiliationRole} onChange={event => updateForm('partnerAffiliationRole', event.target.value)} placeholder="如 第三方护工" />
+                  </div>
+                </>
+              ) : null}
               <div>
                 <label className="form-label">性别</label>
                 <select className={inputClass} value={form.gender} onChange={event => updateForm('gender', event.target.value as StaffCreateFormState['gender'])}>
@@ -108,6 +153,16 @@ export default function StaffNewPage() {
                 <input className={inputClass} type="date" value={form.hireDate} onChange={event => updateForm('hireDate', event.target.value)} />
               </div>
             </div>
+            {form.employmentSource === '第三方合作' && activePartners.length === 0 ? (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-warning)' }}>
+                当前还没有已启用护理服务机构。请先前往 <Link href="/organizations/partners/new" className="btn-link">新增定点机构</Link> 并选择“护理服务机构”完成启用。
+              </div>
+            ) : null}
+            {form.employmentSource === '第三方合作' && activePartners.length > 0 ? (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                第三方人员仅允许绑定护理服务机构；评估机构不会出现在该选择器中。
+              </div>
+            ) : null}
           </DataCard>
         </div>
 

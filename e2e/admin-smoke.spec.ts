@@ -197,10 +197,11 @@ test('staff create flow reaches pending onboarding and active roster', async ({ 
   const staffName = `自动化员工${suffix}`
 
   await page.goto('/staff/new')
+  await page.locator('select').nth(0).selectOption('自营')
   await page.getByPlaceholder('请输入姓名').fill(staffName)
   await page.getByPlaceholder('如 护士').fill('护士')
   await page.getByPlaceholder('如 护理部').fill('护理部')
-  await page.locator('select').selectOption('女')
+  await page.locator('select').nth(1).selectOption('女')
   await page.getByPlaceholder('请输入手机号').fill('13900003333')
   await page.getByPlaceholder('请输入邮箱').fill(`staff${suffix}@example.com`)
   await page.getByPlaceholder('如 32').fill('32')
@@ -219,6 +220,101 @@ test('staff create flow reaches pending onboarding and active roster', async ({ 
   const staffRow = page.locator('tr', { hasText: staffName }).first()
   await expect(staffRow).toBeVisible()
   await expect(staffRow).toContainText('在职')
+})
+
+test('partner, third-party staff, package, plan, task and schedule workflow stays connected', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  const suffix = Date.now().toString().slice(-5)
+  const partnerName = `自动合作机构${suffix}`
+  const staffName = `自动护工${suffix}`
+  const packageName = `自动套餐${suffix}`
+  const elderName = `计划老人${suffix}`
+  const focus = `夜间巡房与翻身护理 ${suffix}`
+
+  await page.goto('/organizations/partners/new')
+  await page.getByPlaceholder('请输入机构名称').fill(partnerName)
+  await page.locator('select').nth(0).selectOption('护理外包')
+  await page.getByPlaceholder('如 浦东新区、杨浦区').fill('浦东新区')
+  await page.locator('select').nth(1).selectOption('按月结')
+  await page.getByPlaceholder('请输入联系人姓名').fill('李合作')
+  await page.getByPlaceholder('请输入手机号').fill('13900008888')
+  await page.locator('input[type="date"]').nth(0).fill('2026-04-02')
+  await page.locator('input[type="date"]').nth(1).fill('2026-12-31')
+  await page.getByPlaceholder('补充服务边界、合作说明或注意事项').fill('自动化创建的第三方合作机构，用于验证员工与计划联动。')
+  await page.getByRole('button', { name: '提交并进入待启用' }).click()
+
+  await expect(page).toHaveURL(/\/organizations\/partners\?selected=.*entry=partners-new/)
+  await expect(page.getByText(partnerName).first()).toBeVisible()
+  await page.getByRole('button', { name: '启用合作机构' }).first().click()
+  await expect(page.getByText('已启用').first()).toBeVisible()
+
+  await page.goto('/staff/new')
+  await page.locator('select').nth(0).selectOption('第三方合作')
+  await page.getByPlaceholder('请输入姓名').fill(staffName)
+  await page.getByPlaceholder('如 护士').fill('护工')
+  await page.getByPlaceholder('如 护理部').fill('护理部')
+  await page.locator('select').nth(1).selectOption({ label: partnerName })
+  await page.getByPlaceholder('如 第三方护工').fill('驻场护工')
+  await page.locator('select').nth(2).selectOption('女')
+  await page.getByPlaceholder('请输入手机号').fill('13900009999')
+  await page.getByPlaceholder('请输入邮箱').fill(`caregiver${suffix}@example.com`)
+  await page.getByPlaceholder('如 32').fill('35')
+  await page.getByRole('button', { name: '提交并进入待入职' }).click()
+
+  await expect(page).toHaveURL(/\/staff\?selected=.*entry=staff-new/)
+  await expect(page.getByText(staffName).first()).toBeVisible()
+  await expect(page.getByText('第三方合作').first()).toBeVisible()
+  await page.getByRole('button', { name: '确认入职' }).click()
+  const staffRow = page.locator('tr', { hasText: staffName }).first()
+  await expect(staffRow).toContainText(partnerName)
+  await expect(staffRow).toContainText('在职')
+
+  await page.goto('/nursing/packages')
+  await page.getByPlaceholder('如 夜间全护包').fill(packageName)
+  await page.locator('select').nth(0).selectOption('全护')
+  await page.getByPlaceholder('如 ¥4,200').fill('¥4,800')
+  await page.locator('select').nth(1).selectOption('月付')
+  await page.getByPlaceholder('如 夜间离床告警高频人群').fill('夜间高频照护老人')
+  await page.getByPlaceholder('用顿号或逗号分隔，如 夜巡、离床告警响应、夜间安抚').fill('夜间巡房、翻身护理、离床告警响应')
+  await page.getByPlaceholder('可选，如 外部康复师、家属日报').fill('家属日报')
+  await page.getByRole('button', { name: '提交套餐草稿' }).click()
+
+  const packageRow = page.locator('tr', { hasText: packageName }).first()
+  await expect(packageRow).toBeVisible()
+  await packageRow.getByRole('button', { name: '提交定价' }).click()
+  await packageRow.getByRole('button', { name: '完成定价' }).click()
+  await packageRow.getByRole('button', { name: '发布套餐' }).click()
+  await expect(packageRow).toContainText('已生效')
+
+  await page.goto('/nursing/plans')
+  await page.locator('select').nth(0).selectOption({ label: packageName })
+  await page.locator('select').nth(1).selectOption('套餐生成')
+  await page.getByPlaceholder('如 张秀英').fill(elderName)
+  await page.getByPlaceholder('如 301-1').fill('702-1')
+  await page.getByPlaceholder('如 早班 / 晚班').fill('夜班')
+  await page.locator('select').nth(2).selectOption('第三方护工')
+  await page.getByPlaceholder('如 张护工').fill(staffName)
+  await page.getByPlaceholder('如 午间翻身护理、夜间血氧监测').fill(focus)
+  await page.getByPlaceholder('如 跌倒高风险、睡眠异常').fill('跌倒高风险')
+  await page.getByRole('button', { name: '生成计划草稿' }).click()
+
+  const planRow = page.locator('tr', { hasText: elderName }).first()
+  await expect(planRow).toContainText(packageName)
+  await expect(planRow).toContainText('待复核')
+  await planRow.getByRole('button', { name: '复核通过' }).click()
+  await expect(planRow).toContainText('执行中')
+
+  await page.goto('/staff/tasks')
+  const taskRow = page.locator('tr', { hasText: elderName }).first()
+  await expect(taskRow).toContainText('服务计划')
+  await expect(taskRow).toContainText(focus)
+  await expect(taskRow).toContainText(staffName)
+
+  await page.goto('/staff/schedule')
+  const scheduleRow = page.locator('tr', { hasText: staffName }).first()
+  await expect(scheduleRow).toContainText('已承接 1 条计划')
+  await expect(page.getByText('待分派计划').first()).toBeVisible()
 })
 
 test('visit create flow reaches pending approval and registered list', async ({ page }) => {

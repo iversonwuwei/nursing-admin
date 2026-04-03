@@ -5,7 +5,7 @@ import {
     addAdmissionApplication,
     validateAdmissionForm,
     type AdmissionFormState,
-} from '@/lib/mock/admission-workflow'
+} from '@/lib/mock/assessment-workflow'
 import {
     getImportTemplateOptions,
     mapFilesToUploadMeta,
@@ -90,7 +90,7 @@ export default function ElderlyImportPage() {
     <div className="page-root animate-fade-up" style={{ maxWidth: 1160, margin: '0 auto' }}>
       <PageHeader
         title="资料导入"
-        subtitle="上传身份资料与健康资料后，先由 AI 生成结构化草稿，再进入入住审核闭环。"
+        subtitle="上传身份资料与健康资料后，先由 AI 生成结构化草稿，再进入个案评定闭环。"
         actions={<Tag variant="primary">AI 识别后仍需人工复核</Tag>}
       />
 
@@ -100,7 +100,7 @@ export default function ElderlyImportPage() {
             { title: '1. 上传资料', description: '支持上传扫描件/病历文件，并保留文件名作为来源审计。', icon: <Upload size={16} /> },
             { title: '2. AI 抽取', description: '从模板、OCR 摘要和文件线索提取身份字段、病史和照护风险。', icon: <ScanSearch size={16} /> },
             { title: '3. 人工复核', description: '护理主管补齐缺失字段，避免把低置信度内容直接入档。', icon: <ShieldCheck size={16} /> },
-            { title: '4. 写入闭环', description: '确认后进入入住审核页，继续人工定级与护理计划生成。', icon: <Bot size={16} /> },
+            { title: '4. 写入闭环', description: '确认后进入个案评定页，继续人工认定与结论生成。', icon: <Bot size={16} /> },
           ].map(item => (
             <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
@@ -247,7 +247,7 @@ export default function ElderlyImportPage() {
 
       {draftForm ? (
         <div style={{ marginTop: 16 }}>
-          <DataCard icon={<ShieldCheck size={18} />} title="人工复核后写入入住审核" subtitle="这里是可编辑草稿，确认后写入共享 workflow store，并跳转到办理入住页。">
+          <DataCard icon={<ShieldCheck size={18} />} title="人工复核后写入个案评定" subtitle="这里是可编辑草稿，确认后写入共享 workflow store，并跳转到评定受理页。">
             <div className="form-section">
               <div className="form-grid">
                 <div>
@@ -330,10 +330,10 @@ export default function ElderlyImportPage() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                  导入后会进入办理入住页继续人工定级与计划生成；如需回退，可直接删除该次导入记录并继续走人工建档。
+                  导入后会进入个案评定页继续人工认定与结论生成；如需回退，可直接删除该次导入记录并继续走人工建档。
                 </div>
                 <button className="btn btn-primary btn-md" onClick={handleSubmit} disabled={loading}>
-                  {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />写入入住审核</>}
+                  {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />写入个案评定</>}
                 </button>
               </div>
             </div>

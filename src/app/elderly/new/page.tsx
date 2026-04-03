@@ -9,7 +9,7 @@ import {
   validateAdmissionForm,
   type AdmissionFormState,
   type CareLevel,
-} from "@/lib/mock/admission-workflow";
+} from "@/lib/mock/assessment-workflow";
 import { AlertCircle, ArrowLeft, Bot, ClipboardCheck, Save, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -51,7 +51,7 @@ export default function NewElderlyPage() {
         </Link>
         <div>
           <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>新增老人</h1>
-          <p className="text-sm" style={{ color: "var(--color-muted)" }}>录入首批主数据后，进入入住审核与护理计划生成闭环。</p>
+          <p className="text-sm" style={{ color: "var(--color-muted)" }}>录入首批主数据后，进入个案评定与认定结论生成闭环。</p>
         </div>
       </div>
 
@@ -64,7 +64,7 @@ export default function NewElderlyPage() {
           {[
             { title: "1. 首次录入", description: "采集入住评估最小字段集，避免先建空档案。", icon: <User size={16} /> },
             { title: "2. AI 建议", description: "提交后立即生成护理等级建议与关注标签。", icon: <Bot size={16} /> },
-            { title: "3. 人工确认", description: "跳转入住审核页，由护理主管确认或调整级别。", icon: <ClipboardCheck size={16} /> },
+            { title: "3. 人工确认", description: "跳转个案评定页，由评估主管确认或调整级别。", icon: <ClipboardCheck size={16} /> },
             { title: "4. 闭环入册", description: "计划同步任务与提醒，标记已入住后进入老人台账。", icon: <ShieldCheck size={16} /> },
           ].map((item) => (
             <div key={item.title} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: 14, background: "var(--color-card)" }}>
@@ -168,7 +168,7 @@ export default function NewElderlyPage() {
               <span className="login-spinner animate-spin" />
             ) : (
               <>
-                  <Save size={15} />提交并进入入住审核
+                  <Save size={15} />提交并进入个案评定
               </>
             )}
           </button>

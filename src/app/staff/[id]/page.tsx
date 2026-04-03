@@ -9,7 +9,8 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useMemo, useSyncExternalStore } from 'react'
 
-const ROLE_TAG: Record<string, TagVariant> = { "护理主管": "primary", "护士": "info", "后勤主管": "warning", "心理咨询师": "purple", "厨师长": "neutral" }
+const ROLE_TAG: Record<string, TagVariant> = { "护理主管": "primary", "护士": "info", "后勤主管": "warning", "心理咨询师": "purple", "厨师长": "neutral", "护工": "success", "康复师": "info" }
+const SOURCE_TAG: Record<string, TagVariant> = { "自营": "primary", "第三方合作": "warning" }
 
 export default function StaffDetailPage() {
   const params = useParams()
@@ -56,6 +57,7 @@ export default function StaffDetailPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold" style={{ letterSpacing: "-0.02em" }}>{data.name}</h1>
               <Tag variant={ROLE_TAG[data.role]}>{data.role}</Tag>
+              <Tag variant={SOURCE_TAG[data.employmentSource]}>{data.employmentSource}</Tag>
               <Tag variant={data.status === '在职' ? 'success' : data.status === '待入职' ? 'warning' : 'neutral'}>{data.status}</Tag>
             </div>
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -80,6 +82,7 @@ export default function StaffDetailPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
             {[
               { label: "姓名", value: data.name },
+                { label: "人员来源", value: data.employmentSource },
               { label: "性别", value: data.gender },
               { label: "年龄", value: `${data.age}岁` },
               { label: "联系电话", value: data.phone },
@@ -89,6 +92,30 @@ export default function StaffDetailPage() {
               <div key={label}>
                 <div className="text-xs font-semibold" style={{ color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
                 <div className="text-sm font-semibold">{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="data-card">
+        <div className="data-card-header">
+          <div className="data-card-title">
+            <div className="data-card-icon-wrap"><span style={{ fontSize: 14 }}>🤝</span></div>
+            <div className="text-sm font-bold">服务归属</div>
+          </div>
+        </div>
+        <div className="data-card-body">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
+            {[
+              { label: "用工口径", value: data.employmentSource },
+              { label: "护理服务机构", value: data.partnerAgencyName ?? '内部团队' },
+              { label: "合作角色", value: data.partnerAffiliationRole ?? '无' },
+              { label: "入职状态备注", value: data.onboardingNote ?? '暂无备注' },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <div className="text-xs font-semibold" style={{ color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div>
+                <div className="text-sm font-semibold" style={{ lineHeight: 1.7 }}>{value}</div>
               </div>
             ))}
           </div>

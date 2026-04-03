@@ -3,9 +3,8 @@
 import {
   BarChart3,
   Bell,
-  CalendarHeart,
   ChevronDown,
-  DoorOpen,
+  ClipboardCheck,
   Home, Landmark,
   Menu,
   Monitor,
@@ -22,30 +21,53 @@ import { useEffect, useRef, useState } from 'react'
 /* ── Nav data ── */
 const NAV_ITEMS = [
   { label: '首页概览', href: '/', icon: Home },
-  { label: '分院管理', href: '/branch', icon: Landmark },
+  {
+    label: '机构管理',
+    icon: Landmark,
+    children: [
+      { label: '分院管理', href: '/branch' },
+      { label: '机构列表', href: '/organizations' },
+      { label: '定点机构', href: '/organizations/partners' },
+      { label: '房间管理', href: '/rooms' },
+    ],
+  },
   {
     label: '老人服务',
     icon: Users,
     children: [
       { label: '老人列表', href: '/elderly' },
-      { label: '办理入住', href: '/elderly/checkin' },
+      { label: '新建个案', href: '/elderly/new' },
       { label: '资料导入', href: '/elderly/import' },
       { label: '健康档案', href: '/elderly/health' },
       { label: '人脸录入', href: '/elderly/face' },
       { label: '探视记录', href: '/elderly/visits' },
+      { label: '指标更新', href: '/elderly/vitals' },
     ],
   },
   {
-    label: '人员管理',
+    label: '团队协同',
     icon: UserCheck,
     children: [
       { label: '员工列表', href: '/staff' },
-      { label: '排班管理', href: '/staff/schedule' },
+      { label: '新增员工', href: '/staff/new' },
     ],
   },
-  { label: '房间管理', href: '/rooms', icon: DoorOpen },
   {
-    label: '设备管理',
+    label: '长护险运营',
+    icon: ClipboardCheck,
+    children: [
+      { label: '评定机构总览', href: '/nursing/services' },
+      { label: '个案评定中心', href: '/elderly/checkin' },
+      { label: '评定标准配置', href: '/nursing/packages' },
+      { label: '认定方案模板', href: '/nursing/plans' },
+      { label: '现场评定任务', href: '/staff/tasks' },
+      { label: '派案排期', href: '/staff/schedule' },
+      { label: '评定结算与质控', href: '/financial' },
+      { label: '稽核报表', href: '/analytics/report' },
+    ],
+  },
+  {
+    label: '设备与健康',
     icon: Monitor,
     children: [
       { label: '设备总览', href: '/devices' },
@@ -53,27 +75,23 @@ const NAV_ITEMS = [
       { label: '设备监控', href: '/devices/realtime' },
       { label: '设备状态', href: '/devices/status' },
       { label: '设备统计', href: '/devices/stats' },
+      { label: '健康总览', href: '/health' },
+      { label: '血压管理', href: '/health/bp' },
+      { label: '心率管理', href: '/health/hr' },
+      { label: '睡眠监测', href: '/health/sleep' },
+      { label: '实时报警', href: '/alerts' },
+      { label: '报警历史', href: '/alerts/history' },
     ],
   },
-  { label: '活动管理', href: '/activities', icon: CalendarHeart },
   {
-    label: '数据中心',
+    label: '运营分析',
     icon: BarChart3,
     children: [
-      { label: '健康监测', href: '/health' },
-      { label: '报警中心', href: '/alerts' },
-      { label: '数据分析', href: '/analytics' },
-    ],
-  },
-  {
-    label: '更多',
-    icon: ChevronDown,
-    children: [
+      { label: '数据看板', href: '/analytics' },
+      { label: '活动管理', href: '/activities' },
       { label: '事故报告', href: '/incidents', badge: 2 },
       { label: '物资管理', href: '/supplies', badge: 3 },
-      { label: '财务收支', href: '/financial' },
       { label: 'AI助手', href: '/ai-assistant' },
-      { label: '指标更新', href: '/elderly/vitals' },
     ],
   },
 ]

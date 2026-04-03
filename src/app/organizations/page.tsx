@@ -45,7 +45,10 @@ export default function OrganizationsPage() {
         title="机构管理"
         subtitle={`共 ${organizations.length} 家连锁机构`}
         actions={
-          <Link href="/organizations/new" className="btn btn-primary btn-sm">新增机构</Link>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href="/organizations/partners" className="btn btn-secondary btn-sm">定点机构</Link>
+            <Link href="/organizations/new" className="btn btn-primary btn-sm">新增机构</Link>
+          </div>
         }
       />
 

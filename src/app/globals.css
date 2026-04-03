@@ -29,10 +29,6 @@
   --color-text:           #1C1917;
   --color-muted:          #78716C;
 
-  /* Sidebar */
-  --color-sidebar:        #1C1917;
-  --color-sidebar-hover:  #292524;
-
   /* Shadows */
   --shadow-card:   0 1px 2px rgba(0,0,0,0.04);
   --shadow-hover:  0 4px 12px rgba(0,0,0,0.08);

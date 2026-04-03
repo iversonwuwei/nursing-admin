@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3010'
 const parsedBaseURL = new URL(baseURL)
-const devPort = parsedBaseURL.port || '3000'
+const devPort = parsedBaseURL.port || '3010'
 const nextAuthUrl = process.env.NEXTAUTH_URL ?? baseURL
 const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND
   ?? `AUTH_SECRET=playwright-smoke-secret AUTH_TRUST_HOST=true NEXTAUTH_URL=${nextAuthUrl} npm run dev -- --port ${devPort}`

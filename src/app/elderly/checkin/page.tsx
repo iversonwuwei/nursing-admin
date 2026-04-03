@@ -1,28 +1,32 @@
 'use client'
 
 import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag } from '@/components/nh'
+import { getAssessmentConfigForCase, getAssessmentConfigSnapshot, subscribeAssessmentConfigWorkflow } from '@/lib/mock/assessment-config-workflow'
+import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import {
-  addAdmissionApplication,
   CARE_LEVELS,
   COGNITIVE_LEVELS,
-  confirmAdmissionPlan,
-  EMPTY_FORM,
-  getAdmissionApplicationsSnapshot,
-  getAdmissionSourceLabel,
+  confirmAssessmentDecision,
+  EMPTY_ASSESSMENT_FORM,
+  getAssessmentCasesSnapshot,
+  getAssessmentSourceLabel,
+  getAssessmentStatusLabel,
+  getAssessmentStatusVariant,
   getLevelVariant,
   getReminderItems,
   getReminderStatusVariant,
   getStaffTaskItems,
-  getStatusVariant,
   getTaskStatusVariant,
-  markAdmissionAsAdmitted,
-  subscribeAdmissionWorkflow,
-  validateAdmissionForm,
-  type AdmissionApplication,
-  type AdmissionFormState,
+  activateAssessmentBenefits,
+  submitAssessmentCase,
+  subscribeAssessmentWorkflow,
+  validateAssessmentForm,
+  type AssessmentCase,
+  type AssessmentFormState,
   type CareLevel,
-} from '@/lib/mock/admission-workflow'
+} from '@/lib/mock/assessment-workflow'
 import {
+  Building2,
   Bot,
   CheckCircle2,
   ClipboardCheck,
@@ -33,10 +37,13 @@ import {
   Shield,
   UserPlus,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 
 type LoopStage = '待生成' | '待启动' | '执行中' | '已闭环'
+type AssessmentCoordinationType = '首次认定' | '复评跟踪' | '抽检回访'
+type AssessmentCoordinationStatus = '待机构接单' | '待复评回传' | '待抽检回传'
 
 function getLoopStageVariant(stage: LoopStage) {
   if (stage === '已闭环') return 'success'
@@ -123,15 +130,25 @@ export default function CheckinPage() {
   const selectedFromNew = searchParams.get('entry') === 'elderly-new'
   const selectedFromImport = searchParams.get('entry') === 'elderly-import'
   const applications = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
+    subscribeAssessmentWorkflow,
+    getAssessmentCasesSnapshot,
+    getAssessmentCasesSnapshot,
+  )
+  const masterSnapshot = useSyncExternalStore(
+    subscribeMasterDataWorkflow,
+    getMasterDataSnapshot,
+    getMasterDataSnapshot,
+  )
+  useSyncExternalStore(
+    subscribeAssessmentConfigWorkflow,
+    getAssessmentConfigSnapshot,
+    getAssessmentConfigSnapshot,
   )
   const initialSelectedApplication = applications.find(application => application.id === selectedFromQuery) ?? applications[0]
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [overdueOnly, setOverdueOnly] = useState(false)
-  const [form, setForm] = useState<AdmissionFormState>(EMPTY_FORM)
+  const [form, setForm] = useState<AssessmentFormState>(EMPTY_ASSESSMENT_FORM)
   const [selectedId, setSelectedId] = useState(initialSelectedApplication?.id ?? '')
   const [formError, setFormError] = useState('')
   const [reviewLevel, setReviewLevel] = useState<CareLevel>(
@@ -152,6 +169,11 @@ export default function CheckinPage() {
     planGenerated: applications.filter(application => application.status === '计划已生成').length,
     admitted: applications.filter(application => application.status === '已入住').length,
   }), [applications])
+
+  const assessmentPartners = useMemo(
+    () => masterSnapshot.partners.filter(item => item.lifecycleStatus === '已启用' && item.institutionType === '评估机构'),
+    [masterSnapshot.partners],
+  )
 
   const allTaskItems = useMemo(() => getStaffTaskItems(applications), [applications])
   const allReminderItems = useMemo(() => getReminderItems(applications), [applications])
@@ -236,27 +258,74 @@ export default function CheckinPage() {
     [applicationProgressMap, applications],
   )
 
-  function updateForm<K extends keyof AdmissionFormState>(key: K, value: AdmissionFormState[K]) {
+  const coordinationItems = useMemo(() => applications.map((application, index) => {
+    const assignedPartner = assessmentPartners.length > 0 ? assessmentPartners[index % assessmentPartners.length] : null
+    const coordinationType: AssessmentCoordinationType = application.status === '待人工确认'
+      ? '首次认定'
+      : application.status === '计划已生成'
+        ? '复评跟踪'
+        : '抽检回访'
+    const coordinationStatus: AssessmentCoordinationStatus = application.status === '待人工确认'
+      ? '待机构接单'
+      : application.status === '计划已生成'
+        ? '待复评回传'
+        : '待抽检回传'
+    const nextAction = coordinationType === '首次认定'
+      ? '评估机构完成首评并回传认定意见'
+      : coordinationType === '复评跟踪'
+        ? '结合当前服务计划发起复评结论回传'
+        : '抽检机构补齐回访记录并返回经办复核'
+    const slaLabel = coordinationType === '首次认定'
+      ? '24小时内完成首评'
+      : coordinationType === '复评跟踪'
+        ? '48小时内完成复评回传'
+        : '72小时内完成抽检回访'
+
+    return {
+      applicationId: application.id,
+      assignedPartnerId: assignedPartner?.id,
+      assignedPartnerName: assignedPartner?.name ?? '待配置评估机构',
+      coordinationType,
+      coordinationStatus,
+      nextAction,
+      slaLabel,
+    }
+  }), [applications, assessmentPartners])
+
+  const coordinationStats = useMemo(() => ({
+    activeInstitutions: assessmentPartners.length,
+    initialReviews: coordinationItems.filter(item => item.coordinationType === '首次认定').length,
+    reevaluations: coordinationItems.filter(item => item.coordinationType === '复评跟踪').length,
+    spotChecks: coordinationItems.filter(item => item.coordinationType === '抽检回访').length,
+  }), [assessmentPartners.length, coordinationItems])
+
+  const selectedCoordination = useMemo(
+    () => selectedApplication ? coordinationItems.find(item => item.applicationId === selectedApplication.id) ?? null : null,
+    [coordinationItems, selectedApplication],
+  )
+  const selectedAssessmentConfig = selectedApplication ? getAssessmentConfigForCase(selectedApplication) : null
+
+  function updateForm<K extends keyof AssessmentFormState>(key: K, value: AssessmentFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function syncReviewDraft(application: AdmissionApplication) {
+  function syncReviewDraft(application: AssessmentCase) {
     setSelectedId(application.id)
     setReviewLevel(application.confirmedCareLevel ?? application.aiRecommendation.recommendedLevel)
     setReviewNote(application.reviewNote ?? '')
   }
 
   function handleCreateApplication() {
-    const validationError = validateAdmissionForm(form)
+    const validationError = validateAssessmentForm(form)
     if (validationError) {
       setFormError(validationError)
       return
     }
 
-    const application = addAdmissionApplication(form)
+    const application = submitAssessmentCase(form)
     syncReviewDraft(application)
     setShowForm(false)
-    setForm(EMPTY_FORM)
+    setForm(EMPTY_ASSESSMENT_FORM)
     setFormError('')
   }
 
@@ -270,7 +339,7 @@ export default function CheckinPage() {
       return
     }
 
-    const updated = confirmAdmissionPlan(selectedApplication.id, reviewLevel, reviewNote)
+    const updated = confirmAssessmentDecision(selectedApplication.id, reviewLevel, reviewNote)
     if (updated) {
       syncReviewDraft(updated)
     }
@@ -283,7 +352,7 @@ export default function CheckinPage() {
       return
     }
 
-    const updated = markAdmissionAsAdmitted(selectedApplication.id)
+    const updated = activateAssessmentBenefits(selectedApplication.id)
     if (updated) {
       syncReviewDraft(updated)
     }
@@ -292,40 +361,40 @@ export default function CheckinPage() {
   return (
     <div className="page-root animate-fade-up">
       <PageHeader
-        title="办理入住"
-        subtitle={`Demo 闭环：录入 -> AI 分级建议 -> 人工确认 -> 护理计划与提醒 · 共 ${applications.length} 条入住记录`}
+        title="长护险评估认定"
+        subtitle={`Demo 闭环：申请受理 -> AI 辅助评估 -> 人工认定 -> 认定结论与服务建议 · 共 ${applications.length} 条评估申请`}
         actions={(
           <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => setShowForm(current => !current)}>
             <Plus size={14} />
-            新建入住
+            新建评估申请
           </button>
         )}
       />
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <StatCard icon={<UserPlus size={18} />} label="入住记录" value={stats.submitted} sub="当前 demo 样本" color="primary" />
-        <StatCard icon={<Bot size={18} />} label="待人工确认" value={stats.pendingConfirmation} sub="AI 已出建议" color="warning" />
-        <StatCard icon={<ClipboardCheck size={18} />} label="计划已生成" value={stats.planGenerated} sub="已同步任务提醒" color="info" />
-        <StatCard icon={<HomeIcon size={18} />} label="已入住" value={stats.admitted} sub="已进入在住管理" color="success" />
+        <StatCard icon={<UserPlus size={18} />} label="评估申请" value={stats.submitted} sub="当前 demo 样本" color="primary" />
+        <StatCard icon={<Bot size={18} />} label="待认定确认" value={stats.pendingConfirmation} sub="AI 已出建议" color="warning" />
+        <StatCard icon={<ClipboardCheck size={18} />} label="认定结论已生成" value={stats.planGenerated} sub="已同步服务建议" color="info" />
+        <StatCard icon={<HomeIcon size={18} />} label="认定已生效" value={stats.admitted} sub="已进入回访/抽检期" color="success" />
       </div>
 
       <DataCard
         title="本次 Demo 交付范围"
-        subtitle="面向护理主管的入住首条闭环，当前数据由共享 mock workflow service 承载。"
+        subtitle="面向评估员与评估主管的认定首条闭环，当前由共享 assessment workflow 和评定配置 store 共同承载。"
         badge={<Tag variant="info">Shared Mock Store</Tag>}
       >
 
         {selectedFromNew && selectedApplication ? (
           <DataCard
             title="来自新增老人页"
-            subtitle={`已将 ${selectedApplication.name} 带入入住审核闭环。下一步请确认护理等级并生成计划。`}
+            subtitle={`已将 ${selectedApplication.name} 带入评估认定闭环。下一步请确认认定等级并出具结论。`}
             badge={<Tag variant="success">New Entry Synced</Tag>}
           />
         ) : null}
         {selectedFromImport && selectedApplication ? (
           <DataCard
             title="来自资料导入页"
-            subtitle={`已将 ${selectedApplication.name} 的资料识别草稿带入入住审核。下一步请复核字段并确认护理等级。`}
+            subtitle={`已将 ${selectedApplication.name} 的资料识别草稿带入评估认定。下一步请复核字段并确认认定等级。`}
             badge={<Tag variant="primary">Import Synced</Tag>}
           />
         ) : null}
@@ -337,10 +406,10 @@ export default function CheckinPage() {
           }}
         >
           {[
-            { title: '1. 入住录入', description: '补充慢病、用药、过敏、ADL 和认知状态，作为 AI 输入。' },
-            { title: '2. AI 建议', description: '规则 mock service 统一输出护理级别、理由、置信度和模板编码。' },
-            { title: '3. 人工确认', description: '护理主管可保持 AI 建议，也可调整级别并写明原因。' },
-            { title: '4. 跨页同步', description: '确认后的计划会同步到员工任务页与提醒中心页。' },
+            { title: '1. 申请受理', description: '补充慢病、用药、过敏、ADL 和认知状态，作为评估输入。' },
+            { title: '2. AI 辅助建议', description: '规则 mock service 输出照护等级建议、理由、置信度和模板编码。' },
+            { title: '3. 人工认定', description: '经办或护理主管可保持 AI 建议，也可调整等级并写明原因。' },
+              { title: '4. 认定输出', description: '确认后的认定结论会匹配规则集、模板和服务建议预览。' },
           ].map(item => (
             <div
               key={item.title}
@@ -355,6 +424,65 @@ export default function CheckinPage() {
               <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)', marginTop: 6 }}>{item.description}</div>
             </div>
           ))}
+        </div>
+      </DataCard>
+
+      <DataCard
+        title="评估机构协同"
+        subtitle="把评估机构分配、复评和抽检协同显式纳入认定工作台，避免认定链路只停留在院内视角。"
+        badge={<Tag variant={assessmentPartners.length > 0 ? 'info' : 'warning'}>{assessmentPartners.length > 0 ? `${assessmentPartners.length} 家评估机构已启用` : '待配置评估机构'}</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
+          <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>评估机构</div>
+            <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-text)' }}>{coordinationStats.activeInstitutions}</div>
+          </div>
+          <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>首次认定</div>
+            <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-primary)' }}>{coordinationStats.initialReviews}</div>
+          </div>
+          <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>复评跟踪</div>
+            <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-warning)' }}>{coordinationStats.reevaluations}</div>
+          </div>
+          <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>抽检回访</div>
+            <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-info)' }}>{coordinationStats.spotChecks}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 10 }}>
+          {coordinationItems.map(item => {
+            const isSelected = item.applicationId === selectedApplication?.id
+            const application = applications.find(current => current.id === item.applicationId)
+            if (!application) {
+              return null
+            }
+
+            return (
+              <div
+                key={item.applicationId}
+                style={{
+                  border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 14,
+                  background: isSelected ? 'rgba(13,148,136,0.05)' : 'var(--color-card)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{application.name} · {application.id}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--color-muted)' }}>{item.assignedPartnerName} · {item.slaLabel}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Tag variant="info">{item.coordinationType}</Tag>
+                    <Tag variant={item.coordinationType === '首次认定' ? 'warning' : item.coordinationType === '复评跟踪' ? 'primary' : 'info'}>{item.coordinationStatus}</Tag>
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.nextAction}</div>
+              </div>
+            )
+          })}
         </div>
       </DataCard>
 
@@ -382,8 +510,8 @@ export default function CheckinPage() {
 
       {showForm && (
         <DataCard
-          title="入住登记与 AI 评估输入"
-          subtitle="提交后会写入共享 mock store，并立即生成 AI 护理分级建议。"
+          title="评估申请与 AI 辅助认定输入"
+          subtitle="提交后会写入共享 mock store，并立即生成 AI 照护等级建议。"
           badge={<Tag variant="primary">AI Ready</Tag>}
         >
           <div className="form-section">
@@ -399,7 +527,7 @@ export default function CheckinPage() {
               <div>
                 <label className="form-label">性别</label>
                 <div className="select-wrap" style={{ width: '100%' }}>
-                  <select className="select" style={{ width: '100%' }} value={form.gender} onChange={event => updateForm('gender', event.target.value as AdmissionFormState['gender'])}>
+                  <select className="select" style={{ width: '100%' }} value={form.gender} onChange={event => updateForm('gender', event.target.value as AssessmentFormState['gender'])}>
                     <option value="">请选择</option>
                     <option value="男">男</option>
                     <option value="女">女</option>
@@ -408,7 +536,7 @@ export default function CheckinPage() {
                 </div>
               </div>
               <div>
-                <label className="form-label">申请护理等级</label>
+                <label className="form-label">申请照护等级</label>
                 <div className="select-wrap" style={{ width: '100%' }}>
                   <select className="select" style={{ width: '100%' }} value={form.requestedLevel} onChange={event => updateForm('requestedLevel', event.target.value as CareLevel)}>
                     {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
@@ -425,7 +553,7 @@ export default function CheckinPage() {
                 <input className="input" value={form.emergency} onChange={event => updateForm('emergency', event.target.value)} placeholder="姓名 + 电话" />
               </div>
               <div>
-                <label className="form-label">入住房间</label>
+                <label className="form-label">服务地址/房间</label>
                 <input className="input" value={form.room} onChange={event => updateForm('room', event.target.value)} placeholder="如 201-1" />
               </div>
               <div>
@@ -435,7 +563,7 @@ export default function CheckinPage() {
               <div className="form-grid-full">
                 <label className="form-label">认知状态</label>
                 <div className="select-wrap" style={{ width: '100%' }}>
-                  <select className="select" style={{ width: '100%' }} value={form.cognitiveLevel} onChange={event => updateForm('cognitiveLevel', event.target.value as AdmissionFormState['cognitiveLevel'])}>
+                  <select className="select" style={{ width: '100%' }} value={form.cognitiveLevel} onChange={event => updateForm('cognitiveLevel', event.target.value as AssessmentFormState['cognitiveLevel'])}>
                     <option value="">请选择</option>
                     {COGNITIVE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                   </select>
@@ -469,13 +597,13 @@ export default function CheckinPage() {
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => { setShowForm(false); setFormError('') }}>取消</button>
-              <button className="btn btn-primary" onClick={handleCreateApplication}>提交并生成 AI 建议</button>
+              <button className="btn btn-primary" onClick={handleCreateApplication}>提交并生成 AI 评估建议</button>
             </div>
           </div>
         </DataCard>
       )}
 
-      <DataCard title="入住申请列表" subtitle="用于护理主管查看 AI 建议、确认等级和追踪计划状态。">
+      <DataCard title="评估申请列表" subtitle="用于评估员和评估主管查看 AI 建议、确认认定结果和追踪复评状态。">
         {filteredApplications.length > 0 ? (
           <div className="table-wrap">
             <table className="table">
@@ -486,7 +614,7 @@ export default function CheckinPage() {
                   <th>房间</th>
                   <th>ADL</th>
                   <th>AI 建议</th>
-                  <th>人工确认</th>
+                  <th>认定结果</th>
                   <th>闭环进度</th>
                   <th>申请日期</th>
                   <th>状态</th>
@@ -514,7 +642,7 @@ export default function CheckinPage() {
                           <div className="font-semibold" style={{ fontSize: 14 }}>{application.name}</div>
                           <div className="text-xs" style={{ color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <span>{application.id} · {application.gender} · {application.age}岁</span>
-                            <Tag variant={application.sourceType === 'document-import' ? 'primary' : 'neutral'}>{getAdmissionSourceLabel(application.sourceType)}</Tag>
+                            <Tag variant={application.sourceType === 'document-import' ? 'primary' : 'neutral'}>{getAssessmentSourceLabel(application.sourceType)}</Tag>
                           </div>
                         </div>
                       </div>
@@ -560,10 +688,10 @@ export default function CheckinPage() {
                       })()}
                     </td>
                     <td><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{application.createdAt}</span></td>
-                    <td><Tag variant={getStatusVariant(application.status)}>{application.status}</Tag></td>
+                    <td><Tag variant={getAssessmentStatusVariant(application.status)}>{getAssessmentStatusLabel(application.status)}</Tag></td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-primary btn-sm" onClick={() => syncReviewDraft(application)}>
-                        {application.status === '待人工确认' ? '继续审核' : application.status === '计划已生成' ? '查看计划' : '查看档案'}
+                        {application.status === '待人工确认' ? '继续认定' : application.status === '计划已生成' ? '查看结论' : '查看生效'}
                       </button>
                     </td>
                   </tr>
@@ -573,7 +701,7 @@ export default function CheckinPage() {
           </div>
         ) : (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-muted)', fontSize: 13 }}>
-            当前筛选条件下暂无入住申请。
+            当前筛选条件下暂无评估申请。
           </div>
         )}
       </DataCard>
@@ -581,9 +709,9 @@ export default function CheckinPage() {
       {selectedApplication ? (
         <div className="dashboard-grid-2">
           <DataCard
-            title="AI 护理分级建议"
-            subtitle={`${selectedApplication.name} · ${selectedApplication.room} · 当前状态 ${selectedApplication.status}`}
-            badge={<Tag variant={getStatusVariant(selectedApplication.status)}>{selectedApplication.status}</Tag>}
+            title="AI 长护险评估建议"
+            subtitle={`${selectedApplication.name} · ${selectedApplication.room} · 当前状态 ${getAssessmentStatusLabel(selectedApplication.status)}`}
+            badge={<Tag variant={getAssessmentStatusVariant(selectedApplication.status)}>{getAssessmentStatusLabel(selectedApplication.status)}</Tag>}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div
@@ -596,7 +724,7 @@ export default function CheckinPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>AI 推荐等级</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>AI 推荐照护等级</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Tag variant={getLevelVariant(selectedApplication.aiRecommendation.recommendedLevel)}>{selectedApplication.aiRecommendation.recommendedLevel}</Tag>
                       <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>评分 {selectedApplication.aiRecommendation.assessmentScore}</span>
@@ -616,12 +744,68 @@ export default function CheckinPage() {
               </div>
 
               <div>
-                <div className="info-row"><span className="info-label">录入来源</span><span className="info-value">{selectedApplication.sourceLabel ?? getAdmissionSourceLabel(selectedApplication.sourceType)}</span></div>
-                <div className="info-row"><span className="info-label">申请护理等级</span><span className="info-value">{selectedApplication.requestedLevel}</span></div>
+                <div className="info-row"><span className="info-label">录入来源</span><span className="info-value">{selectedApplication.sourceLabel ?? getAssessmentSourceLabel(selectedApplication.sourceType)}</span></div>
+                <div className="info-row"><span className="info-label">申请照护等级</span><span className="info-value">{selectedApplication.requestedLevel}</span></div>
                 <div className="info-row"><span className="info-label">ADL / 认知状态</span><span className="info-value">{selectedApplication.adlScore} / {selectedApplication.cognitiveLevel}</span></div>
                 <div className="info-row"><span className="info-label">慢病数量</span><span className="info-value">{selectedApplication.chronicConditions.split(/[，,、\n]/).filter(Boolean).length || 0} 项</span></div>
                 <div className="info-row"><span className="info-label">模板编码</span><span className="info-value">{selectedApplication.aiRecommendation.planTemplateCode}</span></div>
               </div>
+
+              {selectedAssessmentConfig ? (
+                <div
+                  style={{
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 14,
+                    background: 'var(--color-bg)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>当前认定依据</div>
+                    <Tag variant="info">{selectedAssessmentConfig.scene}</Tag>
+                  </div>
+                  <div className="info-row"><span className="info-label">生效规则集</span><span className="info-value">{selectedAssessmentConfig.ruleSet?.name ?? '待配置有效规则集'}</span></div>
+                  <div className="info-row"><span className="info-label">匹配模板</span><span className="info-value">{selectedAssessmentConfig.template?.name ?? '待配置启用模板'}</span></div>
+                  <div className="info-row"><span className="info-label">护理项数量</span><span className="info-value">{selectedAssessmentConfig.nursingItems.length} 项</span></div>
+                  <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {selectedAssessmentConfig.nursingItems.map(item => <Tag key={item.id} variant="neutral">{item.name}</Tag>)}
+                    {selectedAssessmentConfig.nursingItems.length === 0 ? <Tag variant="warning">请先在评定标准配置页补齐规则项</Tag> : null}
+                  </div>
+                  {selectedAssessmentConfig.template?.followupAction ? (
+                    <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                      后续动作：{selectedAssessmentConfig.template.followupAction}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {selectedCoordination ? (
+                <div
+                  style={{
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: 14,
+                    background: 'var(--color-bg)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+                      <Building2 size={14} />
+                      评估机构协同
+                    </div>
+                    <Tag variant="info">{selectedCoordination.coordinationType}</Tag>
+                  </div>
+                  <div className="info-row"><span className="info-label">指派机构</span><span className="info-value">{selectedCoordination.assignedPartnerName}</span></div>
+                  <div className="info-row"><span className="info-label">协同状态</span><span className="info-value">{selectedCoordination.coordinationStatus}</span></div>
+                  <div className="info-row"><span className="info-label">处理时限</span><span className="info-value">{selectedCoordination.slaLabel}</span></div>
+                  <div className="info-row"><span className="info-label">下一动作</span><span className="info-value">{selectedCoordination.nextAction}</span></div>
+                  {selectedCoordination.assignedPartnerId ? (
+                    <div style={{ marginTop: 10 }}>
+                      <Link href={`/organizations/partners?selected=${selectedCoordination.assignedPartnerId}`} className="btn btn-secondary btn-sm">查看评估机构</Link>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>AI 判断依据</div>
@@ -645,10 +829,10 @@ export default function CheckinPage() {
               </div>
 
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>人工确认</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>人工认定</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                   <div>
-                    <label className="form-label">最终护理等级</label>
+                    <label className="form-label">最终认定等级</label>
                     <div className="select-wrap" style={{ width: '100%' }}>
                       <select className="select" style={{ width: '100%' }} value={reviewLevel} onChange={event => setReviewLevel(event.target.value as CareLevel)}>
                         {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
@@ -658,12 +842,12 @@ export default function CheckinPage() {
                   </div>
 
                   <div>
-                    <label className="form-label">人工确认说明</label>
+                    <label className="form-label">人工认定说明</label>
                     <textarea
                       className="input"
                       rows={3}
                       style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }}
-                      placeholder="如人工调整级别，请说明原因；保持 AI 建议时可留空。"
+                      placeholder="如人工调整等级，请说明原因；保持 AI 建议时可留空。"
                       value={reviewNote}
                       onChange={event => setReviewNote(event.target.value)}
                     />
@@ -671,13 +855,13 @@ export default function CheckinPage() {
 
                   {selectedApplication.confirmedCareLevel ? (
                     <div style={{ fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.7 }}>
-                      已由 {selectedApplication.confirmedBy ?? '护理主管'} 于 {selectedApplication.confirmedAt ?? '待记录'} 确认，最终等级为 {selectedApplication.confirmedCareLevel}。
+                      已由 {selectedApplication.confirmedBy ?? '评估主管'} 于 {selectedApplication.confirmedAt ?? '待记录'} 完成人工认定，最终等级为 {selectedApplication.confirmedCareLevel}。
                     </div>
                   ) : null}
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button className="btn btn-primary" onClick={handleConfirmPlan} disabled={selectedApplication.status === '已入住'}>
-                      确认等级并生成计划
+                      确认认定并生成结论
                     </button>
                   </div>
                 </div>
@@ -686,8 +870,8 @@ export default function CheckinPage() {
           </DataCard>
 
           <DataCard
-            title="护理计划与提醒预览"
-            subtitle="当前为共享 mock 预览，确认后会同步到员工任务页和提醒中心页。"
+            title="认定结论与服务建议预览"
+            subtitle="当前为共享 mock 预览，认定后会同步生成服务建议、任务和提醒。"
             badge={<Tag variant={selectedApplication.carePlan ? 'success' : 'neutral'}>{selectedApplication.carePlan ? '已生成' : '待生成'}</Tag>}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -705,14 +889,14 @@ export default function CheckinPage() {
                     <Tag variant={getLevelVariant(selectedApplication.confirmedCareLevel ?? reviewLevel)}>{selectedApplication.confirmedCareLevel ?? reviewLevel}</Tag>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>提醒策略</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>随访策略</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>到点提醒 + 超时升级</div>
                   </div>
                 </div>
                 <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--color-muted)' }}>
                   {selectedApplication.carePlan
-                    ? `已生成 ${selectedApplication.carePlan.length} 条护理任务，并同步写入员工任务页与提醒中心页。`
-                    : '当前尚未确认护理等级，计划与提醒会在人工确认后生成。'}
+                    ? `已生成 ${selectedApplication.carePlan.length} 条服务建议任务，并同步写入任务中心与提醒中心页。`
+                    : '当前尚未确认认定等级，服务建议、提醒与回访计划会在人工认定后生成。'}
                 </div>
               </div>
 
@@ -750,28 +934,28 @@ export default function CheckinPage() {
                     lineHeight: 1.7,
                   }}
                 >
-                    护理计划、任务和到点提醒将在护理主管确认后生成。当前页仅展示共享 mock 预览，不写入真实后端。
+                    服务建议、任务和到点提醒将在评估员或评估主管确认认定后生成。当前页仅展示共享 mock 预览，不写入真实后端。
                 </div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                  当前 mock 通知对象：责任护士、当班护理员、夜班值守人员。
+                  当前 mock 通知对象：评估员、评估主管、复评协同机构联系人。
                 </div>
                 {selectedApplication.status === '计划已生成' ? (
                   <button className="btn btn-secondary" onClick={handleMarkAdmitted}>
-                    标记已入住
+                    标记认定生效
                   </button>
                 ) : selectedApplication.status === '已入住' ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-success)', fontSize: 13, fontWeight: 600 }}>
                     <CheckCircle2 size={14} />
-                    已进入在住管理
+                    已进入认定生效期
                   </div>
                 ) : null}
               </div>
 
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>结构化输入摘要</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>结构化评定输入摘要</div>
                 {selectedApplication.sourceDocumentNames?.length ? (
                   <div className="info-row"><span className="info-label">导入资料</span><span className="info-value">{selectedApplication.sourceDocumentNames.join('、')}</span></div>
                 ) : null}
@@ -784,7 +968,7 @@ export default function CheckinPage() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>执行回执与提醒反馈</div>
-                  <Tag variant="info">Admission Feedback Loop</Tag>
+                  <Tag variant="info">Assessment Feedback Loop</Tag>
                 </div>
 
                 {selectedTaskItems.length > 0 ? (
@@ -856,7 +1040,7 @@ export default function CheckinPage() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--color-muted)' }}>
                       <Eye size={14} />
-                      入住页现在会回流员工任务和提醒中心的处理结果，护理主管无需切页即可确认首轮执行闭环。
+                      认定页现在会回流服务执行页和提醒中心的处理结果，经办或护理主管无需切页即可确认首轮执行闭环。
                     </div>
                   </div>
                 ) : (
@@ -871,7 +1055,7 @@ export default function CheckinPage() {
                       lineHeight: 1.7,
                     }}
                   >
-                    当前尚无可回流的执行回执。请先确认护理计划，并在员工任务页或提醒中心完成执行/处理动作。
+                    当前尚无可回流的执行回执。请先确认认定结果，并在服务执行页或提醒中心完成执行/处理动作。
                   </div>
                 )}
               </div>
@@ -880,19 +1064,19 @@ export default function CheckinPage() {
         </div>
       ) : null}
 
-      <DataCard title="发布与回滚说明" subtitle="当前只影响 Demo 页与共享 mock store，不影响其他真实业务模块。">
+      <DataCard title="集成与回滚说明" subtitle="当前只影响评估认定 Demo 页与共享 mock store，不影响其他真实业务模块。">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>受影响用户</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>管理端护理主管、员工任务查看人员、提醒中心查看人员。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>管理端经办人员、护理主管、服务执行查看人员、提醒中心查看人员。</div>
           </div>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>验证门禁</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>本次以 TypeScript / ESLint 静态校验为主，目标是确认跨页同步逻辑无错误。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>本次以 TypeScript / ESLint 静态校验为主，目标是确认评估认定与跨页同步逻辑无错误。</div>
           </div>
           <div style={{ padding: 14, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>回滚路径</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>若需要回退，只需恢复入住页、员工任务页和提醒中心页对共享 mock store 的接入。</div>
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>若需要回退，只需恢复认定页、服务执行页和提醒中心页对共享 mock store 的当前接入方式。</div>
           </div>
         </div>
       </DataCard>

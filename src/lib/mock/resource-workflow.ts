@@ -1,9 +1,11 @@
 import { equipmentList } from '@/lib/data'
+import { getMasterDataSnapshot } from '@/lib/mock/master-data-workflow'
 import type { Equipment } from '@/lib/types'
 
 export type StaffLifecycleStatus = '待入职' | '已入职'
 export type EquipmentLifecycleStatus = '待验收' | '已入册'
 export type SupplyLifecycleStatus = '待上架' | '已入库'
+export type StaffEmploymentSource = '自营' | '第三方合作'
 
 export interface StaffScheduleItem {
   day: string
@@ -15,6 +17,10 @@ export interface LiveStaffRecord {
   name: string
   role: string
   department: string
+  employmentSource: StaffEmploymentSource
+  partnerAgencyId?: string
+  partnerAgencyName?: string
+  partnerAffiliationRole?: string
   phone: string
   status: '在职' | '休假' | '离职' | '待入职'
   gender: '男' | '女'
@@ -92,6 +98,9 @@ export interface StaffCreateFormState {
   name: string
   role: string
   department: string
+  employmentSource: StaffEmploymentSource
+  partnerAgencyId: string
+  partnerAffiliationRole: string
   gender: '男' | '女' | ''
   phone: string
   email: string
@@ -139,6 +148,9 @@ export const EMPTY_STAFF_FORM: StaffCreateFormState = {
   name: '',
   role: '',
   department: '',
+  employmentSource: '自营',
+  partnerAgencyId: '',
+  partnerAffiliationRole: '',
   gender: '',
   phone: '',
   email: '',
@@ -188,6 +200,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '王美丽',
     role: '护理主管',
     department: '护理部',
+    employmentSource: '自营',
     phone: '13800138001',
     status: '在职',
     gender: '女',
@@ -208,6 +221,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '李建国',
     role: '护士',
     department: '护理部',
+    employmentSource: '自营',
     phone: '13800138002',
     status: '在职',
     gender: '男',
@@ -228,6 +242,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '赵晓红',
     role: '护士',
     department: '护理部',
+    employmentSource: '自营',
     phone: '13800138003',
     status: '在职',
     gender: '女',
@@ -248,6 +263,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '周明',
     role: '后勤主管',
     department: '后勤部',
+    employmentSource: '自营',
     phone: '13800138004',
     status: '在职',
     gender: '男',
@@ -268,6 +284,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '吴静',
     role: '心理咨询师',
     department: '心理部',
+    employmentSource: '自营',
     phone: '13800138005',
     status: '在职',
     gender: '女',
@@ -288,6 +305,7 @@ const BASE_STAFF: LiveStaffRecord[] = [
     name: '郑伟',
     role: '厨师长',
     department: '后勤部',
+    employmentSource: '自营',
     phone: '13800138006',
     status: '休假',
     gender: '男',
@@ -302,6 +320,56 @@ const BASE_STAFF: LiveStaffRecord[] = [
     bonus: '¥900',
     lifecycleStatus: '已入职',
     createdAt: '2017-08-18',
+  },
+  {
+    id: 'S007',
+    name: '张护工',
+    role: '护工',
+    department: '护理部',
+    employmentSource: '第三方合作',
+    partnerAgencyId: 'P001',
+    partnerAgencyName: '安心照护服务中心',
+    partnerAffiliationRole: '驻场护工',
+    phone: '13800138007',
+    status: '在职',
+    gender: '女',
+    email: 'zhanghg@nursinghome.com',
+    age: 46,
+    performance: 86,
+    attendance: 97,
+    satisfaction: 90,
+    hireDate: '2025-12-15',
+    schedule: WEEK_SCHEDULE,
+    certificates: ['养老护理员证书'],
+    bonus: '¥800',
+    lifecycleStatus: '已入职',
+    createdAt: '2025-12-15',
+    onboardingNote: '由安心照护服务中心派驻，负责夜间与全护执行计划。',
+  },
+  {
+    id: 'S008',
+    name: '黄康复师',
+    role: '康复师',
+    department: '康复部',
+    employmentSource: '第三方合作',
+    partnerAgencyId: 'P002',
+    partnerAgencyName: '康益康复合作社',
+    partnerAffiliationRole: '驻点康复师',
+    phone: '13800138008',
+    status: '在职',
+    gender: '男',
+    email: 'huangkf@nursinghome.com',
+    age: 38,
+    performance: 89,
+    attendance: 95,
+    satisfaction: 92,
+    hireDate: '2026-02-20',
+    schedule: WEEK_SCHEDULE,
+    certificates: ['康复治疗师证书'],
+    bonus: '¥1,300',
+    lifecycleStatus: '已入职',
+    createdAt: '2026-02-20',
+    onboardingNote: '由康益康复合作社派驻，负责专项康复执行计划。',
   },
 ]
 
@@ -454,6 +522,16 @@ function resolveSupplyStatus(stock: number, minStock: number, lifecycleStatus: S
   return stock < minStock ? '库存不足' : '正常'
 }
 
+function normalizeStaffRecord(record: LiveStaffRecord): LiveStaffRecord {
+  return {
+    ...record,
+    employmentSource: record.employmentSource ?? '自营',
+    partnerAgencyId: record.partnerAgencyId,
+    partnerAgencyName: record.partnerAgencyName,
+    partnerAffiliationRole: record.partnerAffiliationRole,
+  }
+}
+
 function createInitialState(): ResourceWorkflowState {
   return {
     staffRecords: [],
@@ -500,7 +578,7 @@ function hydrateState() {
   try {
     const parsed = JSON.parse(raw) as ResourceWorkflowState
     workflowState = {
-      staffRecords: Array.isArray(parsed.staffRecords) ? parsed.staffRecords : [],
+      staffRecords: Array.isArray(parsed.staffRecords) ? parsed.staffRecords.map(item => normalizeStaffRecord(item as LiveStaffRecord)) : [],
       equipmentRecords: Array.isArray(parsed.equipmentRecords) ? parsed.equipmentRecords : [],
       supplyRecords: Array.isArray(parsed.supplyRecords) ? parsed.supplyRecords : [],
     }
@@ -556,16 +634,39 @@ export function validateStaffForm(form: StaffCreateFormState) {
     return '请输入有效邮箱。'
   }
 
+  if (form.employmentSource === '第三方合作') {
+    if (!form.partnerAgencyId) {
+      return '第三方员工或护工必须选择已启用的合作机构。'
+    }
+
+    if (!form.partnerAffiliationRole.trim()) {
+      return '请填写第三方人员在合作机构内的角色。'
+    }
+
+    const snapshot = getMasterDataSnapshot()
+    const partner = snapshot.partners.find(item => item.id === form.partnerAgencyId)
+    if (!partner || partner.lifecycleStatus !== '已启用' || partner.institutionType !== '护理服务机构') {
+      return '请选择有效且已启用的护理服务机构。'
+    }
+  }
+
   return ''
 }
 
 export function addStaffDraft(form: StaffCreateFormState) {
   hydrateState()
+  const partner = form.employmentSource === '第三方合作'
+    ? getMasterDataSnapshot().partners.find(item => item.id === form.partnerAgencyId && item.institutionType === '护理服务机构')
+    : undefined
   const draft: LiveStaffRecord = {
     id: `S${Date.now().toString().slice(-4)}`,
     name: form.name.trim(),
     role: form.role.trim(),
     department: form.department.trim(),
+    employmentSource: form.employmentSource,
+    partnerAgencyId: partner?.id,
+    partnerAgencyName: partner?.name,
+    partnerAffiliationRole: form.employmentSource === '第三方合作' ? form.partnerAffiliationRole.trim() : undefined,
     phone: form.phone.trim(),
     status: '待入职',
     gender: form.gender as '男' | '女',
@@ -580,7 +681,9 @@ export function addStaffDraft(form: StaffCreateFormState) {
     bonus: '¥0',
     lifecycleStatus: '待入职',
     createdAt: nowDate(),
-    onboardingNote: '资料已提交，等待主管确认入职。',
+    onboardingNote: form.employmentSource === '第三方合作'
+      ? `第三方人员资料已提交，等待主管确认并绑定 ${partner?.name ?? '护理服务机构'}。`
+      : '资料已提交，等待主管确认入职。',
   }
 
   workflowState = {
