@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import {
   ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS,
@@ -11,6 +11,7 @@ import {
   type AlertStatus, type AlertType,
 } from '@/lib/data/alerts-data'
 import { getAlertAiSuggestion, getOpenAlertAiSummary } from '@/lib/mock/admin-ai'
+import { sortAlertsByPriority } from '@/lib/operations-priority'
 import {
   Activity,
   AlertTriangle, Bell,
@@ -25,7 +26,7 @@ import {
   User,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 const LEVEL_ICON: Record<AlertLevel, React.ReactNode> = {
   critical: <AlertTriangle size={14} />,
@@ -242,6 +243,11 @@ export default function AlertsPage() {
   const processing = alerts.filter(a => a.status === 'processing').length
   const resolved = alerts.filter(a => a.status === 'resolved').length
   const critical = alerts.filter(a => a.level === 'critical' && a.status !== 'resolved').length
+  const resolutionRate = alerts.length > 0 ? Math.round((resolved / alerts.length) * 100) : 0
+  const activeDeviceAlerts = alerts.filter(a => a.type === 'device' && a.status !== 'resolved').length
+  const prioritizedAlerts = useMemo(() => sortAlertsByPriority(filtered).slice(0, 4), [filtered])
+  const sortedAlerts = useMemo(() => sortAlertsByPriority(filtered), [filtered])
+  const topAlert = prioritizedAlerts[0] ?? null
   const openAlertAiSummary = getOpenAlertAiSummary()
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
     source: 'alerts-center',
@@ -256,6 +262,30 @@ export default function AlertsPage() {
       <PageHeader
         title="报警中心"
         subtitle={`共 ${alerts.length} 条记录 · ${critical} 例紧急待处理`}
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Alert Operations"
+        title="实时告警总览"
+        description="先处理待处理紧急告警，再跟进处理中事件，最后回看已解决记录的复盘质量，避免值班视角只看到数量看不到处置顺序。"
+        badge={<Tag variant="warning">Response First</Tag>}
+        metrics={[
+          { label: '待处理告警', value: pending, hint: '需要值班人员立即接单', tone: pending > 0 ? 'danger' : 'success' },
+          { label: '处理中告警', value: processing, hint: '需要跟踪处置进度', tone: processing > 0 ? 'warning' : 'neutral' },
+          { label: '未闭环紧急', value: critical, hint: '跌倒与健康异常优先', tone: critical > 0 ? 'danger' : 'success' },
+          { label: '解决率', value: `${resolutionRate}%`, hint: `设备类未闭环 ${activeDeviceAlerts} 条`, tone: resolutionRate >= 70 ? 'success' : 'warning' },
+        ]}
+        signals={[
+          { label: topAlert ? `当前最高优先：${topAlert.elderlyName} · ${ALERT_TYPE_LABELS[topAlert.type]}` : '当前无告警需要优先处理', tone: topAlert?.level === 'critical' ? 'danger' : 'info' },
+          { label: openAlertAiSummary.summary, tone: 'info' },
+          { label: `筛选结果 ${filtered.length} 条`, tone: 'neutral' },
+        ]}
+        actions={
+          <>
+            <Link href="/alerts/history" className="btn btn-secondary btn-sm">查看历史记录</Link>
+            <Link href={buildAiHref('alert-escalation', 'inference')} className="btn btn-secondary btn-sm">查看 AI 解释</Link>
+          </>
+        }
       />
 
       {/* KPI stats */}
@@ -330,6 +360,57 @@ export default function AlertsPage() {
         </div>
       </DataCard>
 
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="处置优先队列"
+          subtitle="按待处理、等级、类型和发生时间统一排序，先暴露真正要先处理的告警。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {prioritizedAlerts.map(alert => {
+              const actionLabel = alert.status === 'pending'
+                ? '立即接单并确认现场响应人'
+                : alert.status === 'processing'
+                  ? '继续跟进处置与结果回填'
+                  : '已解决，建议进入复盘归档'
+
+              return (
+                <div key={alert.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{alert.elderlyName} · {ALERT_TYPE_LABELS[alert.type]}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{alert.roomNumber}{alert.deviceName ? ` · ${alert.deviceName}` : ''} · {alert.occurredAt}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag variant={LEVEL_TAG[alert.level] as 'danger' | 'warning' | 'info'}>{ALERT_LEVEL_LABELS[alert.level]}</Tag>
+                      <Tag variant={STATUS_TAG[alert.status] as 'danger' | 'warning' | 'success'}>{ALERT_STATUS_LABELS[alert.status]}</Tag>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<ChevronRight size={16} />}
+          title="推荐处理路径"
+          subtitle="让报警中心从看板页面直接进入值班动作链路。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              '先接单待处理的紧急事件，优先确认跌倒和健康异常。',
+              '再跟踪处理中事件，补齐处理结果与责任人信息。',
+              '最后进入历史页回看已解决记录，做班次复盘。',
+            ].map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>{item}</div>
+            ))}
+          </div>
+        </DataCard>
+      </div>
+
       {/* Filters */}
       <div className="filter-bar">
         <span className="filter-bar-label">状态</span>
@@ -372,7 +453,7 @@ export default function AlertsPage() {
 
       {/* Alert cards grid */}
       <div className="alert-grid">
-        {filtered.map(alert => (
+        {sortedAlerts.map(alert => (
           <AlertCard key={alert.id} alert={alert} onTransition={handleTransition} />
         ))}
       </div>

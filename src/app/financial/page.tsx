@@ -1,6 +1,6 @@
 "use client"
 
-import { DataCard, PageHeader, StatCard, Tag, type TagVariant } from "@/components/nh"
+import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getAssessmentConfigForCase, getAssessmentConfigSnapshot, subscribeAssessmentConfigWorkflow } from "@/lib/mock/assessment-config-workflow"
 import {
@@ -116,6 +116,8 @@ export default function FinancialPage() {
         .filter(item => assessmentProfiles[item.assessmentId]?.scene === scene)
         .reduce((sum, item) => sum + item.totalAmount, 0),
     }))
+    const confirmedRate = getRatio(fundAmount, totalAmount)
+    const settledRate = getRatio(settledFundAmount, fundAmount)
 
     return {
       totalAmount,
@@ -123,6 +125,8 @@ export default function FinancialPage() {
       copayAmount,
       riskCases,
       settledFundAmount,
+      confirmedRate,
+      settledRate,
       statusSummary,
       sceneSummary,
     }
@@ -190,6 +194,32 @@ export default function FinancialPage() {
             <button className="btn btn-secondary btn-sm">导出结算底稿</button>
             <button className="btn btn-primary btn-sm">发起评估费结算</button>
           </div>
+        )}
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Settlement Operations"
+        title={selectedSettlement ? `${selectedSettlement.elderlyName} 结算推进摘要` : '评定服务结算总览'}
+        description={selectedSettlement
+          ? `${selectedSettlement.periodLabel} · ${selectedSettlement.institutionName}。当前视图把结算门禁、资料完整性、规则匹配和风险提示聚合成一条财务可执行路径。`
+          : '当前页按评定闭环后的案件组织结算门禁、风险提示和资金结构，方便财务与质控同步推进。'}
+        badge={selectedSettlement ? <Tag variant={getSettlementStatusVariant(selectedSettlement.status)}>{selectedSettlement.status}</Tag> : <Tag variant="info">LTCI Settlement</Tag>}
+        metrics={[
+          { label: '评定结算单', value: settlementCases.length, hint: '已进入结算视图', tone: 'primary' },
+          { label: '已确认结算额', value: formatCurrency(totals.fundAmount), hint: `占应收 ${totals.confirmedRate}%`, tone: 'success' },
+          { label: '待处置风险单', value: totals.riskCases, hint: '资料缺失或需人工复核', tone: totals.riskCases > 0 ? 'warning' : 'success' },
+          { label: '拨付完成率', value: `${totals.settledRate}%`, hint: `已结算 ${formatCurrency(totals.settledFundAmount)}`, tone: totals.settledRate >= 60 ? 'success' : 'info' },
+        ]}
+        signals={[
+          { label: selectedSettlement?.nextAction ?? '请选择左侧结算单查看下一动作', tone: selectedSettlement ? 'info' : 'neutral' },
+          { label: selectedSettlement?.evidenceStatus ?? '待检查资料完整性', tone: selectedSettlement?.evidenceStatus === '待补充' ? 'warning' : 'success' },
+          ...(selectedSettlement?.riskFlags?.length ? selectedSettlement.riskFlags.slice(0, 2).map(flag => ({ label: flag, tone: 'danger' as const })) : [{ label: '当前无额外风险提示', tone: 'success' as const }]),
+        ]}
+        actions={(
+          <>
+            <button className="btn btn-secondary btn-sm">导出结算底稿</button>
+            <Link href={buildAiHref("ltci-settlement-audit", "logs")} className="btn btn-secondary btn-sm">查看 AI 稽核</Link>
+          </>
         )}
       />
 

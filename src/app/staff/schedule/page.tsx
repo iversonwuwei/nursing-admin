@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getScheduleAiInsights, getScheduleAiNarratives } from '@/lib/mock/admin-ai'
 import { getNursingServiceSnapshot, isNursingWorkflowDemoMode, refreshNursingServiceWorkflow, resetNursingServiceWorkflowDemo, subscribeNursingServiceWorkflow } from '@/lib/mock/nursing-service-workflow'
@@ -53,6 +53,7 @@ export default function SchedulePage() {
   )
   const aiInsights = getScheduleAiInsights(aiInputs)
   const aiNarratives = getScheduleAiNarratives(aiInputs)
+    const totalAssignments = schedule.shiftDemand.reduce((sum, item) => sum + item.count, 0)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'staff-schedule',
     entityId: 'schedule-board',
@@ -83,6 +84,30 @@ export default function SchedulePage() {
           </div>
         }
       />
+
+          <WorkflowOverviewCard
+              eyebrow="Schedule Operations"
+              title={`${schedule.weekLabel} 派案排期总览`}
+              description="排期页不只是展示班表，而是把待复核模板、待分派案件、AI 班次风险和执行覆盖面放在同一屏里，方便排班主管快速决策。"
+              badge={<Tag variant={demoMode ? 'info' : 'success'}>{demoMode ? 'Demo Workflow' : 'Live Workflow'}</Tag>}
+              metrics={[
+                  { label: '排期评估员', value: schedule.staffRows.length, hint: '当前排期池人数', tone: 'primary' },
+                  { label: '已发布派案', value: schedule.publishedAssignments, hint: `累计 ${totalAssignments} 条班次分派`, tone: 'success' },
+                  { label: '待复核模板', value: schedule.pendingReviewPlans, hint: '需先回到模板页确认', tone: schedule.pendingReviewPlans > 0 ? 'warning' : 'success' },
+                  { label: '待分派案件', value: schedule.unassignedPlans, hint: '尚未落到具体评估员', tone: schedule.unassignedPlans > 0 ? 'danger' : 'success' },
+              ]}
+              signals={[
+                  { label: serviceSnapshot.loading ? '派案板同步中' : '派案板已同步', tone: serviceSnapshot.loading ? 'warning' : 'success' },
+                  { label: serviceSnapshot.error || '当前无派案同步异常', tone: serviceSnapshot.error ? 'danger' : 'neutral' },
+                  ...aiInsights.slice(0, 2).map(item => ({ label: item.title, tone: item.variant === 'warning' ? 'warning' as const : item.variant === 'success' ? 'success' as const : 'info' as const })),
+              ]}
+              actions={
+                  <>
+                      <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
+                      <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">查看 AI 调整建议</Link>
+                  </>
+              }
+          />
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<Users size={18} />} label="排期评估员" value={schedule.staffRows.length} color="primary" />

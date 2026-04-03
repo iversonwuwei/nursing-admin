@@ -1,9 +1,10 @@
 'use client'
 
-import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getRoomAiInsights, getRoomAiNarratives } from '@/lib/mock/admin-ai'
 import { activateRoomDraft, getMasterDataSnapshot, getRoomStats, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
+import { sortRoomsByPriority } from '@/lib/resource-operations-priority'
 import { Bot, ChevronRight, DoorOpen, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -39,7 +40,13 @@ export default function RoomsPage() {
     target,
   })
   const filtered = rooms.filter(r => !search || r.name.includes(search) || r.id.includes(search))
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const availableBeds = rooms.reduce((total, room) => total + Math.max(room.capacity - room.occupied, 0), 0)
+  const pendingActivationCount = rooms.filter(item => item.lifecycleStatus === '待启用').length
+  const cleaningBacklogCount = rooms.filter(item => item.cleanStatus !== '已清洁').length
+  const maintenanceCount = rooms.filter(item => item.status === '维护中').length
+  const sortedRooms = useMemo(() => sortRoomsByPriority(filtered), [filtered])
+  const prioritizedRooms = sortedRooms.slice(0, 4)
+  const paged = sortedRooms.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <div className="animate-fade-up">
@@ -51,6 +58,31 @@ export default function RoomsPage() {
           <Link href="/rooms/new" className="btn btn-primary btn-sm">
             <Plus size={13} />新增房间
           </Link>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Capacity Operations"
+        title="床位承接总览"
+        description="先恢复可立即承接的床位，再处理待启用、维护和保洁积压，保证入住分配路径稳定。"
+        badge={<Tag variant="info">Capacity View</Tag>}
+        metrics={[
+          { label: '整体入住率', value: `${stats.occupancy}%`, hint: `${stats.occupied}/${stats.totalBeds} 床位已入住`, tone: stats.occupancy >= 85 ? 'warning' : 'success' },
+          { label: '可承接床位', value: availableBeds, hint: `${stats.availableRooms} 间可直接安排`, tone: availableBeds > 0 ? 'success' : 'warning' },
+          { label: '待启用房间', value: pendingActivationCount, hint: '启用后才进入排房资源池', tone: pendingActivationCount > 0 ? 'warning' : 'neutral' },
+          { label: '清洁与维护待办', value: cleaningBacklogCount + maintenanceCount, hint: `保洁 ${cleaningBacklogCount} · 维护 ${maintenanceCount}`, tone: cleaningBacklogCount + maintenanceCount > 0 ? 'warning' : 'neutral' },
+        ]}
+        signals={[
+          { label: aiInsights[0] ? `${aiInsights[0].title}：${aiInsights[0].action}` : '暂无 AI 排房提醒', tone: aiInsights[0]?.variant === 'warning' ? 'warning' : 'info' },
+          { label: pendingActivationCount > 0 ? '存在待启用房间，当前不可直接参与分配' : '当前没有待启用房间阻塞承接', tone: pendingActivationCount > 0 ? 'warning' : 'success' },
+          { label: cleaningBacklogCount > 0 ? '有房间待清洁或保洁中，需关注翻房效率' : '房间清洁状态稳定', tone: cleaningBacklogCount > 0 ? 'warning' : 'success' },
+        ]}
+        actions={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href="/elderly/checkin" className="btn btn-secondary btn-sm">进入入住承接</Link>
+            <Link href="/rooms/new" className="btn btn-secondary btn-sm">新增房间</Link>
+            <Link href={buildAiHref('room-allocation', 'inference')} className="btn btn-primary btn-sm">查看 AI 建议</Link>
+          </div>
         }
       />
 
@@ -81,6 +113,63 @@ export default function RoomsPage() {
           </div>
         </DataCard>
       ) : null}
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<DoorOpen size={16} />}
+          title="承接优先队列"
+          subtitle="优先显示会影响入住分配、翻房节奏和资源释放的房间。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {prioritizedRooms.map(room => {
+              const actionLabel = room.lifecycleStatus === '待启用'
+                ? '先完成启用，才能纳入床位资源池'
+                : room.status === '维护中'
+                  ? '优先确认维修完成时间，避免影响承接'
+                  : room.cleanStatus !== '已清洁'
+                    ? `先处理${room.cleanStatus}状态，缩短翻房等待`
+                    : '当前可作为优先承接候选房间'
+
+              return (
+                <div key={room.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{room.name} · {room.org}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>
+                        {room.floorName} · {room.type} · {room.occupied}/{room.capacity} 床位已占用
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag variant={STATUS_TAG[room.status]}>{room.status}</Tag>
+                      <Tag variant={room.cleanStatus === '已清洁' ? 'success' : 'warning'}>{room.cleanStatus}</Tag>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<ChevronRight size={16} />}
+          title="推荐处理路径"
+          subtitle="把房间资源变更直接串到入住承接与 AI 排房闭环。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              '先启用待启用房间，避免名义床位无法实际承接。',
+              '再处理维护与清洁待办，确保空床能真正进入可分配状态。',
+              '最后进入 AI 运营中心复核机构间承接差异。',
+            ].map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </DataCard>
+      </div>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard

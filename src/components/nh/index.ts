@@ -8,4 +8,5 @@ export { StandardModulePage } from './StandardModulePage'
 export { StatCard } from './StatCard'
 export { Tag } from './Tag'
 export type { TagVariant } from './Tag'
+export { WorkflowOverviewCard } from './WorkflowOverviewCard'
 

@@ -1,9 +1,9 @@
 'use client'
 
-import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { getAssessmentConfigForCase, getAssessmentConfigSnapshot, subscribeAssessmentConfigWorkflow } from '@/lib/mock/assessment-config-workflow'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import {
+  activateAssessmentBenefits,
   CARE_LEVELS,
   COGNITIVE_LEVELS,
   confirmAssessmentDecision,
@@ -17,7 +17,6 @@ import {
   getReminderStatusVariant,
   getStaffTaskItems,
   getTaskStatusVariant,
-  activateAssessmentBenefits,
   submitAssessmentCase,
   subscribeAssessmentWorkflow,
   validateAssessmentForm,
@@ -25,9 +24,10 @@ import {
   type AssessmentFormState,
   type CareLevel,
 } from '@/lib/mock/assessment-workflow'
+import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import {
-  Building2,
   Bot,
+  Building2,
   CheckCircle2,
   ClipboardCheck,
   Eye,
@@ -304,6 +304,7 @@ export default function CheckinPage() {
     [coordinationItems, selectedApplication],
   )
   const selectedAssessmentConfig = selectedApplication ? getAssessmentConfigForCase(selectedApplication) : null
+  const selectedProgress = selectedApplication ? applicationProgressMap[selectedApplication.id] ?? null : null
 
   function updateForm<K extends keyof AssessmentFormState>(key: K, value: AssessmentFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -371,6 +372,54 @@ export default function CheckinPage() {
         )}
       />
 
+      <WorkflowOverviewCard
+        eyebrow="Assessment Command Center"
+        title={selectedApplication ? `${selectedApplication.name} 的认定工作台` : '长护险评估认定总览'}
+        description={selectedApplication
+          ? `${selectedApplication.room} · ${selectedApplication.sourceLabel ?? getAssessmentSourceLabel(selectedApplication.sourceType)}。当前页面把评估申请、AI 建议、人工认定、机构协同和执行反馈放进同一条闭环里，减少跨页确认成本。`
+          : '当前工作台按个案维度组织评估输入、AI 建议、人工认定和结算前置依据。'}
+        badge={selectedApplication ? <Tag variant={getAssessmentStatusVariant(selectedApplication.status)}>{getAssessmentStatusLabel(selectedApplication.status)}</Tag> : undefined}
+        metrics={[
+          {
+            label: '当前处理个案',
+            value: selectedApplication ? selectedApplication.name : '暂无',
+            hint: selectedApplication ? `${selectedApplication.id} · ${selectedApplication.room}` : '请选择左侧个案',
+            tone: 'primary',
+          },
+          {
+            label: 'AI 推荐等级',
+            value: selectedApplication ? selectedApplication.aiRecommendation.recommendedLevel : '--',
+            hint: selectedApplication ? `置信度 ${selectedApplication.aiRecommendation.confidence}%` : '等待评估输入',
+            tone: 'info',
+          },
+          {
+            label: '协同处理时限',
+            value: selectedCoordination?.slaLabel ?? '待配置',
+            hint: selectedCoordination?.assignedPartnerName ?? '尚未绑定评估机构',
+            tone: selectedCoordination ? 'warning' : 'neutral',
+          },
+          {
+            label: '闭环推进状态',
+            value: selectedProgress?.stage ?? '待生成',
+            hint: selectedProgress ? `最近更新 ${selectedProgress.latestActivityLabel}` : '确认认定后生成任务与提醒',
+            tone: selectedProgress?.blockedOverdue ? 'danger' : selectedProgress?.stage === '已闭环' ? 'success' : 'primary',
+          },
+        ]}
+        signals={[
+          { label: `待认定确认 ${stats.pendingConfirmation} 条`, tone: stats.pendingConfirmation > 0 ? 'warning' : 'success' },
+          { label: `超时关注 ${overdueCount} 条`, tone: overdueCount > 0 ? 'danger' : 'success' },
+          { label: selectedAssessmentConfig?.template?.name ?? '待匹配认定模板', tone: selectedAssessmentConfig?.template ? 'info' : 'warning' },
+          ...(selectedFromNew ? [{ label: '来自新增老人页同步', tone: 'success' as const }] : []),
+          ...(selectedFromImport ? [{ label: '来自资料导入页同步', tone: 'primary' as const }] : []),
+        ]}
+        actions={
+          <>
+            <Link href="/nursing/packages" className="btn btn-secondary btn-sm">查看评定标准</Link>
+            <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
+          </>
+        }
+      />
+
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<UserPlus size={18} />} label="评估申请" value={stats.submitted} sub="当前 demo 样本" color="primary" />
         <StatCard icon={<Bot size={18} />} label="待认定确认" value={stats.pendingConfirmation} sub="AI 已出建议" color="warning" />
@@ -409,7 +458,7 @@ export default function CheckinPage() {
             { title: '1. 申请受理', description: '补充慢病、用药、过敏、ADL 和认知状态，作为评估输入。' },
             { title: '2. AI 辅助建议', description: '规则 mock service 输出照护等级建议、理由、置信度和模板编码。' },
             { title: '3. 人工认定', description: '经办或护理主管可保持 AI 建议，也可调整等级并写明原因。' },
-              { title: '4. 认定输出', description: '确认后的认定结论会匹配规则集、模板和服务建议预览。' },
+            { title: '4. 认定输出', description: '确认后的认定结论会匹配规则集、模板和服务建议预览。' },
           ].map(item => (
             <div
               key={item.title}

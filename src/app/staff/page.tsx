@@ -1,10 +1,11 @@
 'use client'
 
-import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getStaffAiInsights, getStaffAiNarratives } from '@/lib/mock/admin-ai'
 import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import { confirmStaffOnboarding, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
+import { sortStaffByPriority } from '@/lib/resource-operations-priority'
 import { Bot, Building2, Plus, Search, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -63,7 +64,20 @@ export default function StaffPage() {
     if (partnerFilter && s.partnerAgencyId !== partnerFilter) return false
     return true
   })
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const activeStaffCount = staff.filter(item => item.status === '在职').length
+  const pendingOnboardingCount = staff.filter(item => item.lifecycleStatus === '待入职').length
+  const partnerStaffCount = staff.filter(item => item.employmentSource === '第三方合作').length
+  const leaveCount = staff.filter(item => item.status === '休假').length
+  const departmentCoverage = departments
+    .map(department => ({
+      department,
+      count: staff.filter(item => item.department === department && item.status === '在职').length,
+    }))
+    .sort((left, right) => left.count - right.count)
+  const weakestDepartment = departmentCoverage[0]
+  const sortedStaff = useMemo(() => sortStaffByPriority(filtered), [filtered])
+  const prioritizedStaff = sortedStaff.slice(0, 4)
+  const paged = sortedStaff.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <div className="animate-fade-up">
@@ -79,6 +93,33 @@ export default function StaffPage() {
             <Link href="/staff/new" className="btn btn-primary btn-sm">
               <Plus size={13} />添加员工
             </Link>
+          </div>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Workforce Operations"
+        title="人员协同总览"
+        description={selectedPartner
+          ? `当前聚焦 ${selectedPartner.name} 的协同用工与待确认入职闭环，优先保证排班、任务和机构协同口径一致。`
+          : '优先处理待入职、休假补位和第三方合作人员，确保排班、任务与机构协同的同一口径。'}
+        badge={<Tag variant="info">Resource View</Tag>}
+        metrics={[
+          { label: '在岗人数', value: activeStaffCount, hint: `总人数 ${staff.length}`, tone: 'success' },
+          { label: '待入职确认', value: pendingOnboardingCount, hint: '确认后再进入排班与任务', tone: pendingOnboardingCount > 0 ? 'warning' : 'neutral' },
+          { label: '第三方协同', value: partnerStaffCount, hint: `合作机构 ${activePartners.length} 家`, tone: partnerStaffCount > 0 ? 'info' : 'neutral' },
+          { label: '休假补位', value: leaveCount, hint: weakestDepartment ? `${weakestDepartment.department} 在岗 ${weakestDepartment.count} 人` : '暂无部门缺口', tone: leaveCount > 0 ? 'warning' : 'neutral' },
+        ]}
+        signals={[
+          { label: aiInsights[0] ? `${aiInsights[0].title}：${aiInsights[0].action}` : '暂无 AI 人员提醒', tone: aiInsights[0]?.variant === 'warning' ? 'warning' : 'info' },
+          { label: selectedPartner ? `当前按护理服务机构筛选：${selectedPartner.name}` : '当前显示全院人员与合作机构视角', tone: 'neutral' },
+          { label: weakestDepartment ? `当前最薄弱部门：${weakestDepartment.department}` : '当前部门覆盖均衡', tone: weakestDepartment && weakestDepartment.count < 2 ? 'warning' : 'success' },
+        ]}
+        actions={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href="/staff/schedule" className="btn btn-secondary btn-sm">进入排班台</Link>
+            <Link href="/staff/tasks" className="btn btn-secondary btn-sm">查看任务中心</Link>
+            <Link href={buildAiHref('staff-coverage', 'inference')} className="btn btn-primary btn-sm">查看 AI 建议</Link>
           </div>
         }
       />
@@ -110,6 +151,67 @@ export default function StaffPage() {
           </div>
         </DataCard>
       ) : null}
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<ShieldCheck size={16} />}
+          title="优先处理人员"
+          subtitle="把需要确认、补位或重点协同的人员直接前置到首屏。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {prioritizedStaff.map(item => {
+              const actionLabel = item.lifecycleStatus === '待入职'
+                ? '先确认入职再纳入口径'
+                : item.status === '休假'
+                  ? '关注班次补位与任务转派'
+                  : item.employmentSource === '第三方合作'
+                    ? '确认合作机构协同边界'
+                    : '维持当前排班与任务节奏'
+
+              return (
+                <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.name} · {item.role}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>
+                        {item.department} · {item.employmentSource}{item.partnerAgencyName ? ` · ${item.partnerAgencyName}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag variant={STATUS_TAG[item.status]}>{item.status}</Tag>
+                      <Tag variant={item.lifecycleStatus === '待入职' ? 'warning' : 'success'}>{item.lifecycleStatus}</Tag>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Building2 size={16} />}
+          title="推荐处理路径"
+          subtitle="把人员变更快速落到排班、任务和 AI 分析闭环。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              '先确认待入职或休假人员，避免排班口径滞后。',
+              '再检查护理服务机构协同人员，确认驻场角色和服务边界。',
+              '最后进入 AI 运营中心复核部门覆盖与班次压力。',
+            ].map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href="/staff/schedule" className="btn btn-secondary btn-sm">排班补位</Link>
+            <Link href="/staff/tasks" className="btn btn-secondary btn-sm">任务协同</Link>
+          </div>
+        </DataCard>
+      </div>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard

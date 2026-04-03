@@ -1,9 +1,10 @@
 'use client'
 
-import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getSupplyAiInsights, getSupplyAiNarratives } from '@/lib/mock/admin-ai'
 import { confirmSupplyStocking, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
+import { sortSuppliesByPriority } from '@/lib/resource-operations-priority'
 import { AlertTriangle, Bot, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -41,12 +42,17 @@ export default function SuppliesPage() {
   })
 
   const lowStock = supplies.filter(s => s.status === '库存不足').length
+  const pendingStockingCount = supplies.filter(s => s.lifecycleStatus === '待上架').length
+  const shortageCount = supplies.filter(s => s.stock < s.minStock).length
+  const riskCategories = [...new Set(supplies.filter(s => s.status === '库存不足').map(s => s.category))]
   const filtered = supplies.filter(s => {
     if (search && !s.name.includes(search)) return false
     if (catFilter && s.category !== catFilter) return false
     return true
   })
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const sortedSupplies = useMemo(() => sortSuppliesByPriority(filtered), [filtered])
+  const prioritizedSupplies = sortedSupplies.slice(0, 4)
+  const paged = sortedSupplies.slice((page - 1) * pageSize, page * pageSize)
 
   return (
     <div className="animate-fade-up">
@@ -58,6 +64,30 @@ export default function SuppliesPage() {
           <Link href="/supplies/new" className="btn btn-primary btn-sm">
             <Plus size={13} />采购入库
           </Link>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Supply Operations"
+        title="补货与上架总览"
+        description="先处理待上架与低库存条目，再进入采购与供应商动作，避免一线执行被缺货或未上架阻断。"
+        badge={<Tag variant="warning">Supply View</Tag>}
+        metrics={[
+          { label: '低库存条目', value: lowStock, hint: shortageCount > 0 ? `${shortageCount} 条已低于最小库存` : '当前无库存缺口', tone: lowStock > 0 ? 'danger' : 'success' },
+          { label: '待上架条目', value: pendingStockingCount, hint: '确认后才进入稳定库存口径', tone: pendingStockingCount > 0 ? 'warning' : 'neutral' },
+          { label: '风险分类', value: riskCategories.length, hint: riskCategories.length > 0 ? riskCategories.join(' / ') : '当前分类供给稳定', tone: riskCategories.length > 0 ? 'warning' : 'success' },
+          { label: '正常库存', value: supplies.filter(s => s.status === '正常').length, hint: `总物资 ${supplies.length} 种`, tone: 'info' },
+        ]}
+        signals={[
+          { label: aiInsights[0] ? `${aiInsights[0].title}：${aiInsights[0].action}` : '暂无 AI 补货提醒', tone: aiInsights[0]?.variant === 'danger' ? 'danger' : 'warning' },
+          { label: pendingStockingCount > 0 ? '存在待上架物资，采购入库后尚未转为可用库存' : '当前没有待上架阻塞', tone: pendingStockingCount > 0 ? 'warning' : 'success' },
+          { label: riskCategories.length > 0 ? `缺口集中在 ${riskCategories.join(' / ')}` : '当前缺口未集中到单一分类', tone: riskCategories.length > 1 ? 'warning' : 'neutral' },
+        ]}
+        actions={
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href="/supplies/new" className="btn btn-secondary btn-sm">采购入库</Link>
+            <Link href={buildAiHref('supply-restock', 'inference')} className="btn btn-primary btn-sm">查看 AI 建议</Link>
+          </div>
         }
       />
 
@@ -81,6 +111,62 @@ export default function SuppliesPage() {
           </div>
         </DataCard>
       ) : null}
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<AlertTriangle size={16} />}
+          title="补货优先队列"
+          subtitle="把待上架、低库存和接近缺口的物资直接前置。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {prioritizedSupplies.map(item => {
+              const gap = Math.max(item.minStock - item.stock, 0)
+              const actionLabel = item.lifecycleStatus === '待上架'
+                ? '先确认上架，再计入可用库存'
+                : item.status === '库存不足'
+                  ? `优先补货，当前缺口 ${gap}${item.unit}`
+                  : '接近安全库存，建议提前补货'
+
+              return (
+                <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.name}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>
+                        {item.category} · 当前 {item.stock}{item.unit} · 最低 {item.minStock}{item.unit}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag variant={CAT_TAG[item.category]}>{item.category}</Tag>
+                      <Tag variant={STATUS_TAG[item.status]}>{item.status}</Tag>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Package size={16} />}
+          title="推荐处理路径"
+          subtitle="把入库、上架和采购动作收束成一条稳定流程。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              '先确认待上架物资，避免“已采购但不可用”的口径偏差。',
+              '再按低库存缺口安排采购，优先处理护理用品与消毒用品。',
+              '最后进入 AI 运营中心，检查供应商和补货节奏是否需要调整。',
+            ].map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </DataCard>
+      </div>
 
       <div className="kpi-grid">
         <StatCard icon={<Package size={18} />} label="物品种类" value={supplies.length} color="primary" />

@@ -1,7 +1,7 @@
 'use client'
 
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { appendAiTrackingContext, getAiSourceLabel, getAiTargetLabel, readAiTrackingContext } from '@/lib/ai-context'
 import {
   getAdminAiPromptReply,
@@ -43,6 +43,7 @@ export default function AIAssistantPage() {
 
   const dashboardInsights = getAiDashboardInsights(applications)
   const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
+  const trackedTargetLabel = trackingContext?.target ? getAiTargetLabel(trackingContext.target) : '推理详情'
   const targetHref = trackingContext?.target === 'rules'
     ? appendAiTrackingContext('/ai-assistant/rules', { ...trackingContext, target: 'rules' })
     : trackingContext?.target === 'logs'
@@ -55,6 +56,32 @@ export default function AIAssistantPage() {
         title="AI 运营入口"
         subtitle="统一查看 Admin 端 AI 总览，并进入推理详情、规则治理和问答日志。"
         actions={<Tag variant="primary">AI 先建议，人再确认</Tag>}
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="AI Operations"
+        title={trackingContext?.entityName ? `${trackingContext.entityName} 的 AI 追踪入口` : 'Admin AI 总览'}
+        description={trackingContext
+          ? `当前上下文来自${getAiSourceLabel(trackingContext.source)}，关注点是“${trackingContext.focus ?? '未指定'}”。本页把推理、规则和日志三类入口收束成统一导航，避免 AI 解释脱离业务页面。`
+          : 'AI 入口页当前承担结果型问答、追踪上下文透传和子页导航三种角色，默认不直接下发业务动作。'}
+        badge={<Tag variant="primary">AI 先建议，人再确认</Tag>}
+        metrics={[
+          { label: 'AI 子页入口', value: 6, hint: '含员工端与家属端预览入口', tone: 'primary' },
+          { label: '风险摘要信号', value: dashboardInsights.length, hint: '已聚合到当前 AI 总览', tone: 'info' },
+          { label: '待确认建议', value: pendingConfirmations, hint: '仍需人工复核的评估建议', tone: pendingConfirmations > 0 ? 'warning' : 'success' },
+          { label: '当前追踪目标', value: trackedTargetLabel, hint: trackingContext?.entityId ?? '未携带业务上下文', tone: trackingContext ? 'success' : 'neutral' },
+        ]}
+        signals={[
+          { label: trackingContext ? `来源：${getAiSourceLabel(trackingContext.source)}` : '当前未绑定业务来源', tone: trackingContext ? 'info' : 'neutral' },
+          { label: trackingContext?.focus ? `关注点：${trackingContext.focus}` : '默认展示总览级 AI 能力', tone: trackingContext?.focus ? 'primary' : 'neutral' },
+          { label: '当前模式：结果型，不自动执行业务动作', tone: 'success' },
+        ]}
+        actions={
+          <>
+            <Link href={targetHref} className="btn btn-secondary btn-sm">按当前上下文继续</Link>
+            <Link href="/ai-assistant/logs" className="btn btn-secondary btn-sm">查看问答日志</Link>
+          </>
+        }
       />
 
       {trackingContext && (
@@ -89,6 +116,46 @@ export default function AIAssistantPage() {
       )}
 
       <AdminAiNav />
+
+      <DataCard
+        icon={<ChevronRight size={16} />}
+        title="推荐进入路径"
+        subtitle="先从和当前业务上下文最接近的 AI 子页进入，再查看规则或日志，减少在 AI 页面间盲跳。"
+        badge={<Tag variant="warning">Suggested Flow</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {[
+            {
+              title: `1. 进入${trackedTargetLabel}`,
+              description: trackingContext ? '沿用当前来源页面的上下文继续看 AI 解释或治理信息。' : '没有业务上下文时默认先看推理详情页。',
+              href: targetHref,
+              cta: '继续追踪',
+            },
+            {
+              title: '2. 查看规则治理',
+              description: '当你需要解释为什么 AI 给出当前结果时，优先看规则启停和治理边界。',
+              href: appendAiTrackingContext('/ai-assistant/rules', trackingContext ? { ...trackingContext, target: 'rules' } : null),
+              cta: '查看规则',
+            },
+            {
+              title: '3. 回看问答日志',
+              description: '当你需要复盘某次问答或运营解释输出时，再进入日志页确认历史上下文。',
+              href: appendAiTrackingContext('/ai-assistant/logs', trackingContext ? { ...trackingContext, target: 'logs' } : null),
+              cta: '查看日志',
+            },
+          ].map(item => (
+            <Link key={item.title} href={item.href} style={{ textDecoration: 'none' }}>
+              <div style={{ borderRadius: 16, border: '1px solid var(--color-border)', padding: 16, background: 'var(--color-card)' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                <div style={{ marginTop: 12 }}>
+                  <span className="btn btn-secondary btn-sm">{item.cta}</span>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </DataCard>
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<Bot size={18} />} label="AI 分页入口" value={6} sub="含员工端与家属端 AI 预览" color="primary" />

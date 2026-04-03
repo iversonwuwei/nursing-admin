@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from 'react'
 /* ── Nav data ── */
 const NAV_ITEMS = [
   { label: '首页概览', href: '/', icon: Home },
+  { label: '日班工作台', href: '/operations/daily', icon: Bell },
   {
     label: '机构管理',
     icon: Landmark,

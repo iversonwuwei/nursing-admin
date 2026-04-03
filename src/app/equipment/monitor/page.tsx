@@ -1,7 +1,8 @@
 "use client";
 
-import { DataCard } from "@/components/nh";
+import { DataCard, Tag, WorkflowOverviewCard } from "@/components/nh";
 import { getDeviceAiInsights, getDeviceAiOverview } from "@/lib/mock/admin-ai";
+import { sortMonitorPointsByPriority } from "@/lib/resource-operations-priority";
 import {
   Activity,
   AlertTriangle,
@@ -70,6 +71,10 @@ export default function MonitorPage() {
   const [refreshing, setRefreshing] = useState(false)
   const aiInsights = getDeviceAiInsights(MONITOR_POINTS, ALERT_HISTORY)
   const aiOverview = getDeviceAiOverview(MONITOR_POINTS, ALERT_HISTORY)
+  const averageBattery = Math.round(MONITOR_POINTS.reduce((sum, item) => sum + item.metrics.battery, 0) / MONITOR_POINTS.length)
+  const sortedMonitorPoints = sortMonitorPointsByPriority(MONITOR_POINTS as readonly MonitorPoint[])
+  const attentionDevices = sortedMonitorPoints.slice(0, 4)
+  const displayMonitorPoints = sortedMonitorPoints
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -123,6 +128,30 @@ export default function MonitorPage() {
         </div>
       </div>
 
+      <WorkflowOverviewCard
+        eyebrow="Realtime Device Operations"
+        title="实时监控总览"
+        description="优先处理离线、告警和低电量设备，减少护理监测盲区，再回到全量设备看板。"
+        badge={<Tag variant="info">Live Monitor</Tag>}
+        metrics={[
+          { label: "在线设备", value: STATS.online, hint: `总设备 ${STATS.total} 台`, tone: "success" },
+          { label: "离线设备", value: STATS.offline, hint: "需优先排查网络或电源", tone: STATS.offline > 0 ? "danger" : "neutral" },
+          { label: "当前告警", value: STATS.alerts, hint: `近 ${ALERT_HISTORY.length} 条告警记录`, tone: STATS.alerts > 0 ? "warning" : "neutral" },
+          { label: "平均电量", value: `${averageBattery}%`, hint: "用于判断巡检与充电压力", tone: averageBattery < 60 ? "warning" : "info" },
+        ]}
+        signals={[
+          { label: aiInsights[0] ? `${aiInsights[0].deviceName}：${aiInsights[0].action}` : "暂无 AI 巡检提醒", tone: aiInsights[0]?.severity === "高风险" ? "danger" : "warning" },
+          { label: STATS.offline > 0 ? `当前有 ${STATS.offline} 台设备离线，需要到场排查` : "当前没有离线设备阻塞监测", tone: STATS.offline > 0 ? "danger" : "success" },
+          { label: ALERT_HISTORY[0] ? `最近告警 ${ALERT_HISTORY[0].time} · ${ALERT_HISTORY[0].msg}` : "暂无告警历史", tone: ALERT_HISTORY[0]?.type === "danger" ? "danger" : "info" },
+        ]}
+        actions={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Link href="/devices/status" className="btn btn-secondary btn-sm">查看状态总览</Link>
+            <Link href="/devices" className="btn btn-secondary btn-sm">返回设备列表</Link>
+          </div>
+        }
+      />
+
       {/* Stat cards */}
       <div className="monitor-grid-4" style={{ marginBottom: 16 }}>
         {[
@@ -152,6 +181,60 @@ export default function MonitorPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="page-grid-2" style={{ marginBottom: 16, alignItems: "start" }}>
+        <DataCard
+          icon={<AlertTriangle size={18} />}
+          title="巡检优先队列"
+          subtitle="把需要立刻到场或补电的设备直接排到最前。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {attentionDevices.map((device) => {
+              const isCriticalDevice = device.status === "offline"
+              const actionLabel = isCriticalDevice
+                ? `立即到场排查${device.alert?.msg ? `：${device.alert.msg}` : '网络、电源与设备本体状态'}`
+                : device.alert?.level === "warning"
+                  ? `本班次内完成处理：${device.alert.msg}`
+                  : "安排常规巡检并关注续航"
+
+              return (
+                <div key={device.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{device.name}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{device.room} · 电量 {device.metrics.battery}%</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <Tag variant={device.status === "offline" ? "danger" : "success"}>{device.status === "online" ? "在线" : "离线"}</Tag>
+                      {device.alert ? <Tag variant={device.alert.level === "danger" ? "danger" : "warning"}>{device.alert.msg}</Tag> : null}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<Bot size={18} />}
+          title="推荐处理路径"
+          subtitle="先恢复监测连续性，再回看告警趋势与设备分布。"
+        >
+          <div style={{ display: "grid", gap: 10 }}>
+            {[
+              "先排查离线设备，恢复基础监测连续性。",
+              "再处理高风险告警和低电量设备，避免班次内新增盲区。",
+              "最后结合 AI 建议回看重复告警与设备部署位置。",
+            ].map((item) => (
+              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
+                {item}
+              </div>
+            ))}
+          </div>
+        </DataCard>
       </div>
 
       <div className="page-grid-2" style={{ marginBottom: 16, alignItems: "start" }}>
@@ -209,7 +292,7 @@ export default function MonitorPage() {
           }
         >
           <div style={{ padding: 12 }} className="monitor-eq-grid">
-            {MONITOR_POINTS.map((eq) => (
+            {displayMonitorPoints.map((eq) => (
               <div key={eq.id} className={getEqCardClass(eq)}>
                 {/* Header */}
                 <div className="eq-card-header">

@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, ProgressBar, StatCard, Tag } from '@/components/nh'
+import { DataCard, PageHeader, ProgressBar, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getOrganizationAiInsights, getOrganizationAiNarratives } from '@/lib/mock/admin-ai'
 import { activateOrganizationDraft, getMasterDataSnapshot, getOrganizationStats, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
@@ -8,6 +8,13 @@ import { Bed, Bot, Building2, ChevronRight, MapPin, Phone, Users } from 'lucide-
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMemo, useState, useSyncExternalStore } from 'react'
+
+function getOccupancyRate(organization: {
+  totalBeds: number
+  occupiedBeds: number
+}) {
+  return organization.totalBeds > 0 ? Math.round((organization.occupiedBeds / organization.totalBeds) * 100) : 0
+}
 
 export default function OrganizationsPage() {
   const searchParams = useSearchParams()
@@ -27,6 +34,17 @@ export default function OrganizationsPage() {
   )
   const aiInsights = getOrganizationAiInsights(organizations)
   const aiNarratives = getOrganizationAiNarratives(organizations)
+  const pendingActivationCount = organizations.filter(item => item.lifecycleStatus === '待启用').length
+  const prioritizedOrganizations = useMemo(() => [...organizations].sort((left, right) => {
+    const leftPending = left.lifecycleStatus === '待启用' ? 1 : 0
+    const rightPending = right.lifecycleStatus === '待启用' ? 1 : 0
+    if (rightPending !== leftPending) {
+      return rightPending - leftPending
+    }
+
+    return getOccupancyRate(right) - getOccupancyRate(left)
+  }), [organizations])
+  const attentionOrganizations = prioritizedOrganizations.slice(0, 3)
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'organizations-list',
     entityId: 'org-board',
@@ -34,9 +52,6 @@ export default function OrganizationsPage() {
     focus,
     target,
   })
-
-  const occRate = (o: typeof organizations[0]) =>
-    o.totalBeds > 0 ? Math.round((o.occupiedBeds / o.totalBeds) * 100) : 0
 
   return (
     <div className="animate-fade-up">
@@ -49,6 +64,32 @@ export default function OrganizationsPage() {
             <Link href="/organizations/partners" className="btn btn-secondary btn-sm">定点机构</Link>
             <Link href="/organizations/new" className="btn btn-primary btn-sm">新增机构</Link>
           </div>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Organization Operations"
+        title={selectedOrganization ? `${selectedOrganization.name} 经营摘要` : '机构经营总览'}
+        description={selectedOrganization
+          ? `${selectedOrganization.address} · 负责人 ${selectedOrganization.manager}。当前页面把机构生命周期、床位承接、入住密度和经营关注点收敛到同一页，方便总部视角快速比较。`
+          : '机构页当前同时承担经营盘点、资源对比和新机构启用闭环。'}
+        badge={selectedOrganization ? <Tag variant={selectedOrganization.lifecycleStatus === '待启用' ? 'warning' : 'success'}>{selectedOrganization.lifecycleStatus}</Tag> : <Tag variant="info">Chain Overview</Tag>}
+        metrics={[
+          { label: '机构总数', value: totalStats.totalOrgs, hint: '当前连锁机构总盘子', tone: 'primary' },
+          { label: '平均入住率', value: `${totalStats.avgOccupancy}%`, hint: `总床位 ${totalStats.totalBeds}`, tone: totalStats.avgOccupancy >= 90 ? 'danger' : totalStats.avgOccupancy >= 75 ? 'warning' : 'success' },
+          { label: '待启用机构', value: pendingActivationCount, hint: '完成复核后再纳入经营台账', tone: pendingActivationCount > 0 ? 'warning' : 'success' },
+          { label: '当前选中机构', value: selectedOrganization?.name ?? '未选择', hint: selectedOrganization ? `${selectedOrganization.occupiedBeds}/${selectedOrganization.totalBeds} 床位使用` : '可展开下方机构查看详情', tone: selectedOrganization ? 'info' : 'neutral' },
+        ]}
+        signals={[
+          { label: pendingActivationCount > 0 ? `待启用机构 ${pendingActivationCount} 家` : '当前无待启用机构', tone: pendingActivationCount > 0 ? 'warning' : 'success' },
+          ...(attentionOrganizations[0] ? [{ label: `最高承接压力：${attentionOrganizations[0].name}`, tone: getOccupancyRate(attentionOrganizations[0]) >= 90 ? 'danger' as const : 'info' as const }] : []),
+          ...(selectedOrganization ? [{ label: `当前查看：${selectedOrganization.manager} 负责`, tone: 'neutral' as const }] : []),
+        ]}
+        actions={
+          <>
+            <Link href="/organizations/new" className="btn btn-secondary btn-sm">新增机构</Link>
+            <Link href="/organizations/partners" className="btn btn-secondary btn-sm">查看定点机构</Link>
+          </>
         }
       />
 
@@ -79,6 +120,40 @@ export default function OrganizationsPage() {
           </div>
         </DataCard>
       ) : null}
+
+      <DataCard
+        icon={<Building2 size={16} />}
+        title="优先关注机构"
+        subtitle="按生命周期和承接压力排序，先暴露需要总部干预或快速启用的机构。"
+        badge={<Tag variant="warning">Attention Queue</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {attentionOrganizations.map(org => {
+            const rate = getOccupancyRate(org)
+            return (
+              <button
+                key={org.id}
+                type="button"
+                className="btn-reset"
+                onClick={() => setSelectedId(org.id)}
+                style={{ textAlign: 'left', borderRadius: 16, border: '1px solid var(--color-border)', padding: 16, background: org.id === selectedOrganization?.id ? 'rgba(13,148,136,0.08)' : 'var(--color-card)' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{org.name}</div>
+                  <Tag variant={org.lifecycleStatus === '待启用' ? 'warning' : rate >= 90 ? 'danger' : 'info'}>{org.lifecycleStatus === '待启用' ? '待启用' : `入住率 ${rate}%`}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                  {org.address} · 负责人 {org.manager} · 员工 {org.staffCount} 人
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--color-text)' }}>
+                  <span>{org.occupiedBeds}/{org.totalBeds} 床位</span>
+                  <span>{org.totalBeds - org.occupiedBeds} 床空余</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </DataCard>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -125,8 +200,8 @@ export default function OrganizationsPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {organizations.map(org => {
-          const rate = occRate(org)
+        {prioritizedOrganizations.map(org => {
+          const rate = getOccupancyRate(org)
           const isSelected = selectedId === org.id
 
           return (

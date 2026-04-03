@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { equipmentAlarms } from '@/lib/data'
 import { getEquipmentListAiInsights, getEquipmentListAiNarratives } from '@/lib/mock/admin-ai'
@@ -31,17 +31,25 @@ export default function EquipmentPage() {
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+  const pendingAlarmIds = useMemo(
+    () => new Set(equipmentAlarms.filter(item => item.status === '待处理').map(item => item.equipmentId)),
+    [],
+  )
 
   const selectedEquipment = useMemo(
     () => equipment.find(item => item.id === preselectedId) ?? null,
     [equipment, preselectedId],
   )
 
-  const filtered = equipment.filter(e => {
+  const filtered = useMemo(() => [...equipment].filter(e => {
     if (search && !e.name.includes(search) && !e.id.includes(search)) return false
     if (catFilter && e.category !== catFilter) return false
     return true
-  })
+  }).sort((left, right) => {
+    const leftScore = (left.lifecycleStatus === '待验收' ? 100 : 0) + (pendingAlarmIds.has(left.id) ? 80 : 0) + (left.status === '待维修' ? 40 : left.status === '维修中' ? 20 : 0)
+    const rightScore = (right.lifecycleStatus === '待验收' ? 100 : 0) + (pendingAlarmIds.has(right.id) ? 80 : 0) + (right.status === '待维修' ? 40 : right.status === '维修中' ? 20 : 0)
+    return rightScore - leftScore
+  }), [catFilter, equipment, pendingAlarmIds, search])
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
   const stats = {
@@ -50,6 +58,8 @@ export default function EquipmentPage() {
     alarm: equipmentAlarms.filter(a => a.status === '待处理').length,
     repair: equipment.filter(e => e.status === '维修中' || e.status === '待维修').length,
   }
+  const pendingAcceptanceCount = equipment.filter(e => e.lifecycleStatus === '待验收').length
+  const urgentEquipment = filtered.filter(item => item.lifecycleStatus === '待验收' || pendingAlarmIds.has(item.id) || item.status === '待维修' || item.status === '维修中').slice(0, 3)
 
   const categories = [...new Set(equipment.map(e => e.category))]
   const aiInsights = getEquipmentListAiInsights(equipment, equipmentAlarms)
@@ -72,6 +82,32 @@ export default function EquipmentPage() {
           <Link href="/equipment/new" className="btn btn-primary btn-sm">
             <Plus size={13} />添加设备
           </Link>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Device Operations"
+        title={selectedEquipment ? `${selectedEquipment.name} 巡检摘要` : '设备与巡检总览'}
+        description={selectedEquipment
+          ? `${selectedEquipment.location} · ${selectedEquipment.category}。当前页面按待验收、待维修、待处理告警三类优先级组织设备台账，减少值班工程与运营同事在列表里手动筛查。`
+          : '设备页当前兼顾设备台账、巡检优先级和维保闭环，先展示高风险设备，再进入详情或实时监控。'}
+        badge={selectedEquipment ? <Tag variant={selectedEquipment.lifecycleStatus === '待验收' ? 'warning' : STATUS_TAG[selectedEquipment.status]}>{selectedEquipment.lifecycleStatus === '待验收' ? '待验收' : selectedEquipment.status}</Tag> : <Tag variant="info">Patrol Board</Tag>}
+        metrics={[
+          { label: '设备总数', value: stats.total, hint: '当前资源台账设备总盘子', tone: 'primary' },
+          { label: '待处理告警', value: stats.alarm, hint: '先处理影响监测与呼叫链路的设备', tone: stats.alarm > 0 ? 'danger' : 'success' },
+          { label: '待验收设备', value: pendingAcceptanceCount, hint: '完成验收后再正式入册', tone: pendingAcceptanceCount > 0 ? 'warning' : 'success' },
+          { label: '维修压力', value: stats.repair, hint: '含维修中与待维修设备', tone: stats.repair > 0 ? 'warning' : 'success' },
+        ]}
+        signals={[
+          { label: urgentEquipment.length > 0 ? `当前优先队列 ${urgentEquipment.length} 台` : '当前无高优先设备', tone: urgentEquipment.length > 0 ? 'warning' : 'success' },
+          { label: selectedEquipment?.serialNumber ?? '可从下方列表选择设备查看详情', tone: selectedEquipment ? 'info' : 'neutral' },
+          { label: selectedEquipment?.acceptanceNote ?? '默认按生命周期 + 告警 + 维修状态排序', tone: selectedEquipment?.acceptanceNote ? 'primary' : 'neutral' },
+        ]}
+        actions={
+          <>
+            <Link href="/equipment/new" className="btn btn-secondary btn-sm">新增设备</Link>
+            <Link href="/devices/realtime" className="btn btn-secondary btn-sm">查看实时监控</Link>
+          </>
         }
       />
 
@@ -102,6 +138,38 @@ export default function EquipmentPage() {
         <StatCard icon={<AlertTriangle size={18} />} label="待处理告警" value={stats.alarm} sub="需立即处理" color="danger" />
         <StatCard icon={<Wifi size={18} />} label="维修中" value={stats.repair} sub="设备维护" color="warning" />
       </div>
+
+      <DataCard
+        icon={<AlertTriangle size={16} />}
+        title="巡检优先队列"
+        subtitle="先处理会影响监测、呼叫或新设备入册的设备，再进入明细表逐台处理。"
+        badge={<Tag variant="warning">Priority Queue</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {urgentEquipment.length > 0 ? urgentEquipment.map(item => (
+            <button
+              key={item.id}
+              type="button"
+              className="btn-reset"
+              onClick={() => window.location.assign(`/equipment/${item.id}`)}
+              style={{ textAlign: 'left', borderRadius: 16, border: '1px solid var(--color-border)', padding: 16, background: 'var(--color-card)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{item.name}</div>
+                <Tag variant={item.lifecycleStatus === '待验收' ? 'warning' : pendingAlarmIds.has(item.id) ? 'danger' : STATUS_TAG[item.status]}>
+                  {item.lifecycleStatus === '待验收' ? '待验收' : pendingAlarmIds.has(item.id) ? '待处理告警' : item.status}
+                </Tag>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.location} · {item.model}</div>
+              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-text)' }}>{item.remarks ?? item.acceptanceNote ?? '建议优先进入详情页确认巡检或维保动作。'}</div>
+            </button>
+          )) : (
+            <div style={{ padding: 16, borderRadius: 14, background: 'var(--color-bg)', fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+              当前没有待验收、待维修或待处理告警设备，设备台账处于稳定状态。
+            </div>
+          )}
+        </div>
+      </DataCard>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -146,7 +214,7 @@ export default function EquipmentPage() {
       </div>
 
       <FilterBar>
-        <FilterItem label="">
+        <FilterItem label="搜索">
           <div className="input-wrap" style={{ minWidth: 180 }}>
             <span className="input-icon"><Search size={14} /></span>
             <input
@@ -158,7 +226,7 @@ export default function EquipmentPage() {
             />
           </div>
         </FilterItem>
-        <FilterItem label="">
+        <FilterItem label="分类">
           <select
             className="select"
             value={catFilter}
@@ -192,7 +260,7 @@ export default function EquipmentPage() {
             </thead>
             <tbody>
               {paged.map(e => (
-                <tr key={e.id} className="table-hover-row">
+                <tr key={e.id} className="table-hover-row" style={{ background: e.lifecycleStatus === '待验收' ? 'rgba(245,158,11,0.06)' : pendingAlarmIds.has(e.id) ? 'rgba(239,68,68,0.05)' : undefined }}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{

@@ -1,6 +1,6 @@
 "use client"
 
-import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getAiTaskRecommendations } from '@/lib/mock/admin-ai'
 import {
@@ -9,9 +9,9 @@ import {
   getAssessmentStatusLabel,
   getAssessmentStatusVariant,
   getLevelVariant,
+  getStaffTaskItems,
   getTaskPriorityVariant,
   getTaskStatusVariant,
-  getStaffTaskItems,
   saveTaskAuditNote,
   startStaffTask,
   subscribeAdmissionWorkflow,
@@ -158,73 +158,73 @@ function normalizeLevel(task: UnifiedTaskItem) {
 
 export default function StaffTasksPage() {
   const demoMode = isNursingWorkflowDemoMode()
-    const applications = useSyncExternalStore(
-      subscribeAdmissionWorkflow,
-      getAdmissionApplicationsSnapshot,
-      getAdmissionApplicationsSnapshot,
-    )
-    const serviceSnapshot = useSyncExternalStore(
-      subscribeNursingServiceWorkflow,
-      getNursingServiceSnapshot,
-      getNursingServiceSnapshot,
-    )
-    const admissionTaskItems = useMemo<UnifiedTaskItem[]>(() => getStaffTaskItems(applications).map(task => ({
-      ...task,
-      originLabel: '入住护理',
-    })), [applications])
-    const servicePlanTaskItems = serviceSnapshot.tasks as UnifiedTaskItem[]
-    const taskItems = useMemo(
-      () => [...admissionTaskItems, ...servicePlanTaskItems].sort((left, right) => left.scheduledTime.localeCompare(right.scheduledTime)),
-      [admissionTaskItems, servicePlanTaskItems],
-    )
-    const [search, setSearch] = useState('')
-    const [priority, setPriority] = useState<(typeof PRIORITY_OPTIONS)[number]>('全部')
-    const [sourceStatus, setSourceStatus] = useState<(typeof SOURCE_STATUS_OPTIONS)[number]['value']>('全部')
-    const [taskStatus, setTaskStatus] = useState<(typeof TASK_STATUS_OPTIONS)[number]>('全部')
-    const [sceneFilter, setSceneFilter] = useState<(typeof SCENE_OPTIONS)[number]>('全部')
-    const [taskNoteDrafts, setTaskNoteDrafts] = useState<Record<string, string>>({})
-    const [taskSaveStates, setTaskSaveStates] = useState<Record<string, 'saved' | undefined>>({})
-    const [serviceActionError, setServiceActionError] = useState('')
-    const [serviceActionBusy, setServiceActionBusy] = useState('')
+  const applications = useSyncExternalStore(
+    subscribeAdmissionWorkflow,
+    getAdmissionApplicationsSnapshot,
+    getAdmissionApplicationsSnapshot,
+  )
+  const serviceSnapshot = useSyncExternalStore(
+    subscribeNursingServiceWorkflow,
+    getNursingServiceSnapshot,
+    getNursingServiceSnapshot,
+  )
+  const admissionTaskItems = useMemo<UnifiedTaskItem[]>(() => getStaffTaskItems(applications).map(task => ({
+    ...task,
+    originLabel: '入住护理',
+  })), [applications])
+  const servicePlanTaskItems = serviceSnapshot.tasks as UnifiedTaskItem[]
+  const taskItems = useMemo(
+    () => [...admissionTaskItems, ...servicePlanTaskItems].sort((left, right) => left.scheduledTime.localeCompare(right.scheduledTime)),
+    [admissionTaskItems, servicePlanTaskItems],
+  )
+  const [search, setSearch] = useState('')
+  const [priority, setPriority] = useState<(typeof PRIORITY_OPTIONS)[number]>('全部')
+  const [sourceStatus, setSourceStatus] = useState<(typeof SOURCE_STATUS_OPTIONS)[number]['value']>('全部')
+  const [taskStatus, setTaskStatus] = useState<(typeof TASK_STATUS_OPTIONS)[number]>('全部')
+  const [sceneFilter, setSceneFilter] = useState<(typeof SCENE_OPTIONS)[number]>('全部')
+  const [taskNoteDrafts, setTaskNoteDrafts] = useState<Record<string, string>>({})
+  const [taskSaveStates, setTaskSaveStates] = useState<Record<string, 'saved' | undefined>>({})
+  const [serviceActionError, setServiceActionError] = useState('')
+  const [serviceActionBusy, setServiceActionBusy] = useState('')
 
-    useEffect(() => {
-      void refreshNursingServiceWorkflow().catch(() => {})
-    }, [])
+  useEffect(() => {
+    void refreshNursingServiceWorkflow().catch(() => { })
+  }, [])
 
-    const filteredTasks = useMemo(() => taskItems.filter(task => {
-      const matchesSearch = !search
-        || task.elderlyName.includes(search)
-        || task.title.includes(search)
-        || task.owner.includes(search)
-        || task.room.includes(search)
-        || (task.packageName?.includes(search) ?? false)
+  const filteredTasks = useMemo(() => taskItems.filter(task => {
+    const matchesSearch = !search
+      || task.elderlyName.includes(search)
+      || task.title.includes(search)
+      || task.owner.includes(search)
+      || task.room.includes(search)
+      || (task.packageName?.includes(search) ?? false)
 
-      const matchesPriority = priority === '全部' || task.priority === priority
-      const matchesSourceStatus = sourceStatus === '全部' || task.sourceStatus === sourceStatus
-      const matchesTaskStatus = taskStatus === '全部' || task.status === taskStatus
-      const matchesScene = sceneFilter === '全部' || getTaskScene(task) === sceneFilter
+    const matchesPriority = priority === '全部' || task.priority === priority
+    const matchesSourceStatus = sourceStatus === '全部' || task.sourceStatus === sourceStatus
+    const matchesTaskStatus = taskStatus === '全部' || task.status === taskStatus
+    const matchesScene = sceneFilter === '全部' || getTaskScene(task) === sceneFilter
 
-      return matchesSearch && matchesPriority && matchesSourceStatus && matchesTaskStatus && matchesScene
-    }), [priority, sceneFilter, search, sourceStatus, taskItems, taskStatus])
+    return matchesSearch && matchesPriority && matchesSourceStatus && matchesTaskStatus && matchesScene
+  }), [priority, sceneFilter, search, sourceStatus, taskItems, taskStatus])
 
-    const stats = useMemo(() => ({
-      total: taskItems.length,
-      highPriority: taskItems.filter(task => task.priority === '高').length,
-      inProgress: taskItems.filter(task => task.status === '执行中').length,
-      pendingPlanReviews: serviceSnapshot.plans.filter(plan => plan.status === '待复核').length,
-      completed: taskItems.filter(task => task.status === '已完成').length,
-    }), [serviceSnapshot.plans, taskItems])
-    const aiRecommendations = useMemo(
-      () => getAiTaskRecommendations(taskItems as Parameters<typeof getAiTaskRecommendations>[0]),
-      [taskItems],
-    )
-    const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
-      source: 'staff-tasks',
-      entityId: 'task-board',
-      entityName: '员工任务',
-      focus,
-      target,
-    })
+  const stats = useMemo(() => ({
+    total: taskItems.length,
+    highPriority: taskItems.filter(task => task.priority === '高').length,
+    inProgress: taskItems.filter(task => task.status === '执行中').length,
+    pendingPlanReviews: serviceSnapshot.plans.filter(plan => plan.status === '待复核').length,
+    completed: taskItems.filter(task => task.status === '已完成').length,
+  }), [serviceSnapshot.plans, taskItems])
+  const aiRecommendations = useMemo(
+    () => getAiTaskRecommendations(taskItems as Parameters<typeof getAiTaskRecommendations>[0]),
+    [taskItems],
+  )
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'staff-tasks',
+    entityId: 'task-board',
+    entityName: '员工任务',
+    focus,
+    target,
+  })
 
     function getTaskDraft(taskId: string, fallback?: string) {
       return taskNoteDrafts[taskId] ?? fallback ?? ''
@@ -311,6 +311,30 @@ export default function StaffTasksPage() {
           title="现场评定任务"
           subtitle={`统一承接首评、复评复核、抽检回访与整改跟进任务 · 当前 ${taskItems.length} 条任务，覆盖 ${applications.length} 条个案与 ${serviceSnapshot.plans.length} 条模板派生任务`}
           actions={demoMode ? <button className="btn btn-ghost btn-sm" disabled={serviceActionBusy.length > 0} onClick={() => void handleResetDemo()}>{serviceActionBusy === 'workflow:reset' ? '重置中...' : '重置 Demo 数据'}</button> : undefined}
+        />
+
+        <WorkflowOverviewCard
+          eyebrow="Task Operations"
+          title="现场评定任务总览"
+          description="任务中心按首评、复评、抽检和整改四类执行场景组织优先级，既能看当前负荷，也能把模板复核缺口、个案状态和执行备注收敛到同一个入口。"
+          badge={<Tag variant="info">Unified Workflow</Tag>}
+          metrics={[
+            { label: '当前任务池', value: stats.total, hint: `当前筛选后 ${filteredTasks.length} 条`, tone: 'primary' },
+            { label: '高优先级任务', value: stats.highPriority, hint: '复评升级与抽检整改优先', tone: stats.highPriority > 0 ? 'warning' : 'success' },
+            { label: '执行中任务', value: stats.inProgress, hint: `已完成 ${stats.completed} 条`, tone: 'info' },
+            { label: '模板待复核', value: stats.pendingPlanReviews, hint: '需先回模板页处理后再落任务', tone: stats.pendingPlanReviews > 0 ? 'danger' : 'success' },
+          ]}
+          signals={[
+            { label: serviceSnapshot.loading ? '任务与模板链路同步中' : '任务与模板链路已同步', tone: serviceSnapshot.loading ? 'warning' : 'success' },
+            { label: serviceActionError || serviceSnapshot.error || '当前无同步异常', tone: serviceActionError || serviceSnapshot.error ? 'danger' : 'neutral' },
+            ...(aiRecommendations[0] ? [{ label: `AI 首要建议：${aiRecommendations[0].title}`, tone: 'info' as const }] : []),
+          ]}
+          actions={
+            <>
+              <Link href="/nursing/plans" className="btn btn-secondary btn-sm">前往模板复核</Link>
+              <Link href={buildAiHref('task-priority', 'logs')} className="btn btn-secondary btn-sm">AI 优先级建议</Link>
+            </>
+          }
         />
 
         <div className="kpi-grid" style={{ marginBottom: 16 }}>

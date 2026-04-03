@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { elderlyList, equipmentAlarms, organizations } from '@/lib/data'
 import { getAiDashboardActions, getAiDashboardInsights } from '@/lib/mock/admin-ai'
 import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
@@ -38,6 +38,12 @@ const todayTasks = [
 
 const TASK_STATUS_TAG: Record<string, TagVariant> = {
   '已完成': 'success', '进行中': 'warning', '待执行': 'neutral',
+}
+
+const TASK_STATUS_WEIGHT: Record<string, number> = {
+  '待执行': 3,
+  '进行中': 2,
+  '已完成': 1,
 }
 
 const weeklyServiceData = [
@@ -91,6 +97,8 @@ export default function DashboardPage() {
   })
   const aiInsights = getAiDashboardInsights(applications)
   const aiActions = getAiDashboardActions(applications)
+  const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
+  const prioritizedTasks = [...todayTasks].sort((left, right) => TASK_STATUS_WEIGHT[right.status] - TASK_STATUS_WEIGHT[left.status])
 
   return (
     <div className="animate-fade-up">
@@ -108,6 +116,32 @@ export default function DashboardPage() {
           <button className="btn btn-secondary btn-sm">
             <Download size={13} />导出报告
           </button>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Operations Overview"
+        title="今日院务优先级总览"
+        description="首页不再只是静态看板，而是把入住经营、评估认定、设备告警和护理执行这四条运营主线先压成一个管理摘要，帮助院长和值班管理者先看重点再下钻。"
+        badge={<Tag variant="success">All Systems Visible</Tag>}
+        metrics={[
+          { label: '今日待处理事项', value: pendingTasks + pendingAlarms, hint: `护理任务 ${pendingTasks} 项 · 设备告警 ${pendingAlarms} 条`, tone: pendingTasks + pendingAlarms > 0 ? 'warning' : 'success' },
+          { label: '待认定确认', value: pendingConfirmations, hint: '需继续人工复核的评估申请', tone: pendingConfirmations > 0 ? 'warning' : 'success' },
+          { label: '在院经营占用', value: `${occupancyRate}%`, hint: `${occupiedBeds}/${totalBeds} 床位已使用`, tone: occupancyRate >= 90 ? 'danger' : occupancyRate >= 75 ? 'warning' : 'success' },
+          { label: '本周服务峰值', value: `${maxService} 人次`, hint: '用于评估排班与服务承接能力', tone: 'info' },
+        ]}
+        signals={[
+          { label: pendingAlarms > 0 ? `设备待处理告警 ${pendingAlarms} 条` : '当前无待处理设备告警', tone: pendingAlarms > 0 ? 'danger' : 'success' },
+          { label: pendingTasks > 0 ? `今日仍有 ${pendingTasks} 项护理任务待闭环` : '今日护理任务已全部闭环', tone: pendingTasks > 0 ? 'warning' : 'success' },
+          { label: pendingConfirmations > 0 ? `评估认定待确认 ${pendingConfirmations} 条` : '认定工作台当前无待确认积压', tone: pendingConfirmations > 0 ? 'info' : 'neutral' },
+        ]}
+        actions={
+          <>
+            <Link href="/operations/daily" className="btn btn-primary btn-sm">进入日班工作台</Link>
+            <Link href="/elderly/checkin" className="btn btn-secondary btn-sm">进入评估认定</Link>
+            <Link href="/alerts" className="btn btn-secondary btn-sm">查看实时告警</Link>
+            <Link href="/devices/realtime" className="btn btn-secondary btn-sm">查看设备监控</Link>
+          </>
         }
       />
 
@@ -159,6 +193,55 @@ export default function DashboardPage() {
           color="purple"
         />
       </div>
+
+      <DataCard
+        icon={<AlertTriangle size={16} />}
+        title="今日优先动作"
+        subtitle="先处理会影响院务稳定性的事项，再进入列表型页面做细查。"
+        badge={<Tag variant="warning">Manager First</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          {[
+            {
+              title: '日班运营收口',
+              description: '把告警、事故、活动、评定任务和资源补位拉到同一入口，先确定当班优先顺序再下钻处理。',
+              href: '/operations/daily',
+              cta: '进入工作台',
+              tone: 'var(--color-primary)',
+            },
+            {
+              title: '设备告警闭环',
+              description: pendingAlarms > 0 ? `当前还有 ${pendingAlarms} 条设备告警待处理，优先避免影响老人监测与呼叫链路。` : '当前没有待处理设备告警，可把注意力转到排班和认定。',
+              href: '/alerts',
+              cta: '查看告警',
+              tone: pendingAlarms > 0 ? 'var(--color-danger)' : 'var(--color-success)',
+            },
+            {
+              title: '评估认定复核',
+              description: pendingConfirmations > 0 ? `${pendingConfirmations} 条评估申请仍待人工确认，建议在结算或任务派生前先完成认定。` : '当前没有待人工确认的评估申请。',
+              href: '/elderly/checkin',
+              cta: '进入认定',
+              tone: pendingConfirmations > 0 ? 'var(--color-warning)' : 'var(--color-success)',
+            },
+            {
+              title: '护理执行闭环',
+              description: pendingTasks > 0 ? `今日护理任务还有 ${pendingTasks} 项未闭环，建议优先清掉待执行与进行中任务。` : '今日护理任务已全部闭环，可转入经营与复盘。',
+              href: '/activities',
+              cta: '查看任务',
+              tone: pendingTasks > 0 ? 'var(--color-primary)' : 'var(--color-success)',
+            },
+          ].map(item => (
+            <div key={item.title} style={{ borderRadius: 16, border: '1px solid var(--color-border)', padding: 16, background: 'var(--color-card)' }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.tone, marginBottom: 10 }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+              <div style={{ marginTop: 12 }}>
+                <Link href={item.href} className="btn btn-secondary btn-sm">{item.cta}</Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </DataCard>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -221,7 +304,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {todayTasks.map(task => (
+                {prioritizedTasks.map(task => (
                   <tr
                     key={task.id}
                     className="table-hover-row"

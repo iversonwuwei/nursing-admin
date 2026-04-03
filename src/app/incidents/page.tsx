@@ -1,9 +1,10 @@
 "use client"
 
-import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getIncidentListAiInsights, getIncidentListNarratives } from '@/lib/mock/admin-ai'
 import { getIncidentStats, getOperationsSnapshot, startIncidentHandling, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { sortIncidentsByPriority } from '@/lib/operations-priority'
 import { AlertTriangle, Bot, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -49,7 +50,10 @@ export default function IncidentsPage() {
     if (levelFilter && incident.level !== levelFilter) return false
     return true
   })
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+  const sortedIncidents = useMemo(() => sortIncidentsByPriority(filtered), [filtered])
+  const paged = sortedIncidents.slice((page - 1) * pageSize, page * pageSize)
+  const prioritizedIncidents = sortedIncidents.slice(0, 4)
+  const closureRate = incidents.length > 0 ? Math.round((incidents.filter(item => item.status === '已结案').length / incidents.length) * 100) : 0
 
   return (
     <div className="animate-fade-up">
@@ -61,6 +65,30 @@ export default function IncidentsPage() {
           <Link href="/incidents/new" className="btn btn-primary btn-sm">
             <Plus size={13} />新增报告
           </Link>
+        }
+      />
+
+      <WorkflowOverviewCard
+        eyebrow="Incident Operations"
+        title="事故处置总览"
+        description="先分派严重和待分派事件，再推进处理中事故，最后再看已结案复盘，确保事故页是处置入口而不只是归档列表。"
+        badge={<Tag variant="warning">Safety Board</Tag>}
+        metrics={[
+          { label: '事故总数', value: stats.total, hint: '当前事故管理台账', tone: 'primary' },
+          { label: '待分派', value: stats.pending, hint: '需值班主管尽快接单', tone: stats.pending > 0 ? 'warning' : 'success' },
+          { label: '严重事故', value: stats.severe, hint: '优先保障老人安全与家属通知', tone: stats.severe > 0 ? 'danger' : 'success' },
+          { label: '结案率', value: `${closureRate}%`, hint: `处理中 ${stats.processing} 条`, tone: closureRate >= 60 ? 'success' : 'warning' },
+        ]}
+        signals={[
+          { label: prioritizedIncidents[0] ? `当前最高优先：${prioritizedIncidents[0].title}` : '当前无事故待优先处置', tone: prioritizedIncidents[0]?.level === '严重' ? 'danger' : 'info' },
+          { label: aiInsights[0] ? `${aiInsights[0].title}：${aiInsights[0].action}` : '暂无 AI 事故提醒', tone: aiInsights[0]?.variant === 'danger' ? 'danger' : 'warning' },
+          { label: selectedIncident && fromNew ? `新建报告已回流：${selectedIncident.title}` : '当前无新建事故回流阻塞', tone: selectedIncident && fromNew ? 'success' : 'neutral' },
+        ]}
+        actions={
+          <>
+            <Link href="/incidents/new" className="btn btn-secondary btn-sm">新增报告</Link>
+            <Link href={buildAiHref('incident-review', 'inference')} className="btn btn-secondary btn-sm">查看 AI 复盘</Link>
+          </>
         }
       />
 
@@ -91,6 +119,57 @@ export default function IncidentsPage() {
           </div>
         </DataCard>
       ) : null}
+
+      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
+        <DataCard
+          icon={<ShieldAlert size={16} />}
+          title="处置优先队列"
+          subtitle="按分派状态、事故等级和发生时间统一排序，先暴露最需要立即接手的事故。"
+          badge={<Tag variant="warning">Priority Queue</Tag>}
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {prioritizedIncidents.map(incident => {
+              const actionLabel = incident.status === '待分派'
+                ? '立即指定责任人并启动现场处置'
+                : incident.status === '处理中'
+                  ? incident.nextStep ?? '继续推进处置与家属通知'
+                  : '已结案，建议回看处理链路和制度改进点'
+
+              return (
+                <div key={incident.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{incident.title}</div>
+                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{incident.room} · {incident.time} · 报告人 {incident.reporter}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Tag variant={LEVEL_TAG[incident.level]}>{incident.level}</Tag>
+                      <Tag variant={STATUS_TAG[incident.status]}>{incident.status}</Tag>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                </div>
+              )
+            })}
+          </div>
+        </DataCard>
+
+        <DataCard
+          icon={<ChevronRight size={16} />}
+          title="推荐处理路径"
+          subtitle="把事故处理从初报、分派、结案串成一条可执行路径。"
+        >
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              '先分派待分派事故，优先确认严重事件的现场负责人与通知动作。',
+              '再推进处理中事故，补齐下一步和处理说明。',
+              '最后回看已结案事故，做复盘与制度修正。',
+            ].map(item => (
+              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>{item}</div>
+            ))}
+          </div>
+        </DataCard>
+      </div>
 
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard
@@ -135,7 +214,7 @@ export default function IncidentsPage() {
       </div>
 
       <FilterBar>
-        <FilterItem label="">
+        <FilterItem label="搜索">
           <div className="input-wrap" style={{ minWidth: 180 }}>
             <span className="input-icon"><Search size={14} /></span>
             <input
@@ -147,7 +226,7 @@ export default function IncidentsPage() {
             />
           </div>
         </FilterItem>
-        <FilterItem label="">
+        <FilterItem label="级别">
           <select
             className="select"
             value={levelFilter}
