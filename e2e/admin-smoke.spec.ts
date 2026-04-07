@@ -56,6 +56,46 @@ test('authenticated user can open root and equipment status compatibility routes
   await expect(page.getByText('实时设备状态监控')).toBeVisible()
 })
 
+test('desktop navbar hover reveals first-level dropdown', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const navButton = page.getByRole('button', { name: '机构管理' })
+  await expect(navButton).toBeVisible()
+  await navButton.hover()
+
+  await expect(page.getByRole('link', { name: '分院管理' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '机构列表' })).toBeVisible()
+})
+
+test('mid-width navbar moves items into more dropdown and hover reveals overflow links', async ({ page }) => {
+  await page.setViewportSize({ width: 920, height: 1000 })
+  await loginAsAdmin(page)
+
+  const moreButton = page.getByRole('button', { name: '更多' })
+  await expect(moreButton).toBeVisible()
+  await moreButton.hover()
+
+  await expect(page.getByRole('link', { name: '评定机构总览' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'AI助手' })).toBeVisible()
+})
+
+test('mobile navbar uses drawer navigation at phone width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await loginAsAdmin(page)
+
+  const hamburger = page.getByRole('button', { name: '打开菜单' })
+  await expect(hamburger).toBeVisible()
+  await hamburger.click()
+
+  await expect(page.getByRole('dialog', { name: '主导航菜单' })).toBeVisible()
+  await page.getByRole('button', { name: '长护险运营' }).click()
+  await page.getByRole('link', { name: '评定机构总览' }).click()
+
+  await expect(page).toHaveURL(/\/nursing\/services/)
+  await expect(page.getByRole('heading', { name: '长护险评定机构总览' })).toBeVisible()
+})
+
 test('authenticated user can open health compatibility routes and metric pages', async ({ page }) => {
   await loginAsAdmin(page)
 
@@ -131,17 +171,17 @@ test('elderly create flow reaches checkin and registry list', async ({ page }) =
   await page.getByPlaceholder(/姓名 \+ 电话/).fill('张敏 13900002222')
   await page.getByPlaceholder('0 - 100').fill('68')
   await page.locator('select').nth(2).selectOption('清晰')
-  await page.getByRole('button', { name: '提交并进入入住审核' }).click()
+  await page.getByRole('button', { name: '提交并进入个案评定' }).click()
 
   await expect(page).toHaveURL(/\/elderly\/checkin\?selected=.*entry=elderly-new/)
-  await expect(page.getByText('来自新增老人页')).toBeVisible()
+  await expect(page.getByText('来自新增老人页', { exact: true })).toBeVisible()
   await expect(page.getByText(name).first()).toBeVisible()
 
-  await page.getByRole('button', { name: '确认等级并生成计划' }).click()
-  await expect(page.getByRole('button', { name: '标记已入住' })).toBeVisible()
+  await page.getByRole('button', { name: '确认认定并生成结论' }).click()
+  await expect(page.getByRole('button', { name: '标记认定生效' })).toBeVisible()
 
-  await page.getByRole('button', { name: '标记已入住' }).click()
-  await expect(page.locator('div').filter({ hasText: '已进入在住管理' }).last()).toBeVisible()
+  await page.getByRole('button', { name: '标记认定生效' }).click()
+  await expect(page.getByText('已进入认定生效期')).toBeVisible()
 
   await page.goto('/elderly')
   await page.getByPlaceholder('搜索姓名/编号...').fill(name)
@@ -173,17 +213,17 @@ test('elderly import flow reaches checkin and registry list', async ({ page }) =
   await page.getByRole('button', { name: '开始AI识别' }).click()
 
   await expect(page.locator(`input[value="${name}"]`).first()).toBeVisible()
-  await page.getByRole('button', { name: '写入入住审核' }).click()
+  await page.getByRole('button', { name: '写入个案评定' }).click()
 
   await expect(page).toHaveURL(/\/elderly\/checkin\?selected=.*entry=elderly-import/)
-  await expect(page.getByText('来自资料导入页')).toBeVisible()
+  await expect(page.getByText('来自资料导入页', { exact: true })).toBeVisible()
   await expect(page.getByText(name).first()).toBeVisible()
 
-  await page.getByRole('button', { name: '确认等级并生成计划' }).click()
-  await expect(page.getByRole('button', { name: '标记已入住' })).toBeVisible()
+  await page.getByRole('button', { name: '确认认定并生成结论' }).click()
+  await expect(page.getByRole('button', { name: '标记认定生效' })).toBeVisible()
 
-  await page.getByRole('button', { name: '标记已入住' }).click()
-  await expect(page.locator('div').filter({ hasText: '已进入在住管理' }).last()).toBeVisible()
+  await page.getByRole('button', { name: '标记认定生效' }).click()
+  await expect(page.getByText('已进入认定生效期')).toBeVisible()
 
   await page.goto('/elderly')
   await page.getByPlaceholder('搜索姓名/编号...').fill(name)
@@ -222,31 +262,33 @@ test('staff create flow reaches pending onboarding and active roster', async ({ 
   await expect(staffRow).toContainText('在职')
 })
 
-test('partner, third-party staff, package, plan, task and schedule workflow stays connected', async ({ page }) => {
+test('partner, third-party staff, assessment config, task and schedule routes stay connected', async ({ page }) => {
   await loginAsAdmin(page)
 
   const suffix = Date.now().toString().slice(-5)
   const partnerName = `自动合作机构${suffix}`
   const staffName = `自动护工${suffix}`
-  const packageName = `自动套餐${suffix}`
-  const elderName = `计划老人${suffix}`
-  const focus = `夜间巡房与翻身护理 ${suffix}`
+  const itemName = `自动护理项${suffix}`
+  const ruleSetName = `自动规则集${suffix}`
+  const templateName = `自动模板${suffix}`
 
   await page.goto('/organizations/partners/new')
   await page.getByPlaceholder('请输入机构名称').fill(partnerName)
-  await page.locator('select').nth(0).selectOption('护理外包')
+  await page.locator('select').nth(0).selectOption('护理服务机构')
+  await page.locator('select').nth(1).selectOption('护理外包')
   await page.getByPlaceholder('如 浦东新区、杨浦区').fill('浦东新区')
-  await page.locator('select').nth(1).selectOption('按月结')
+  await page.locator('select').nth(2).selectOption('按月结')
   await page.getByPlaceholder('请输入联系人姓名').fill('李合作')
   await page.getByPlaceholder('请输入手机号').fill('13900008888')
   await page.locator('input[type="date"]').nth(0).fill('2026-04-02')
   await page.locator('input[type="date"]').nth(1).fill('2026-12-31')
-  await page.getByPlaceholder('补充服务边界、合作说明或注意事项').fill('自动化创建的第三方合作机构，用于验证员工与计划联动。')
+  await page.getByPlaceholder('补充服务边界、合作说明或注意事项').fill('自动化创建的护理服务机构，用于验证第三方员工绑定与评定配置链路。')
   await page.getByRole('button', { name: '提交并进入待启用' }).click()
 
   await expect(page).toHaveURL(/\/organizations\/partners\?selected=.*entry=partners-new/)
   await expect(page.getByText(partnerName).first()).toBeVisible()
-  await page.getByRole('button', { name: '启用合作机构' }).first().click()
+  await expect(page.getByText('护理服务机构').first()).toBeVisible()
+  await page.getByRole('button', { name: '启用机构' }).first().click()
   await expect(page.getByText('已启用').first()).toBeVisible()
 
   await page.goto('/staff/new')
@@ -271,50 +313,65 @@ test('partner, third-party staff, package, plan, task and schedule workflow stay
   await expect(staffRow).toContainText('在职')
 
   await page.goto('/nursing/packages')
-  await page.getByPlaceholder('如 夜间全护包').fill(packageName)
-  await page.locator('select').nth(0).selectOption('全护')
-  await page.getByPlaceholder('如 ¥4,200').fill('¥4,800')
-  await page.locator('select').nth(1).selectOption('月付')
-  await page.getByPlaceholder('如 夜间离床告警高频人群').fill('夜间高频照护老人')
-  await page.getByPlaceholder('用顿号或逗号分隔，如 夜巡、离床告警响应、夜间安抚').fill('夜间巡房、翻身护理、离床告警响应')
-  await page.getByPlaceholder('可选，如 外部康复师、家属日报').fill('家属日报')
-  await page.getByRole('button', { name: '提交套餐草稿' }).click()
+  await expect(page.getByRole('heading', { name: '评定标准配置' })).toBeVisible()
+  await page.getByPlaceholder('如 居家环境与风险评估').fill(itemName)
+  await page.getByPlaceholder('如 30 分钟/次').fill('40 分钟/次')
+  await page.getByPlaceholder('如 现场照片、签名确认、量表记录').fill('现场照片、签名确认、量表记录')
+  await page.getByPlaceholder('说明该护理项在认定中的作用和适用边界').fill('自动化护理项，用于验证评定标准配置链路。')
+  await page.getByRole('button', { name: '提交护理项' }).click()
 
-  const packageRow = page.locator('tr', { hasText: packageName }).first()
-  await expect(packageRow).toBeVisible()
-  await packageRow.getByRole('button', { name: '提交定价' }).click()
-  await packageRow.getByRole('button', { name: '完成定价' }).click()
-  await packageRow.getByRole('button', { name: '发布套餐' }).click()
-  await expect(packageRow).toContainText('已生效')
+  await expect(page.getByText(itemName).first()).toBeVisible()
+  await page.getByRole('button', { name: '启用' }).first().click()
+  await expect(page.getByText('护理项已启用，可进入规则集和模板配置。')).toBeVisible()
+
+  await page.getByPlaceholder('如 居家失能首评规则集').fill(ruleSetName)
+  await page.getByPlaceholder('如 ADL 35-65 + 认知修正项').fill('ADL 40-70 + 夜间风险修正项')
+  await page.getByPlaceholder('说明满足何种条件后进入相应照护建议').fill('满足 ADL 阈值且存在夜间风险时进入重点照护建议。')
+  await page.getByPlaceholder('如 ADL 记录、现场照片、签名确认').fill('ADL 记录、现场照片、签名确认')
+  await page.getByPlaceholder('如 item-adl-observation，item-home-safety').fill('item-adl-observation，item-home-safety')
+  await page.getByPlaceholder('如 双人复核后方可出具认定意见').fill('主管与质控双人复核后方可发布。')
+  await page.getByRole('button', { name: '提交规则集' }).click()
+
+  const ruleDraftCard = page.locator('div').filter({ hasText: ruleSetName }).filter({ has: page.getByRole('button', { name: '提交复核' }) }).first()
+  await expect(ruleDraftCard).toBeVisible()
+  await ruleDraftCard.getByRole('button', { name: '提交复核' }).click()
+
+  const ruleReviewCard = page.locator('div').filter({ hasText: ruleSetName }).filter({ has: page.getByRole('button', { name: '发布生效' }) }).first()
+  await expect(ruleReviewCard).toBeVisible()
+  await ruleReviewCard.getByRole('button', { name: '发布生效' }).click()
+  await expect(page.getByText('规则集已生效，可被个案评定直接消费。')).toBeVisible()
+  await expect(page.locator('div').filter({ hasText: ruleSetName }).filter({ hasText: '已生效' }).first()).toBeVisible()
 
   await page.goto('/nursing/plans')
-  await page.locator('select').nth(0).selectOption({ label: packageName })
-  await page.locator('select').nth(1).selectOption('套餐生成')
-  await page.getByPlaceholder('如 张秀英').fill(elderName)
-  await page.getByPlaceholder('如 301-1').fill('702-1')
-  await page.getByPlaceholder('如 早班 / 晚班').fill('夜班')
-  await page.locator('select').nth(2).selectOption('第三方护工')
-  await page.getByPlaceholder('如 张护工').fill(staffName)
-  await page.getByPlaceholder('如 午间翻身护理、夜间血氧监测').fill(focus)
-  await page.getByPlaceholder('如 跌倒高风险、睡眠异常').fill('跌倒高风险')
-  await page.getByRole('button', { name: '生成计划草稿' }).click()
+  await expect(page.getByRole('heading', { name: '认定方案模板' })).toBeVisible()
+  await page.getByPlaceholder('如 首评二级照护建议模板').fill(templateName)
+  await page.locator('select').nth(1).selectOption({ label: ruleSetName })
+  await page.getByPlaceholder('如 item-adl-observation，item-home-safety').fill('item-adl-observation，item-home-safety')
+  await page.getByPlaceholder('如 量表记录、签名确认、现场照片').fill('量表记录、签名确认、现场照片')
+  await page.getByPlaceholder('描述模板适用范围、输出口径和风险说明').fill('自动化模板，用于验证规则集与模板复核启用链路。')
+  await page.getByPlaceholder('如 30 日内回访、7 日内复核资料一致性').fill('7 日内复核资料一致性并安排回访。')
+  await page.getByRole('button', { name: '提交模板' }).click()
 
-  const planRow = page.locator('tr', { hasText: elderName }).first()
-  await expect(planRow).toContainText(packageName)
-  await expect(planRow).toContainText('待复核')
-  await planRow.getByRole('button', { name: '复核通过' }).click()
-  await expect(planRow).toContainText('执行中')
+  const templateDraftCard = page.locator('div').filter({ hasText: templateName }).filter({ has: page.getByRole('button', { name: '提交复核' }) }).first()
+  await expect(templateDraftCard).toBeVisible()
+  await expect(templateDraftCard).toContainText(ruleSetName)
+  await templateDraftCard.getByRole('button', { name: '提交复核' }).click()
+
+  const templateReviewCard = page.locator('div').filter({ hasText: templateName }).filter({ has: page.getByRole('button', { name: '启用模板' }) }).first()
+  await expect(templateReviewCard).toBeVisible()
+  await templateReviewCard.getByRole('button', { name: '启用模板' }).click()
+  await expect(page.getByText('认定模板已启用，可在个案评定页直接引用。')).toBeVisible()
+  await expect(page.locator('div').filter({ hasText: templateName }).filter({ hasText: '已启用' }).first()).toBeVisible()
 
   await page.goto('/staff/tasks')
-  const taskRow = page.locator('tr', { hasText: elderName }).first()
-  await expect(taskRow).toContainText('服务计划')
-  await expect(taskRow).toContainText(focus)
-  await expect(taskRow).toContainText(staffName)
+  await expect(page.getByRole('heading', { name: '现场评定任务', exact: true })).toBeVisible()
+  await expect(page.getByText('联动说明')).toBeVisible()
+  await expect(page.getByText('任务台账不再只依赖个案受理，而是同时消费个案评定与认定模板两条 workflow。')).toBeVisible()
 
   await page.goto('/staff/schedule')
-  const scheduleRow = page.locator('tr', { hasText: staffName }).first()
-  await expect(scheduleRow).toContainText('已承接 1 条计划')
-  await expect(page.getByText('待分派计划').first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '派案排期', exact: true })).toBeVisible()
+  await expect(page.getByText('认定联动总览')).toBeVisible()
+  await expect(page.getByText('待分派案件').first()).toBeVisible()
 })
 
 test('visit create flow reaches pending approval and registered list', async ({ page }) => {
@@ -381,8 +438,8 @@ test('master data routes render without sync external store snapshot loops', asy
 
   await page.goto('/rooms')
   await expect(page.getByRole('heading', { name: '房间管理' })).toBeVisible()
-  await expect(page.getByText('花园套间')).toBeVisible()
-  await expect(page.getByText('静养单人间')).toBeVisible()
+  await expect(page.locator('tr', { hasText: '花园套间' }).first()).toBeVisible()
+  await expect(page.locator('tr', { hasText: '静养单人间' }).first()).toBeVisible()
 
   await page.goto('/rooms/R202')
   await expect(page.getByRole('heading', { name: 'R202' })).toBeVisible()

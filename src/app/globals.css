@@ -83,6 +83,7 @@ a { color: inherit; text-decoration: none; }
   z-index: 50;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .navbar-logo {
@@ -120,6 +121,29 @@ a { color: inherit; text-decoration: none; }
   align-items: stretch;
   flex: 1;
   gap: 2px;
+  min-width: 0;
+    overflow: visible;
+  }
+  
+  .navbar.is-mobile-compact {
+    gap: 8px;
+  }
+  
+  .navbar.is-mobile-compact .navbar-nav {
+    display: none;
+  }
+  
+  .navbar.is-mobile-compact .navbar-hamburger {
+    display: flex;
+  }
+  
+  .navbar.is-mobile-compact .navbar-divider,
+  .navbar.is-mobile-compact .navbar-user-info {
+    display: none;
+  }
+  
+  .navbar.is-mobile-compact .navbar-logo {
+    margin-right: 12px;
 }
 
 .navbar-item {
@@ -166,6 +190,22 @@ a { color: inherit; text-decoration: none; }
   position: relative;
 }
 
+.navbar-measure {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 0;
+  overflow: hidden;
+}
+
+.navbar-item-measure {
+  width: max-content;
+}
 .navbar-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -227,6 +267,32 @@ a { color: inherit; text-decoration: none; }
   margin: 4px 0;
 }
 
+.navbar-overflow-dropdown {
+  min-width: 240px;
+  max-width: 320px;
+}
+
+.navbar-overflow-section {
+  padding: 2px 0;
+}
+
+.navbar-overflow-section+.navbar-overflow-section {
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.navbar-overflow-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .navbar-badge {
   margin-left: auto;
   font-size: 10px; font-weight: 700;
@@ -242,9 +308,10 @@ a { color: inherit; text-decoration: none; }
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .navbar-icon-btn {
@@ -301,6 +368,10 @@ a { color: inherit; text-decoration: none; }
 }
 .navbar-user-role { font-size: 10.5px; color: var(--color-muted); }
 
+.navbar-user-info {
+  max-width: 132px;
+  overflow: hidden;
+}
 .navbar-avatar {
   width: 32px; height: 32px;
   border-radius: 50%;
@@ -325,7 +396,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Mobile drawer */
 .mobile-drawer {
-  display: none;
+  display: block;
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -341,7 +412,7 @@ a { color: inherit; text-decoration: none; }
 .mobile-drawer-panel {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 280px;
+  width: min(320px, calc(100vw - 24px));
   background: var(--color-card);
   box-shadow: var(--shadow-modal);
   display: flex;
@@ -375,6 +446,10 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
   transition: background 100ms ease;
   text-decoration: none;
+  width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
 }
 
 .mobile-nav-item:hover { background: var(--color-primary-light); }
@@ -1155,11 +1230,6 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
 
 /* ── 19. Responsive ── */
 @media (max-width: 1023px) {
-  .navbar-hamburger { display: flex; }
-  .navbar-nav { display: none; }
-  .navbar-right .navbar-user-info { display: none; }
-  .mobile-drawer { display: block; }
-
   .page-body { padding: 16px; gap: 16px; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 4px; }
   .page-header { flex-direction: column; align-items: flex-start; }
@@ -1169,6 +1239,13 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; }
   .navbar { padding: 0 16px; }
   .navbar-logo-text { display: none; }
   .navbar-logo { margin-right: 16px; }
+    .navbar-right {
+      gap: 4px;
+    }
+  
+    .navbar-user {
+      padding: 4px;
+    }
   .page-body { padding: 12px; gap: 12px; }
   .kpi-grid { grid-template-columns: 1fr; gap: 4px; }
   .page-title { font-size: 18px; }

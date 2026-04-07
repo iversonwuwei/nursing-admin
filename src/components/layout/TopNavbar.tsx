@@ -8,6 +8,7 @@ import {
   Home, Landmark,
   Menu,
   Monitor,
+  MoreHorizontal,
   Settings,
   UserCheck,
   Users,
@@ -16,7 +17,7 @@ import {
 import { signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /* ── Nav data ── */
 const NAV_ITEMS = [
@@ -106,6 +107,18 @@ function isActiveExact(href: string, pathname: string) {
   return pathname === href
 }
 
+const MOBILE_NAV_BREAKPOINT = 768
+const NAV_ITEM_GAP = 2
+const FALLBACK_MORE_WIDTH = 88
+
+function hasActiveTopLevel(item: typeof NAV_ITEMS[0], pathname: string) {
+  if (item.children) {
+    return item.children.some((child) => isActiveExact(child.href, pathname))
+  }
+
+  return isActive(item.href!, pathname)
+}
+
 /* ── Desktop Nav Item ── */
 function NavItem({ item, pathname, openDropdown, setOpenDropdown }: {
   item: typeof NAV_ITEMS[0]
@@ -148,7 +161,12 @@ function NavItem({ item, pathname, openDropdown, setOpenDropdown }: {
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <button className={`navbar-item${hasActiveChild ? ' is-active' : ''}`}>
+      <button
+        type="button"
+        className={`navbar-item${hasActiveChild ? ' is-active' : ''}`}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
         <span className="navbar-item-icon">
           <item.icon size={16} strokeWidth={1.8} />
         </span>
@@ -184,10 +202,108 @@ function NavItem({ item, pathname, openDropdown, setOpenDropdown }: {
   )
 }
 
+function OverflowNavItem({ items, pathname, openDropdown, setOpenDropdown }: {
+  items: typeof NAV_ITEMS
+  pathname: string
+  openDropdown: string | null
+  setOpenDropdown: (v: string | null) => void
+}) {
+  const isOpen = openDropdown === '__overflow__'
+  const hasActiveChild = items.some((item) => hasActiveTopLevel(item, pathname))
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleEnter = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    setOpenDropdown('__overflow__')
+  }
+
+  const handleLeave = () => {
+    closeTimer.current = setTimeout(() => setOpenDropdown(null), 120)
+  }
+
+  return (
+    <div
+      className="navbar-group navbar-overflow-group"
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
+      <button
+        type="button"
+        className={`navbar-item${hasActiveChild ? ' is-active' : ''}`}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+      >
+        <span className="navbar-item-icon">
+          <MoreHorizontal size={16} strokeWidth={1.8} />
+        </span>
+        <span>更多</span>
+        <ChevronDown
+          size={12}
+          strokeWidth={2}
+          style={{
+            marginLeft: 2,
+            opacity: 0.6,
+            transform: isOpen ? 'rotate(180deg)' : 'none',
+            transition: 'transform 200ms ease',
+          }}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="navbar-dropdown navbar-overflow-dropdown">
+          {items.map((item) => {
+            if (!item.children) {
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href!}
+                  className={`navbar-dropdown-item${isActive(item.href!, pathname) ? ' is-active' : ''}`}
+                  onClick={() => setOpenDropdown(null)}
+                >
+                  <span className="navbar-item-icon">
+                    <item.icon size={15} strokeWidth={1.8} />
+                  </span>
+                  {item.label}
+                </Link>
+              )
+            }
+
+            return (
+              <div key={item.label} className="navbar-overflow-section">
+                <div className="navbar-overflow-title">
+                  <span className="navbar-item-icon">
+                    <item.icon size={15} strokeWidth={1.8} />
+                  </span>
+                  <span>{item.label}</span>
+                </div>
+                {item.children.map((child) => (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    className={`navbar-dropdown-item${isActiveExact(child.href, pathname) ? ' is-active' : ''}`}
+                    onClick={() => setOpenDropdown(null)}
+                  >
+                    {child.label}
+                    {'badge' in child && child.badge && (
+                      <span className="navbar-badge">{child.badge}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ── Mobile Drawer ── */
 function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname()
   const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const activeGroup = NAV_ITEMS.find(item => item.children?.some(child => isActiveExact(child.href, pathname)))?.label ?? null
+  const resolvedOpenGroup = openGroup === null ? activeGroup : (openGroup || null)
 
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'
@@ -198,9 +314,9 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
   if (!open) return null
 
   return (
-    <div className="mobile-drawer">
+    <div className="mobile-drawer" id="mobile-navigation-drawer">
       <div className="mobile-drawer-overlay" onClick={onClose} />
-      <div className="mobile-drawer-panel">
+      <div className="mobile-drawer-panel" role="dialog" aria-modal="true" aria-label="主导航菜单">
         <div className="mobile-drawer-header">
           <div className="navbar-logo-icon">NH</div>
           <div>
@@ -208,6 +324,7 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
             <div className="navbar-logo-sub">管理系统</div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-muted)', display: 'flex', padding: 4 }}
           >
@@ -218,7 +335,7 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
         <nav className="mobile-drawer-nav">
           {NAV_ITEMS.map(item => {
             const hasChildren = !!item.children
-            const isOpen = openGroup === item.label
+            const isOpen = resolvedOpenGroup === item.label
 
             if (!hasChildren) {
               return (
@@ -236,9 +353,11 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
 
             return (
               <div key={item.label} className="mobile-nav-group">
-                <div
+                <button
+                  type="button"
                   className={`mobile-nav-item${item.children!.some(c => isActive(c.href, pathname)) ? ' is-active' : ''}`}
-                  onClick={() => setOpenGroup(isOpen ? null : item.label)}
+                  onClick={() => setOpenGroup(isOpen ? '' : item.label)}
+                  aria-expanded={isOpen}
                 >
                   <item.icon size={16} strokeWidth={1.8} />
                   <span style={{ flex: 1 }}>{item.label}</span>
@@ -246,7 +365,7 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
                     size={13}
                     style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', opacity: 0.6 }}
                   />
-                </div>
+                </button>
                 {isOpen && item.children!.map(child => (
                   <Link
                     key={child.href}
@@ -282,9 +401,58 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
 export function TopNavbar() {
   const pathname = usePathname()
   const { data: session } = useSession()
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [openDropdownState, setOpenDropdownState] = useState<{ label: string | null; path: string }>({ label: null, path: '' })
+  const [mobileDrawerPath, setMobileDrawerPath] = useState<string | null>(null)
+  const [layoutMetrics, setLayoutMetrics] = useState({
+    navWidth: 0,
+    viewportWidth: 0,
+    itemWidths: [] as number[],
+    moreWidth: FALLBACK_MORE_WIDTH,
+  })
   const navRef = useRef<HTMLElement>(null)
+  const navListRef = useRef<HTMLElement>(null)
+  const measureItemRefs = useRef<Array<HTMLSpanElement | null>>([])
+  const moreMeasureRef = useRef<HTMLSpanElement | null>(null)
+  const openDropdown = openDropdownState.path === pathname ? openDropdownState.label : null
+
+  const setOpenDropdown = useCallback((value: string | null) => {
+    setOpenDropdownState({ label: value, path: pathname })
+  }, [pathname])
+
+  const openMobileDrawer = useCallback(() => {
+    setMobileDrawerPath(pathname)
+  }, [pathname])
+
+  const closeMobileDrawer = useCallback(() => {
+    setMobileDrawerPath(null)
+  }, [])
+
+  const measureLayout = useCallback(() => {
+    const nextItemWidths = NAV_ITEMS.map((_, index) => Math.ceil(measureItemRefs.current[index]?.offsetWidth ?? 0))
+    const nextState = {
+      navWidth: Math.ceil(navListRef.current?.clientWidth ?? 0),
+      viewportWidth: window.innerWidth,
+      itemWidths: nextItemWidths,
+      moreWidth: Math.ceil(moreMeasureRef.current?.offsetWidth ?? FALLBACK_MORE_WIDTH),
+    }
+
+    setLayoutMetrics((current) => {
+      const sameWidths =
+        current.itemWidths.length === nextState.itemWidths.length &&
+        current.itemWidths.every((width, index) => width === nextState.itemWidths[index])
+
+      if (
+        current.navWidth === nextState.navWidth &&
+        current.viewportWidth === nextState.viewportWidth &&
+        current.moreWidth === nextState.moreWidth &&
+        sameWidths
+      ) {
+        return current
+      }
+
+      return nextState
+    })
+  }, [])
 
   // close dropdown on outside click
   useEffect(() => {
@@ -295,11 +463,104 @@ export function TopNavbar() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [setOpenDropdown])
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setOpenDropdown(null)
+      closeMobileDrawer()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [closeMobileDrawer, setOpenDropdown])
+
+  useEffect(() => {
+    let frameId = 0
+
+    const scheduleMeasure = () => {
+      cancelAnimationFrame(frameId)
+      frameId = window.requestAnimationFrame(() => {
+        measureLayout()
+      })
+    }
+
+    scheduleMeasure()
+
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => scheduleMeasure())
+
+    if (observer) {
+      if (navRef.current) observer.observe(navRef.current)
+      if (navListRef.current) observer.observe(navListRef.current)
+      measureItemRefs.current.forEach((element) => {
+        if (element) observer.observe(element)
+      })
+      if (moreMeasureRef.current) observer.observe(moreMeasureRef.current)
+    }
+
+    window.addEventListener('resize', scheduleMeasure)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      observer?.disconnect()
+      window.removeEventListener('resize', scheduleMeasure)
+    }
+  }, [measureLayout])
+
+  const isMobileCompact = layoutMetrics.viewportWidth > 0 && layoutMetrics.viewportWidth < MOBILE_NAV_BREAKPOINT
+
+  const visibleCount = useMemo(() => {
+    if (isMobileCompact) {
+      return 0
+    }
+
+    if (
+      layoutMetrics.navWidth <= 0 ||
+      layoutMetrics.itemWidths.length !== NAV_ITEMS.length ||
+      layoutMetrics.itemWidths.some((width) => width <= 0)
+    ) {
+      return NAV_ITEMS.length
+    }
+
+    const totalWidth =
+      layoutMetrics.itemWidths.reduce((sum, width) => sum + width, 0) +
+      NAV_ITEM_GAP * Math.max(layoutMetrics.itemWidths.length - 1, 0)
+
+    if (totalWidth <= layoutMetrics.navWidth) {
+      return NAV_ITEMS.length
+    }
+
+    let usedWidth = 0
+    let nextVisibleCount = 0
+
+    for (let index = 0; index < layoutMetrics.itemWidths.length; index += 1) {
+      const itemWidth = layoutMetrics.itemWidths[index]
+      const candidateWidth = nextVisibleCount === 0 ? itemWidth : usedWidth + NAV_ITEM_GAP + itemWidth
+      const reserveOverflowWidth = index < layoutMetrics.itemWidths.length - 1
+        ? layoutMetrics.moreWidth + NAV_ITEM_GAP
+        : 0
+
+      if (candidateWidth + reserveOverflowWidth <= layoutMetrics.navWidth) {
+        usedWidth = candidateWidth
+        nextVisibleCount = index + 1
+        continue
+      }
+
+      break
+    }
+
+    return nextVisibleCount
+  }, [isMobileCompact, layoutMetrics.itemWidths, layoutMetrics.moreWidth, layoutMetrics.navWidth])
+
+  const visibleItems = isMobileCompact ? [] : NAV_ITEMS.slice(0, visibleCount)
+  const overflowItems = isMobileCompact ? [] : NAV_ITEMS.slice(visibleCount)
+  const mobileOpen = isMobileCompact && mobileDrawerPath === pathname
 
   return (
     <>
-      <header className="navbar" ref={navRef}>
+      <header className={`navbar${isMobileCompact ? ' is-mobile-compact' : ''}`} ref={navRef}>
         {/* Logo */}
         <Link href="/" className="navbar-logo">
           <div className="navbar-logo-icon">NH</div>
@@ -310,8 +571,8 @@ export function TopNavbar() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="navbar-nav">
-          {NAV_ITEMS.map(item => (
+        <nav className="navbar-nav" ref={navListRef} aria-label="主导航">
+          {visibleItems.map((item) => (
             <NavItem
               key={item.label}
               item={item}
@@ -320,6 +581,14 @@ export function TopNavbar() {
               setOpenDropdown={setOpenDropdown}
             />
           ))}
+          {overflowItems.length > 0 && (
+            <OverflowNavItem
+              items={overflowItems}
+              pathname={pathname}
+              openDropdown={openDropdown}
+              setOpenDropdown={setOpenDropdown}
+            />
+          )}
         </nav>
 
         {/* Right actions */}
@@ -352,16 +621,58 @@ export function TopNavbar() {
           {/* Hamburger (mobile) */}
           <button
             className="navbar-hamburger"
-            onClick={() => setMobileOpen(true)}
+            onClick={openMobileDrawer}
             aria-label="打开菜单"
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-navigation-drawer"
           >
             <Menu size={20} />
           </button>
         </div>
       </header>
 
+      <div className="navbar-measure" aria-hidden="true">
+        {NAV_ITEMS.map((item, index) => (
+          <span
+            key={`measure-${item.label}`}
+            className="navbar-item navbar-item-measure"
+            ref={(element) => {
+              measureItemRefs.current[index] = element
+            }}
+          >
+            <span className="navbar-item-icon">
+              <item.icon size={16} strokeWidth={1.8} />
+            </span>
+            <span>{item.label}</span>
+            {item.children && (
+              <ChevronDown
+                size={12}
+                strokeWidth={2}
+                style={{ marginLeft: 2, opacity: 0.6 }}
+              />
+            )}
+          </span>
+        ))}
+
+        <span className="navbar-item navbar-item-measure" ref={moreMeasureRef}>
+          <span className="navbar-item-icon">
+            <MoreHorizontal size={16} strokeWidth={1.8} />
+          </span>
+          <span>更多</span>
+          <ChevronDown
+            size={12}
+            strokeWidth={2}
+            style={{ marginLeft: 2, opacity: 0.6 }}
+          />
+        </span>
+      </div>
+
       {/* Mobile Drawer */}
-      <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <MobileDrawer
+        key={`${pathname}-${mobileOpen ? 'open' : 'closed'}`}
+        open={mobileOpen}
+        onClose={closeMobileDrawer}
+      />
     </>
   )
 }

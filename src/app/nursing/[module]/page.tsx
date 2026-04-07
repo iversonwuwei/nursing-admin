@@ -1,5 +1,6 @@
-import { NursingExecutionOverviewPage, ServicePackagesPage, ServicePlansPage } from '@/components/nursing/NursingWorkflowPages'
 import { StandardModulePage } from '@/components/nh'
+import { NursingCheckinManagementPage } from '@/components/nursing/NursingCheckinManagementPage'
+import { NursingExecutionOverviewPage, ServicePackagesPage, ServicePlansPage } from '@/components/nursing/NursingWorkflowPages'
 import { nursingPages } from '@/lib/data/standard-pages'
 import { notFound, redirect } from 'next/navigation'
 
@@ -32,7 +33,7 @@ export default async function NursingModulePage({
   }
 
   if (module === 'checkin') {
-    redirect('/staff/tasks')
+    return <NursingCheckinManagementPage />
   }
 
   return <StandardModulePage config={config} />

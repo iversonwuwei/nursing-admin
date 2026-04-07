@@ -1,6 +1,8 @@
 export type ServicePackageStatus = '草稿' | '待定价' | '待发布' | '已生效' | '已下线'
 export type ServicePlanStatus = '待复核' | '执行中' | '异常插单' | '已归档'
 export type ServicePlanTaskStatus = '待执行' | '执行中' | '已完成'
+export type ServiceClockInStatus = '待执行' | '服务中' | '异常待复核' | '待主管确认' | '已确认'
+export type ServiceClockInMethod = '二维码' | 'NFC' | '手工补录'
 export type NursingWorkflowMode = 'demo' | 'bff'
 
 export interface ServicePackageRecord {
@@ -61,6 +63,31 @@ export interface ServicePlanExecutionTaskItem {
   handledAt?: string
   handledAtIso?: string
   actionNote?: string
+}
+
+export interface ServiceClockInRecord {
+  id: string
+  taskId: string
+  planId: string
+  elderlyName: string
+  room: string
+  packageName: string
+  ownerName: string
+  ownerRole: string
+  shift: string
+  scheduledTime: string
+  status: ServiceClockInStatus
+  method: ServiceClockInMethod
+  checkedInAt?: string
+  checkedInAtIso?: string
+  completedAt?: string
+  completedAtIso?: string
+  exceptionNote?: string
+  actionNote?: string
+  reviewedBy?: string
+  reviewedAt?: string
+  reviewedAtIso?: string
+  reviewNote?: string
 }
 
 export interface ScheduleBoardAssignmentItem {
@@ -176,6 +203,7 @@ export interface NursingServiceSnapshot {
   packages: ServicePackageRecord[]
   plans: ServicePlanRecord[]
   tasks: ServicePlanExecutionTaskItem[]
+  clockInRecords: ServiceClockInRecord[]
   schedule: ScheduleBoardSnapshot
   observability: NursingWorkflowObservability
   loading: boolean
@@ -192,6 +220,7 @@ interface DemoWorkflowState {
   packages: ServicePackageRecord[]
   plans: ServicePlanRecord[]
   tasks: ServicePlanExecutionTaskItem[]
+  clockInRecords: ServiceClockInRecord[]
   counters: DemoCounters
 }
 
@@ -281,6 +310,7 @@ const EMPTY_SNAPSHOT: NursingServiceSnapshot = {
   packages: [],
   plans: [],
   tasks: [],
+  clockInRecords: [],
   schedule: {
     weekLabel: '本周排班',
     activePlans: 0,
@@ -416,6 +446,86 @@ function createTaskFromPlan(
   }
 }
 
+function inferClockInMethod(task: ServicePlanExecutionTaskItem, current?: ServiceClockInRecord): ServiceClockInMethod {
+  if (current?.method) {
+    return current.method
+  }
+
+  if (task.priority === '高') {
+    return '二维码'
+  }
+
+  if (task.shift === '夜班' || task.shift === '晚班') {
+    return 'NFC'
+  }
+
+  return '手工补录'
+}
+
+function inferClockInStatus(task: ServicePlanExecutionTaskItem, current?: ServiceClockInRecord): ServiceClockInStatus {
+  if ((current?.exceptionNote?.trim() ?? '').length > 0 || task.originStatusLabel === '异常插单') {
+    return '异常待复核'
+  }
+
+  if (task.status === '已完成') {
+    return current?.status === '已确认' ? '已确认' : '待主管确认'
+  }
+
+  if (task.status === '执行中') {
+    return '服务中'
+  }
+
+  return '待执行'
+}
+
+function buildClockInRecordFromTask(
+  task: ServicePlanExecutionTaskItem,
+  current?: ServiceClockInRecord,
+): ServiceClockInRecord {
+  const status = inferClockInStatus(task, current)
+  const checkedInAt = task.status === '待执行'
+    ? current?.checkedInAt
+    : current?.checkedInAt ?? task.handledAt ?? `今日 ${task.scheduledTime}`
+  const checkedInAtIso = task.status === '待执行'
+    ? current?.checkedInAtIso
+    : current?.checkedInAtIso ?? task.handledAtIso
+  const completedAt = task.status === '已完成'
+    ? current?.completedAt ?? task.handledAt ?? checkedInAt
+    : undefined
+  const completedAtIso = task.status === '已完成'
+    ? current?.completedAtIso ?? task.handledAtIso ?? checkedInAtIso
+    : undefined
+  const exceptionNote = current?.exceptionNote
+    ?? (task.originStatusLabel === '异常插单'
+      ? task.actionNote ?? '现场评定存在整改或插单信号，待主管复核。'
+      : undefined)
+
+  return {
+    id: current?.id ?? createId('clockin'),
+    taskId: task.id,
+    planId: task.planId,
+    elderlyName: task.elderlyName,
+    room: task.room,
+    packageName: task.packageName,
+    ownerName: task.ownerName,
+    ownerRole: task.ownerRole,
+    shift: task.shift,
+    scheduledTime: task.scheduledTime,
+    status,
+    method: inferClockInMethod(task, current),
+    checkedInAt,
+    checkedInAtIso,
+    completedAt,
+    completedAtIso,
+    exceptionNote,
+    actionNote: task.actionNote,
+    reviewedBy: status === '已确认' ? current?.reviewedBy : undefined,
+    reviewedAt: status === '已确认' ? current?.reviewedAt : undefined,
+    reviewedAtIso: status === '已确认' ? current?.reviewedAtIso : undefined,
+    reviewNote: status === '已确认' ? current?.reviewNote : undefined,
+  }
+}
+
 function resolvePlanDays(plan: ServicePlanRecord) {
   if (plan.status === '已归档' || plan.status === '待复核') {
     return [] as string[]
@@ -454,6 +564,7 @@ function syncDemoState(state: DemoWorkflowState): DemoWorkflowState {
     riskTags: Array.isArray(plan.riskTags) ? plan.riskTags : [],
   }))
   const existingTasks = new Map(state.tasks.map(task => [task.planId, task]))
+  const existingClockInRecords = new Map((state.clockInRecords ?? []).map(record => [record.taskId, record]))
 
   const tasks = plans
     .map(plan => {
@@ -479,6 +590,10 @@ function syncDemoState(state: DemoWorkflowState): DemoWorkflowState {
     })
     .sort((left, right) => left.scheduledTime.localeCompare(right.scheduledTime) || left.elderlyName.localeCompare(right.elderlyName))
 
+  const clockInRecords = tasks
+    .map(task => buildClockInRecordFromTask(task, existingClockInRecords.get(task.id)))
+    .sort((left, right) => left.scheduledTime.localeCompare(right.scheduledTime) || left.elderlyName.localeCompare(right.elderlyName))
+
   const packages = state.packages.map(item => ({
     ...item,
     boundElders: plans.filter(plan => plan.packageId === item.id && plan.status !== '已归档').length,
@@ -488,6 +603,7 @@ function syncDemoState(state: DemoWorkflowState): DemoWorkflowState {
     packages,
     plans,
     tasks,
+    clockInRecords,
     counters: normalizedCounters,
   }
 }
@@ -651,6 +767,7 @@ function buildDemoSnapshot(state: DemoWorkflowState): NursingServiceSnapshot {
     packages: normalizedState.packages,
     plans: normalizedState.plans,
     tasks: normalizedState.tasks,
+    clockInRecords: normalizedState.clockInRecords,
     schedule,
     observability: buildDemoObservability(normalizedState.plans, normalizedState.tasks, normalizedState.counters, schedule.unassignedPlans),
     loading: false,
@@ -851,6 +968,7 @@ function createDefaultDemoState(): DemoWorkflowState {
     packages,
     plans,
     tasks,
+    clockInRecords: [],
     counters: {
       auditRecords: 18,
       taskCompletionTotal: 7,
@@ -999,6 +1117,7 @@ function normalizeSnapshot(payload: Partial<NursingServiceSnapshot> | null | und
     packages: Array.isArray(payload?.packages) ? payload.packages : [],
     plans: Array.isArray(payload?.plans) ? payload.plans : [],
     tasks: Array.isArray(payload?.tasks) ? payload.tasks : [],
+    clockInRecords: Array.isArray(payload?.clockInRecords) ? payload.clockInRecords : [],
     schedule: payload?.schedule ? {
       weekLabel: payload.schedule.weekLabel ?? '本周排班',
       activePlans: payload.schedule.activePlans ?? 0,
@@ -1407,6 +1526,38 @@ export async function saveServicePlanTaskAuditNote(
   await requestWorkflow(`/tasks/${taskId}/note`, {
     method: 'PUT',
     body: JSON.stringify({ status, actionNote, handledBy, handledAt, handledAtIso }),
+  })
+  return refreshNursingServiceWorkflow()
+}
+
+function getClockInRecordOrThrow(state: DemoWorkflowState, recordId: string) {
+  const record = state.clockInRecords.find(item => item.id === recordId)
+  if (!record) {
+    throw new Error('打卡记录不存在。')
+  }
+  return record
+}
+
+export async function reviewServiceClockInRecord(
+  recordId: string,
+  reviewedBy = '值班主管',
+  reviewNote = '已核对到场与闭环说明，允许纳入当班统计。',
+) {
+  if (WORKFLOW_MODE === 'demo') {
+    return runDemoMutation(state => {
+      const record = getClockInRecordOrThrow(state, recordId)
+      const timestamp = new Date()
+      record.status = '已确认'
+      record.reviewedBy = reviewedBy
+      record.reviewedAt = toDisplayTime(timestamp)
+      record.reviewedAtIso = timestamp.toISOString()
+      record.reviewNote = reviewNote
+    })
+  }
+
+  await requestWorkflow(`/clockins/${recordId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewedBy, reviewNote }),
   })
   return refreshNursingServiceWorkflow()
 }
