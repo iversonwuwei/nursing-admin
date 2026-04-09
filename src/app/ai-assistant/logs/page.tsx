@@ -3,25 +3,41 @@
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, FilterBar, FilterItem, PageHeader, StatCard, Tag } from '@/components/nh'
 import { getAiSourceLabel, getSuggestedAiLogChannel, getSuggestedAiLogKeywords, readAiTrackingContext } from '@/lib/ai-context'
+import { fetchAdminAiAuditLogs, getPrimaryCapabilityForContext, isAdminAiDemoMode } from '@/lib/ai/admin-ai-api'
 import { AI_QUERY_LOGS, getAiLogsForContext } from '@/lib/mock/admin-ai'
 import { Bot, ScrollText, Search, ShieldCheck } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+function buildDemoLogs(source: string, entityId?: string, focus?: string) {
+  if (!source) {
+    return AI_QUERY_LOGS
+  }
+
+  return getAiLogsForContext({ source, entityId, focus })
+}
 
 const CHANNEL_OPTIONS = ['全部', 'Admin / 入住办理', 'Admin / 健康总览', 'Admin / 任务中心', 'Admin / 报表中心'] as const
 
 export default function AiLogsPage() {
   const searchParams = useSearchParams()
   const trackingContext = readAiTrackingContext(searchParams)
+  const demoMode = isAdminAiDemoMode()
   const [keyword, setKeyword] = useState('')
   const [channel, setChannel] = useState<(typeof CHANNEL_OPTIONS)[number]>('全部')
+  const [logs, setLogs] = useState<typeof AI_QUERY_LOGS>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const trackingSource = trackingContext?.source ?? ''
+  const trackingEntityId = trackingContext?.entityId ?? ''
+  const trackingFocus = trackingContext?.focus ?? ''
+  const primaryCapability = getPrimaryCapabilityForContext(trackingContext)
+  const demoLogs = buildDemoLogs(trackingSource, trackingEntityId || undefined, trackingFocus || undefined)
   const suggestedChannel = getSuggestedAiLogChannel(trackingContext)
   const suggestedKeywords = getSuggestedAiLogKeywords(trackingContext)
   const effectiveChannel = channel === '全部' && suggestedChannel ? suggestedChannel as (typeof CHANNEL_OPTIONS)[number] : channel
   const effectiveKeywords = keyword.trim() ? [keyword.trim()] : suggestedKeywords
-  const contextLogs = trackingContext ? getAiLogsForContext(trackingContext) : []
-
-  const baseLogs = contextLogs.length > 0 ? contextLogs : AI_QUERY_LOGS
+  const baseLogs = demoMode ? demoLogs : (logs.length > 0 || !loadError ? logs : demoLogs)
   const filteredLogs = baseLogs.filter(item => {
     const matchesKeyword = effectiveKeywords.length === 0
       || effectiveKeywords.some(entry => (
@@ -35,6 +51,37 @@ export default function AiLogsPage() {
 
     return matchesKeyword && matchesChannel
   })
+
+  useEffect(() => {
+    if (demoMode) {
+      return
+    }
+
+    let cancelled = false
+
+    void fetchAdminAiAuditLogs({
+      capability: primaryCapability,
+      pageSize: 50,
+    })
+      .then(result => {
+        if (!cancelled) {
+          setLogs(result.items)
+          setLoadError('')
+          setLoading(false)
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setLogs(demoLogs)
+          setLoadError(error instanceof Error ? error.message : 'AI 日志加载失败。')
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [demoLogs, demoMode, primaryCapability, trackingEntityId, trackingFocus, trackingSource])
 
   return (
     <div className="page-root animate-fade-up">
@@ -65,10 +112,10 @@ export default function AiLogsPage() {
       )}
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <StatCard icon={<ScrollText size={18} />} label="日志总数" value={AI_QUERY_LOGS.length} sub="当前 mock 可追踪记录" color="primary" />
-        <StatCard icon={<Bot size={18} />} label="涉及 Agent" value={new Set(AI_QUERY_LOGS.map(item => item.agent)).size} sub="已覆盖入住/健康/任务/运营" color="success" />
-        <StatCard icon={<ShieldCheck size={18} />} label="人工留痕" value={AI_QUERY_LOGS.length} sub="全部保留操作人与场景" color="warning" />
-        <StatCard icon={<Search size={18} />} label="当前结果" value={filteredLogs.length} sub={contextLogs.length > 0 ? '已按结构化上下文精确匹配' : effectiveKeywords.length > 0 ? `关键词 ${effectiveKeywords.join(' / ')}` : effectiveChannel === '全部' ? '按筛选条件显示' : `默认聚焦 ${effectiveChannel}`} color="info" />
+        <StatCard icon={<ScrollText size={18} />} label="日志总数" value={baseLogs.length} sub={demoMode ? '当前 mock 可追踪记录' : '当前来自后端审计日志'} color="primary" />
+        <StatCard icon={<Bot size={18} />} label="涉及 Agent" value={new Set(baseLogs.map(item => item.agent)).size} sub="已覆盖入住/健康/任务/运营" color="success" />
+        <StatCard icon={<ShieldCheck size={18} />} label="人工留痕" value={baseLogs.length} sub={demoMode ? '全部保留操作人与场景' : '全部保留 capability 与审计编号'} color="warning" />
+        <StatCard icon={<Search size={18} />} label="当前结果" value={filteredLogs.length} sub={trackingContext ? '已按结构化上下文精确匹配' : effectiveKeywords.length > 0 ? `关键词 ${effectiveKeywords.join(' / ')}` : effectiveChannel === '全部' ? '按筛选条件显示' : `默认聚焦 ${effectiveChannel}`} color="info" />
       </div>
 
       <FilterBar>
@@ -95,6 +142,11 @@ export default function AiLogsPage() {
       </FilterBar>
 
       <DataCard icon={<ScrollText size={16} />} title="日志明细" subtitle="当前展示的是结果型日志；后续可替换为真实提示词、工具链路和反馈审计。">
+        {loading || loadError ? (
+          <div style={{ marginBottom: 12, fontSize: 12.5, color: loadError ? 'var(--color-danger)' : 'var(--color-muted)' }}>
+            {loadError || '审计日志加载中...'}
+          </div>
+        ) : null}
         <div style={{ display: 'grid', gap: 10 }}>
           {filteredLogs.map(item => (
             <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>

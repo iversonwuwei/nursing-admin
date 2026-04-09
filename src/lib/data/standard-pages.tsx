@@ -527,7 +527,9 @@ export const settingsPage: StandardModulePageConfig = {
   title: '系统配置',
   subtitle: '集中管理组织信息、报警规则、通知方式、集成参数和安全策略。',
   actions: [
-    { label: '查看组织管理', href: '/organizations', variant: 'secondary' },
+    { label: '静态文本管理', href: '/settings/static-texts', variant: 'secondary' },
+    { label: '下拉选项管理', href: '/settings/option-groups', variant: 'secondary' },
+    { label: '操作日志', href: '/settings/audit-logs', variant: 'secondary' },
     { label: '角色权限设置', href: '/settings/roles', variant: 'primary' },
   ],
   stats: [

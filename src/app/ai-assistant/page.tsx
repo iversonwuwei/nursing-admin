@@ -4,11 +4,18 @@ import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { appendAiTrackingContext, getAiSourceLabel, getAiTargetLabel, readAiTrackingContext } from '@/lib/ai-context'
 import {
+  fetchAdminAiDashboardInsights,
+  isAdminAiDemoMode,
+  sendAdminAiChat,
+} from '@/lib/ai/admin-ai-api'
+import { alertRecords } from '@/lib/data/alerts-data'
+import {
   getAdminAiPromptReply,
   getAiDashboardInsights,
 } from '@/lib/mock/admin-ai'
 import {
   getAdmissionApplicationsSnapshot,
+  getStaffTaskItems,
   subscribeAdmissionWorkflow,
 } from '@/lib/mock/admission-workflow'
 import {
@@ -21,7 +28,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 const PRESET_PROMPTS = [
   '总结当前入住评估闭环进度',
@@ -33,6 +40,7 @@ const PRESET_PROMPTS = [
 export default function AIAssistantPage() {
   const searchParams = useSearchParams()
   const trackingContext = readAiTrackingContext(searchParams)
+  const demoMode = isAdminAiDemoMode()
   const applications = useSyncExternalStore(
     subscribeAdmissionWorkflow,
     getAdmissionApplicationsSnapshot,
@@ -40,15 +48,87 @@ export default function AIAssistantPage() {
   )
   const [prompt, setPrompt] = useState(PRESET_PROMPTS[0])
   const [reply, setReply] = useState(getAdminAiPromptReply(PRESET_PROMPTS[0]))
+  const [conversationId, setConversationId] = useState('')
+  const [replyBusy, setReplyBusy] = useState(false)
+  const [replyError, setReplyError] = useState('')
+  const mockDashboardInsights = useMemo(() => getAiDashboardInsights(applications), [applications])
+  const [dashboardInsights, setDashboardInsights] = useState(mockDashboardInsights)
+  const [dashboardError, setDashboardError] = useState('')
 
-  const dashboardInsights = getAiDashboardInsights(applications)
   const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
+  const openAlerts = alertRecords.filter(item => item.status !== 'resolved').length
+  const pendingTasks = getStaffTaskItems(applications).filter(item => item.status !== '已完成').length
+  const trackingSource = trackingContext?.source ?? ''
+  const trackingFocus = trackingContext?.focus ?? ''
   const trackedTargetLabel = trackingContext?.target ? getAiTargetLabel(trackingContext.target) : '推理详情'
   const targetHref = trackingContext?.target === 'rules'
     ? appendAiTrackingContext('/ai-assistant/rules', { ...trackingContext, target: 'rules' })
     : trackingContext?.target === 'logs'
       ? appendAiTrackingContext('/ai-assistant/logs', { ...trackingContext, target: 'logs' })
       : appendAiTrackingContext('/ai-assistant/inference', trackingContext ? { ...trackingContext, target: 'inference' } : null)
+
+  useEffect(() => {
+    if (demoMode) {
+      setDashboardInsights(mockDashboardInsights)
+      setDashboardError('')
+      return
+    }
+
+    let cancelled = false
+    setDashboardError('')
+
+    void fetchAdminAiDashboardInsights({
+      totalElders: applications.length,
+      activeCarePlans: Math.max(applications.length - pendingConfirmations, 0),
+      openAlerts,
+      pendingTasks,
+      occupancyPercent: Math.min(100, Math.round((applications.length / 12) * 100)),
+      additionalContext: trackingSource
+        ? `${trackingSource}:${trackingFocus || 'general'}`
+        : 'admin-ai-overview',
+    })
+      .then(result => {
+        if (!cancelled) {
+          setDashboardInsights(result)
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setDashboardInsights(mockDashboardInsights)
+          setDashboardError(error instanceof Error ? error.message : 'AI 总览加载失败。')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [applications, demoMode, mockDashboardInsights, openAlerts, pendingConfirmations, pendingTasks, trackingFocus, trackingSource])
+
+  async function handlePromptSubmit(nextPrompt: string) {
+    setPrompt(nextPrompt)
+    setReplyError('')
+
+    if (demoMode) {
+      setReply(getAdminAiPromptReply(nextPrompt))
+      return
+    }
+
+    setReplyBusy(true)
+    try {
+      const result = await sendAdminAiChat({
+        message: nextPrompt,
+        conversationId: conversationId || undefined,
+        userRole: 'admin',
+      })
+      setReply(result.reply)
+      setConversationId(result.conversationId)
+    } catch (error) {
+      setReply(getAdminAiPromptReply(nextPrompt))
+      setReplyError(error instanceof Error ? error.message : 'AI 问答暂时不可用。')
+    } finally {
+      setReplyBusy(false)
+    }
+  }
 
   return (
     <div className="page-root animate-fade-up">
@@ -74,7 +154,8 @@ export default function AIAssistantPage() {
         signals={[
           { label: trackingContext ? `来源：${getAiSourceLabel(trackingContext.source)}` : '当前未绑定业务来源', tone: trackingContext ? 'info' : 'neutral' },
           { label: trackingContext?.focus ? `关注点：${trackingContext.focus}` : '默认展示总览级 AI 能力', tone: trackingContext?.focus ? 'primary' : 'neutral' },
-          { label: '当前模式：结果型，不自动执行业务动作', tone: 'success' },
+          { label: demoMode ? '当前模式：Demo 回退，未调用后端 AI' : '当前模式：BFF 实时 AI，仍然只读不自动执行', tone: demoMode ? 'info' : 'success' },
+          { label: dashboardError || replyError || '当前无 AI 链路错误', tone: dashboardError || replyError ? 'danger' : 'neutral' },
         ]}
         actions={
           <>
@@ -177,10 +258,8 @@ export default function AIAssistantPage() {
                 <button
                   key={item}
                   className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setPrompt(item)
-                    setReply(getAdminAiPromptReply(item))
-                  }}
+                  disabled={replyBusy}
+                  onClick={() => { void handlePromptSubmit(item) }}
                 >
                   <Sparkles size={12} />
                   {item}
@@ -196,11 +275,14 @@ export default function AIAssistantPage() {
               style={{ width: '100%', resize: 'vertical', padding: '10px 12px' }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button className="btn btn-primary btn-sm" onClick={() => setReply(getAdminAiPromptReply(prompt))}>
+              <button className="btn btn-primary btn-sm" disabled={replyBusy} onClick={() => { void handlePromptSubmit(prompt) }}>
                 <Send size={12} />
-                生成回答
+                {replyBusy ? '生成中...' : '生成回答'}
               </button>
             </div>
+            {replyError ? (
+              <div style={{ fontSize: 12.5, color: 'var(--color-danger)' }}>{replyError}</div>
+            ) : null}
             <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <div className="data-card-icon-wrap"><Bot size={14} /></div>

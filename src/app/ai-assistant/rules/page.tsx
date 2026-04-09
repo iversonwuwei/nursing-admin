@@ -3,23 +3,47 @@
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
 import { appendAiTrackingContext, getAiSourceLabel, readAiTrackingContext } from '@/lib/ai-context'
-import { AI_RULE_TOGGLES, getAiLogsForContext, getAiRuleCardsForContext } from '@/lib/mock/admin-ai'
+import {
+  buildAiRuleCardsForContext,
+  fetchAdminAiAuditLogs,
+  fetchAdminAiRules,
+  getPrimaryCapabilityForContext,
+  isAdminAiDemoMode,
+  toggleAdminAiRule,
+} from '@/lib/ai/admin-ai-api'
+import { AI_RULE_TOGGLES, getAiLogsForContext } from '@/lib/mock/admin-ai'
 import { Power, RefreshCcw, ShieldCheck, ToggleLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+function buildDemoRelatedLogs(source: string, entityId?: string, focus?: string) {
+  if (!source) {
+    return []
+  }
+
+  return getAiLogsForContext({ source, entityId, focus }).slice(0, 2)
+}
 
 export default function AiRulesPage() {
   const searchParams = useSearchParams()
   const trackingContext = readAiTrackingContext(searchParams)
-  const [ruleState, setRuleState] = useState<Record<string, boolean>>(
-    Object.fromEntries(AI_RULE_TOGGLES.map(item => [item.id, item.enabled])),
-  )
+  const demoMode = isAdminAiDemoMode()
+  const [rules, setRules] = useState(AI_RULE_TOGGLES)
+  const [actionError, setActionError] = useState('')
+  const [liveRelatedLogs, setLiveRelatedLogs] = useState<ReturnType<typeof getAiLogsForContext>>([])
 
-  const enabledCount = useMemo(() => AI_RULE_TOGGLES.filter(item => ruleState[item.id]).length, [ruleState])
-  const disabledCount = AI_RULE_TOGGLES.length - enabledCount
-  const relatedRuleCards = trackingContext ? getAiRuleCardsForContext(trackingContext) : []
-  const relatedLogs = trackingContext ? getAiLogsForContext(trackingContext).slice(0, 2) : []
+  const trackingSource = trackingContext?.source ?? ''
+  const trackingEntityId = trackingContext?.entityId ?? ''
+  const trackingFocus = trackingContext?.focus ?? ''
+  const primaryCapability = getPrimaryCapabilityForContext(trackingContext)
+  const demoRelatedLogs = buildDemoRelatedLogs(trackingSource, trackingEntityId || undefined, trackingFocus || undefined)
+
+  const enabledCount = useMemo(() => rules.filter(item => item.enabled).length, [rules])
+  const disabledCount = rules.length - enabledCount
+  const relatedRuleCards = trackingContext ? buildAiRuleCardsForContext(rules, trackingContext) : []
+  const relatedLogs = demoMode ? demoRelatedLogs : liveRelatedLogs
+  const highRiskRules = rules.filter(item => /健康|报警|入住/.test(`${item.scope}${item.name}`)).length
   const contextBoundaries = trackingContext
     ? [
         ['health-monitoring', 'elderly-detail', 'incident-detail'].includes(trackingContext.source)
@@ -28,6 +52,57 @@ export default function AiRulesPage() {
         trackingContext.focus ? `当前关注点为“${trackingContext.focus}”，建议确认这类规则的启停是否会影响人工确认与日志留痕。` : '当前未指定关注点，可继续核对高风险规则与回滚路径。',
       ]
     : []
+
+  useEffect(() => {
+    if (demoMode) {
+      return
+    }
+
+    let cancelled = false
+
+    void Promise.all([
+      fetchAdminAiRules(),
+      trackingSource
+        ? fetchAdminAiAuditLogs({ capability: primaryCapability, pageSize: 2 })
+        : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 2 }),
+    ])
+      .then(([nextRules, logsResult]) => {
+        if (!cancelled) {
+          setRules(nextRules)
+          setLiveRelatedLogs(logsResult.items)
+          setActionError('')
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setRules(AI_RULE_TOGGLES)
+          setLiveRelatedLogs(demoRelatedLogs)
+          setActionError(error instanceof Error ? error.message : 'AI 规则加载失败。')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [demoMode, demoRelatedLogs, primaryCapability, trackingSource])
+
+  async function handleToggle(ruleId: string, nextEnabled: boolean) {
+    setActionError('')
+
+    if (demoMode) {
+      setRules(current => current.map(item => item.id === ruleId ? { ...item, enabled: nextEnabled } : item))
+      return
+    }
+
+    setRules(current => current.map(item => item.id === ruleId ? { ...item, enabled: nextEnabled } : item))
+    try {
+      const updatedRule = await toggleAdminAiRule(ruleId, nextEnabled)
+      setRules(current => current.map(item => item.id === ruleId ? updatedRule : item))
+    } catch (error) {
+      setRules(current => current.map(item => item.id === ruleId ? { ...item, enabled: !nextEnabled } : item))
+      setActionError(error instanceof Error ? error.message : 'AI 规则切换失败。')
+    }
+  }
 
   return (
     <div className="page-root animate-fade-up">
@@ -81,14 +156,19 @@ export default function AiRulesPage() {
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<Power size={18} />} label="已启用规则" value={enabledCount} sub="当前对外生效" color="success" />
         <StatCard icon={<ToggleLeft size={18} />} label="停用规则" value={disabledCount} sub="保留回滚能力" color="warning" />
-        <StatCard icon={<ShieldCheck size={18} />} label="高风险规则" value={2} sub="需人工确认后生效" color="danger" />
-        <StatCard icon={<RefreshCcw size={18} />} label="回滚策略" value="手动切换" sub="当前仍为前端 mock 治理" color="info" />
+        <StatCard icon={<ShieldCheck size={18} />} label="高风险规则" value={highRiskRules} sub="需人工确认后生效" color="danger" />
+        <StatCard icon={<RefreshCcw size={18} />} label="回滚策略" value="手动切换" sub={demoMode ? '当前仍为前端 mock 治理' : '当前已接后端治理开关'} color="info" />
       </div>
 
       <DataCard icon={<Power size={16} />} title="规则启停列表" subtitle="当前演示治理面；未来接真实配置中心时可直接替换数据源。">
+        {actionError ? (
+          <div style={{ marginBottom: 12, fontSize: 12.5, color: 'var(--color-danger)' }}>
+            {actionError}
+          </div>
+        ) : null}
         <div style={{ display: 'grid', gap: 10 }}>
-          {AI_RULE_TOGGLES.map(item => {
-            const enabled = ruleState[item.id]
+          {rules.map(item => {
+            const enabled = item.enabled
 
             return (
               <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
@@ -97,7 +177,7 @@ export default function AiRulesPage() {
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.name}</div>
                     <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.description}</div>
                   </div>
-                  <button className={`btn btn-sm ${enabled ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setRuleState(current => ({ ...current, [item.id]: !current[item.id] }))}>
+                  <button className={`btn btn-sm ${enabled ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { void handleToggle(item.id, !enabled) }}>
                     {enabled ? '已启用' : '已停用'}
                   </button>
                 </div>

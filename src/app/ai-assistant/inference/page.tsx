@@ -4,36 +4,95 @@ import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
 import { appendAiTrackingContext, getAiSourceLabel, readAiTrackingContext } from '@/lib/ai-context'
 import {
-    AI_MODEL_STATUSES,
-    getAiInferenceCardsForContext,
-    getAiLogsForContext,
-    getAiRecommendationRecords,
-    getHealthAiInsights,
+  fetchAdminAiAuditLogs,
+  fetchAdminAiHealthRisk,
+  fetchAdminAiModelsStatus,
+  getPrimaryCapabilityForContext,
+  isAdminAiDemoMode,
+} from '@/lib/ai/admin-ai-api'
+import { healthVitals } from '@/lib/data/health-data'
+import {
+  AI_MODEL_STATUSES,
+  getAiInferenceCardsForContext,
+  getAiLogsForContext,
+  getAiRecommendationRecords,
+  getHealthAiInsights,
 } from '@/lib/mock/admin-ai'
 import {
-    getAdmissionApplicationsSnapshot,
-    getLevelVariant,
-    getStatusVariant,
-    subscribeAdmissionWorkflow,
+  getAdmissionApplicationsSnapshot,
+  getLevelVariant,
+  getStatusVariant,
+  subscribeAdmissionWorkflow,
 } from '@/lib/mock/admission-workflow'
 import { Bot, BrainCircuit, Cpu, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+
+function formatTimestamp(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  const hours = `${date.getHours()}`.padStart(2, '0')
+  const minutes = `${date.getMinutes()}`.padStart(2, '0')
+  return `${month}-${day} ${hours}:${minutes}`
+}
+
+function capabilityLabel(capability?: string) {
+  const labels: Record<string, string> = {
+    'dashboard-insights': '运营摘要',
+    'health-risk': '健康风险',
+    'task-priority': '任务优先级',
+    'admission-assessment': '入住评估',
+    'shift-summary': '班次摘要',
+    'handover-draft': '交接班草稿',
+    'escalation-draft': '升级草稿',
+    'today-summary': '家属日报',
+    'health-explain': '健康解读',
+    'visit-assistant': '探视助手',
+  }
+
+  return capability ? (labels[capability] ?? capability) : '未命名能力'
+}
+
+function configurationSourceLabel(source?: string) {
+  const labels: Record<string, string> = {
+    'capability-override': '能力级 provider + model 覆盖',
+    'capability-provider+provider-model': '能力级 provider，模型走 provider 默认',
+    'capability-provider': '能力级 provider 指定',
+    'capability-model': '能力级 model 指定',
+    'routing-default+provider-model': '路由默认 provider，模型走 provider 默认',
+    'unconfigured': '未完整配置',
+  }
+
+  return source ? (labels[source] ?? source) : '未知来源'
+}
 
 export default function AiInferencePage() {
   const searchParams = useSearchParams()
   const trackingContext = readAiTrackingContext(searchParams)
+  const demoMode = isAdminAiDemoMode()
   const applications = useSyncExternalStore(
     subscribeAdmissionWorkflow,
     getAdmissionApplicationsSnapshot,
     getAdmissionApplicationsSnapshot,
   )
+  const [liveModelStatuses, setLiveModelStatuses] = useState(AI_MODEL_STATUSES)
+  const [liveHealthInsights, setLiveHealthInsights] = useState(getHealthAiInsights())
+  const [liveRelatedLogs, setLiveRelatedLogs] = useState(trackingContext ? getAiLogsForContext(trackingContext).slice(0, 3) : [])
+  const [inferenceError, setInferenceError] = useState('')
+  const trackingSource = trackingContext?.source ?? ''
+  const trackingEntityId = trackingContext?.entityId ?? ''
+  const trackingName = trackingContext?.entityName ?? ''
+  const trackingFocus = trackingContext?.focus ?? ''
 
   const recommendationRecords = getAiRecommendationRecords(applications)
-  const healthInsights = getHealthAiInsights()
-  const runningModels = AI_MODEL_STATUSES.filter(item => item.status === '运行中').length
-  const grayModels = AI_MODEL_STATUSES.filter(item => item.status === '灰度中').length
+  const demoHealthInsights = getHealthAiInsights()
+  const healthInsights = demoMode ? demoHealthInsights : liveHealthInsights
+  const modelStatuses = demoMode ? AI_MODEL_STATUSES : liveModelStatuses
+  const runningModels = modelStatuses.filter(item => item.status === '运行中').length
+  const unreachableModels = modelStatuses.filter(item => item.status !== '运行中').length
   const focusedHealthInsight = trackingContext
     ? healthInsights.find(item => item.elderlyId === trackingContext.entityId || item.elderlyName === trackingContext.entityName)
     : undefined
@@ -41,7 +100,7 @@ export default function AiInferencePage() {
     ? getAiInferenceCardsForContext(trackingContext)
     : []
   const relatedLogs = trackingContext
-    ? getAiLogsForContext(trackingContext).slice(0, 3)
+    ? (demoMode ? getAiLogsForContext(trackingContext).slice(0, 3) : liveRelatedLogs)
     : []
   const contextNarratives = trackingContext
     ? [
@@ -51,6 +110,73 @@ export default function AiInferencePage() {
         trackingContext.focus ? `当前关注点为“${trackingContext.focus}”，建议结合对象级解释样本确认是否需要升级到规则治理或日志审计。` : '当前未指定关注点，可继续从模型状态和异常样本中定位下一步。',
       ]
     : []
+
+  useEffect(() => {
+    if (demoMode) {
+      return
+    }
+
+    let cancelled = false
+    const requestTrackingContext = trackingSource && trackingEntityId && trackingName
+      ? {
+        source: trackingSource,
+        entityId: trackingEntityId,
+        entityName: trackingName,
+        focus: trackingFocus || undefined,
+      }
+      : null
+    const primaryCapability = getPrimaryCapabilityForContext(requestTrackingContext)
+    const abnormalVitals = healthVitals.filter(item => item.isAbnormal).slice(0, 4)
+
+    void Promise.all([
+      fetchAdminAiModelsStatus(),
+      Promise.all(abnormalVitals.map(item => fetchAdminAiHealthRisk({
+        elderId: item.elderlyId,
+        elderName: item.elderlyName,
+        roomNumber: item.roomNumber,
+        bloodPressure: `${item.bloodPressureHigh}/${item.bloodPressureLow}`,
+        heartRate: item.heartRate,
+        temperature: item.temperature,
+        bloodSugar: item.bloodSugar,
+        oxygen: item.bloodOxygen,
+        medicalHistory: item.abnormalItems.join('、') || undefined,
+      }))),
+      trackingSource
+        ? fetchAdminAiAuditLogs({ capability: primaryCapability, pageSize: 3 })
+        : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 3 }),
+    ])
+      .then(([modelResult, healthResult, logsResult]) => {
+        if (!cancelled) {
+          setLiveModelStatuses(modelResult.map(item => ({
+            id: `${item.capability}:${item.provider}:${item.model}`,
+            name: capabilityLabel(item.capability),
+            version: item.model,
+            owner: item.provider,
+            status: item.isReachable ? (item.provider === 'mock' ? '灰度中' : '运行中') : '待回收',
+            latencyMs: item.latencyMs ?? 0,
+            lastUpdated: formatTimestamp(item.checkedAtUtc),
+            capability: item.capability,
+            configurationSource: configurationSourceLabel(item.configurationSource),
+            configuredModel: item.configuredModel,
+          })))
+          setLiveHealthInsights(healthResult)
+          setLiveRelatedLogs(logsResult.items)
+          setInferenceError('')
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setLiveModelStatuses(AI_MODEL_STATUSES)
+          setLiveHealthInsights(demoHealthInsights)
+          setLiveRelatedLogs(requestTrackingContext ? getAiLogsForContext(requestTrackingContext).slice(0, 3) : [])
+          setInferenceError(error instanceof Error ? error.message : 'AI 推理详情加载失败。')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [demoHealthInsights, demoMode, trackingEntityId, trackingFocus, trackingName, trackingSource])
 
   return (
     <div className="page-root animate-fade-up">
@@ -126,15 +252,19 @@ export default function AiInferencePage() {
 
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<Cpu size={18} />} label="运行中模型" value={runningModels} sub="当前在线可用" color="success" />
-        <StatCard icon={<BrainCircuit size={18} />} label="灰度模型" value={grayModels} sub="需继续观察质量" color="warning" />
+        <StatCard icon={<BrainCircuit size={18} />} label="待恢复模型" value={unreachableModels} sub="需继续观察连通性" color="warning" />
         <StatCard icon={<ShieldCheck size={18} />} label="已出建议" value={recommendationRecords.length} sub="包含入住评估结果" color="info" />
         <StatCard icon={<Bot size={18} />} label="健康解释对象" value={healthInsights.length} sub="当前异常样本" color="danger" />
       </div>
 
+      {inferenceError ? (
+        <div style={{ marginBottom: 16, fontSize: 12.5, color: 'var(--color-danger)' }}>{inferenceError}</div>
+      ) : null}
+
       <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
         <DataCard icon={<Cpu size={16} />} title="模型状态" subtitle="只展示版本、责任域和延迟，不暴露训练内部细节。">
           <div style={{ display: 'grid', gap: 10 }}>
-            {AI_MODEL_STATUSES.map(item => (
+            {modelStatuses.map(item => (
               <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div>
@@ -142,6 +272,10 @@ export default function AiInferencePage() {
                     <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.owner} · {item.version}</div>
                   </div>
                   <Tag variant={item.status === '运行中' ? 'success' : item.status === '灰度中' ? 'warning' : 'neutral'}>{item.status}</Tag>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>
+                  {item.configurationSource}
+                  {item.configuredModel ? ` · 显式模型 ${item.configuredModel}` : ' · 当前未写死模型版本'}
                 </div>
                 <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 12.5, color: 'var(--color-muted)' }}>
                   <span>平均延迟 {item.latencyMs} ms</span>

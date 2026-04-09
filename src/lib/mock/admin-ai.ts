@@ -20,6 +20,9 @@ export interface AiModelStatus {
   status: '运行中' | '灰度中' | '待回收'
   latencyMs: number
   lastUpdated: string
+  capability?: string
+  configurationSource?: string
+  configuredModel?: string | null
 }
 
 export interface AiQueryLog {
@@ -614,30 +617,39 @@ export const AI_RULE_TOGGLES: AiRuleToggle[] = [
 export const AI_MODEL_STATUSES: AiModelStatus[] = [
   {
     id: 'm1',
-    name: 'Admission Care Classifier',
-    version: 'v0.9.3',
-    owner: 'AI Service',
+    name: '入住评估',
+    version: 'gpt-4o-mini',
+    owner: 'openai',
     status: '运行中',
     latencyMs: 820,
     lastUpdated: '03-30 09:10',
+    capability: 'admission-assessment',
+    configurationSource: 'capability-override',
+    configuredModel: 'gpt-4o-mini',
   },
   {
     id: 'm2',
-    name: 'Health Risk Explainer',
-    version: 'v0.7.8',
-    owner: 'Health Service',
+    name: '健康风险',
+    version: 'mock-v1',
+    owner: 'mock',
     status: '灰度中',
-    latencyMs: 1160,
+    latencyMs: 16,
     lastUpdated: '03-30 09:26',
+    capability: 'health-risk',
+    configurationSource: 'routing-default+provider-model',
+    configuredModel: null,
   },
   {
     id: 'm3',
-    name: 'Ops Brief Generator',
-    version: 'v0.5.2',
-    owner: 'Analytics Service',
+    name: '运营摘要',
+    version: 'local-qwen2.5:7b',
+    owner: 'local',
     status: '待回收',
     latencyMs: 1480,
     lastUpdated: '03-29 18:40',
+    capability: 'dashboard-insights',
+    configurationSource: 'capability-provider+provider-model',
+    configuredModel: null,
   },
 ]
 
