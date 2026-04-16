@@ -301,6 +301,21 @@ export async function fetchStaticTexts(params?: {
   return { items: result.items.map(mapStaticText), total: result.total }
 }
 
+export async function fetchStaticTextNamespaceTotals(): Promise<Record<string, number>> {
+  if (CONTENT_MODE === 'demo') {
+    return Object.fromEntries(NAMESPACES.map(namespace => [namespace, getStaticTextsByFilter(namespace).length]))
+  }
+
+  const totals = await Promise.all(
+    NAMESPACES.map(async namespace => {
+      const result = await fetchStaticTexts({ ns: namespace, page: 1, pageSize: 1 })
+      return [namespace, result.total] as const
+    }),
+  )
+
+  return Object.fromEntries(totals)
+}
+
 // ── Option Groups (async) ───────────────────────────────────
 
 interface OptionGroupBffResponse {

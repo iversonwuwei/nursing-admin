@@ -1,7 +1,11 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh';
-import { organizations } from '@/lib/data';
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag } from '@/components/nh';
+import {
+  fetchAdminDashboardOverview,
+  type AdminDashboardMetricItem,
+  type AdminDashboardOverviewResponse,
+} from '@/lib/dashboard/admin-dashboard-api';
 import {
   Activity,
   ArrowDown,
@@ -12,19 +16,28 @@ import {
   Home,
   TrendingUp, Users,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 /* ── Pure CSS Bar Chart ── */
-function BarChart({ data, maxVal }: { data: { label: string; value: number; color?: string }[]; maxVal: number }) {
+function BarChart({
+  data,
+  maxVal,
+  unit = '',
+}: {
+  data: { label: string; value: number; color?: string }[]
+  maxVal: number
+  unit?: string
+}) {
   return (
     <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {data.map((item, i) => {
-        const pct = (item.value / maxVal) * 100
+        const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0
         return (
           <div key={i} className="bar-chart-row">
             <span className="bar-chart-label">{item.label}</span>
             <div className="bar-chart-track">
               <div className="bar-chart-fill" style={{ width: `${pct}%`, background: item.color || 'var(--color-primary)' }} />
-              <span className="bar-chart-value">{item.value}%</span>
+              <span className="bar-chart-value">{item.value}{unit}</span>
             </div>
           </div>
         )
@@ -33,260 +46,235 @@ function BarChart({ data, maxVal }: { data: { label: string; value: number; colo
   )
 }
 
-/* ── Donut Chart ── */
-function DonutChart({ segments, centerLabel, centerValue }: {
-  segments: { value: number; color: string; label: string }[]
-  centerLabel: string
-  centerValue: string
-}) {
-  const r = 40
-  const circ = 2 * Math.PI * r
-  const chartSegments = segments.reduce<Array<{ value: number; color: string; label: string; dash: number; offset: number }>>((acc, seg) => {
-    const dash = (seg.value / 100) * circ
-    const offset = acc.length === 0 ? 0 : acc[acc.length - 1].offset + acc[acc.length - 1].dash
+const BAR_COLORS = [
+  'var(--color-primary)',
+  'var(--color-success)',
+  'var(--color-info)',
+  'var(--color-warning)',
+  'var(--color-purple)',
+]
 
-    return [...acc, { ...seg, dash, offset }]
-  }, [])
+function getMaxValue(items: AdminDashboardMetricItem[]) {
+  return items.reduce((max, item) => Math.max(max, item.value), 1)
+}
 
-  return (
-    <div className="donut-chart-inner">
-      <svg width="100" height="100" viewBox="0 0 100 100">
-        {chartSegments.map((seg, i) => (
-            <circle
-              key={i}
-              cx="50" cy="50" r={r} fill="none"
-              stroke={seg.color} strokeWidth="9"
-              strokeDasharray={`${seg.dash} ${circ - seg.dash}`}
-              strokeLinecap="round"
-              transform={`rotate(-90 50 50) rotate(${(seg.offset / circ) * 360} 50 50)`}
-              style={{ transition: 'stroke-dasharray 600ms ease' }}
-            />
-        ))}
-        <text x="50" y="46" textAnchor="middle" style={{ fontSize: 15, fontWeight: 800, fill: 'var(--color-text)', letterSpacing: '-0.02em' }}>
-          {centerValue}
-        </text>
-        <text x="50" y="60" textAnchor="middle" style={{ fontSize: 9, fill: 'var(--color-muted)' }}>
-          {centerLabel}
-        </text>
-      </svg>
-      <div className="donut-legend">
-        {segments.map((seg, i) => (
-          <div key={i} className="donut-legend-item">
-            <span className="donut-legend-dot" style={{ background: seg.color }} />
-            <span className="donut-legend-label">{seg.label}</span>
-            <span className="donut-legend-value">{seg.value}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function formatGeneratedAt(value?: string) {
+  if (!value) {
+    return '等待聚合结果'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function mapBarItems(items: AdminDashboardMetricItem[]) {
+  return items.map((item, index) => ({
+    ...item,
+    color: BAR_COLORS[index % BAR_COLORS.length],
+  }))
 }
 
 export default function DataDashboardPage() {
-  // 入住率数据
-  const occupancyData = [
-    { label: '1月', value: 82 },
-    { label: '2月', value: 85 },
-    { label: '3月', value: 88 },
-    { label: '4月', value: 87 },
-    { label: '5月', value: 91 },
-    { label: '6月', value: 93 },
-    { label: '7月', value: 90 },
-    { label: '8月', value: 94 },
-    { label: '9月', value: 92 },
-    { label: '10月', value: 95 },
-    { label: '11月', value: 96 },
-    { label: '12月', value: 97 },
-  ]
+  const [overview, setOverview] = useState<AdminDashboardOverviewResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // 服务执行率
-  const serviceExecution = [
-    { label: '按时服药', value: 98 },
-    { label: '康复训练', value: 91 },
-    { label: '健康体检', value: 95 },
-    { label: '护理服务', value: 99 },
-    { label: '膳食安排', value: 96 },
-  ]
+  useEffect(() => {
+    let active = true
 
-  // 员工效率排行
-  const staffRanking = [
-    { rank: 1, name: '李护士', role: '护士', tasks: 156, completed: 154, rate: 98.7, trend: 'up' as const },
-    { rank: 2, name: '王医生', role: '医生', tasks: 89, completed: 87, rate: 97.8, trend: 'up' as const },
-    { rank: 3, name: '张护工', role: '护工', tasks: 312, completed: 305, rate: 97.8, trend: 'up' as const },
-    { rank: 4, name: '刘护士', role: '护士', tasks: 142, completed: 137, rate: 96.5, trend: 'down' as const },
-    { rank: 5, name: '赵护工', role: '护工', tasks: 298, completed: 286, rate: 96.0, trend: 'up' as const },
-    { rank: 6, name: '陈护士', role: '护士', tasks: 138, completed: 132, rate: 95.7, trend: 'down' as const },
-    { rank: 7, name: '周护工', role: '护工', tasks: 267, completed: 254, rate: 95.1, trend: 'up' as const },
-  ]
+    fetchAdminDashboardOverview()
+      .then(response => {
+        if (!active) {
+          return
+        }
 
-  const totalBeds = organizations.reduce((s, o) => s + o.totalBeds, 0)
-  const occupiedBeds = organizations.reduce((s, o) => s + o.occupiedBeds, 0)
-  const occupancyRate = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0
-  const avgExecution = Math.round(serviceExecution.reduce((s, v) => s + v.value, 0) / serviceExecution.length)
+        setOverview(response)
+      })
+      .catch(cause => {
+        if (!active) {
+          return
+        }
+
+        setOverview(null)
+        setError(cause instanceof Error ? cause.message : 'Dashboard 聚合数据加载失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const kpis = overview?.kpis ?? {
+    elderCount: 0,
+    tenantCount: 0,
+    pendingAlerts: 0,
+    workflowPendingCount: 0,
+  }
+
+  const alertModules = overview?.alertModules ?? []
+  const notificationBreakdown = overview?.notificationBreakdown ?? []
+  const financeBreakdown = overview?.financeBreakdown ?? []
+  const workflowBreakdown = overview?.workflowBreakdown ?? []
+  const staffRanking = overview?.staffLeaderboard ?? []
 
   const getRateClass = (rate: number) =>
     rate >= 98 ? 'table-rate-high' : rate >= 96 ? 'table-rate-mid' : 'table-rate-low'
-
-  const getDeptColor = (rate: number) =>
-    rate >= 95 ? 'var(--color-success)' : rate >= 80 ? 'var(--color-primary)' : 'var(--color-warning)'
-
-  const incomeItems = [
-    { label: '床位收入', value: '¥ 198.2万', pct: 69, color: 'var(--color-primary)' },
-    { label: '护理收入', value: '¥ 52.8万', pct: 18, color: 'var(--color-info)' },
-    { label: '餐饮收入', value: '¥ 21.5万', pct: 8, color: 'var(--color-warning)' },
-    { label: '其他收入', value: '¥ 14.0万', pct: 5, color: 'var(--color-purple)' },
-  ]
+  const helpHref = '/analytics/help'
 
   return (
     <div className="animate-fade-up">
       <PageHeader
         title="数据分析"
-        subtitle="运营数据看板 · 本月统计"
+        subtitle={`运营实时聚合 · ${formatGeneratedAt(overview?.generatedAtUtc)}`}
       />
 
-      {/* Top KPIs */}
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <StatCard icon={<Home size={18} />} label="入住率" value={`${occupancyRate}%`} trend={{ value: '2.1%', direction: 'up' }} sub="较上月" color="primary" />
-        <StatCard icon={<Activity size={18} />} label="服务执行率" value={`${avgExecution}%`} trend={{ value: '1.3%', direction: 'up' }} sub="平均执行率" color="success" />
-        <StatCard icon={<DollarSign size={18} />} label="本月收入" value="¥ 286.5万" trend={{ value: '5.8%', direction: 'up' }} sub="较上月" color="info" />
-        <StatCard icon={<Users size={18} />} label="在住老人" value={occupiedBeds} sub={`共 ${totalBeds} 床位`} color="purple" />
-      </div>
-
-      <div className="dd-card-grid">
-
-        {/* Occupancy trend */}
-        <DataCard
-          icon={<TrendingUp size={15} />}
-          title="入住率趋势"
-          subtitle="2025年度"
-        >
-          <BarChart data={occupancyData} maxVal={100} />
-        </DataCard>
-
-        {/* Service execution */}
-        <DataCard
-          icon={<BarChart3 size={15} />}
-          title="服务执行率"
-          subtitle="本月"
-        >
-          <div className="donut-chart-wrap">
-            <DonutChart
-              segments={[
-                { value: 98, color: 'var(--color-success)', label: '按时服药' },
-                { value: 91, color: 'var(--color-info)', label: '康复训练' },
-                { value: 95, color: 'var(--color-primary)', label: '健康体检' },
-                { value: 99, color: 'var(--color-purple)', label: '护理服务' },
-                { value: 96, color: 'var(--color-warning)', label: '膳食安排' },
-              ]}
-              centerLabel="综合执行率"
-              centerValue={`${avgExecution}%`}
-            />
-          </div>
-        </DataCard>
-
-        {/* Monthly income */}
-        <DataCard
-          icon={<DollarSign size={15} />}
-          title="本月收入概况"
-          subtitle="2026年3月"
-        >
-          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {incomeItems.map(item => (
-              <div key={item.label} className="income-item">
-                <div className="income-item-row">
-                  <span className="income-item-label">{item.label}</span>
-                  <span className="income-item-value">{item.value}</span>
+      <InteractionRailLayout
+        main={(
+          <>
+            <div className="data-card" style={{ marginBottom: 16, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                  {loading
+                    ? '正在同步 Elder、Tenant、Billing、Notification、Operations、Care 的后端聚合数据...'
+                    : error
+                      ? `聚合读取失败：${error}`
+                      : '当前页已切换为 Admin BFF 聚合快照，不再渲染本地静态演示数组。'}
                 </div>
-                <div className="income-track">
-                  <div className="income-fill" style={{ width: `${item.pct}%`, background: item.color }} />
-                </div>
+                <Tag variant={error ? 'warning' : loading ? 'info' : 'success'}>
+                  {error ? 'Live Unavailable' : loading ? 'Syncing Snapshot' : 'Live Snapshot'}
+                </Tag>
               </div>
-            ))}
-            <div className="income-total">
-              <span className="income-total-label">合计</span>
-              <span className="income-total-value">¥ 286.5万</span>
             </div>
-          </div>
-        </DataCard>
 
-        {/* Dept breakdown */}
-        <DataCard
-          icon={<Home size={15} />}
-          title="分院入住情况"
-          subtitle="本月"
-        >
-          <div>
-            {organizations.map(org => {
-              const rate = Math.round((org.occupiedBeds / org.totalBeds) * 100)
-              return (
-                <div key={org.id} className="dept-row">
-                  <div className="dept-row-header">
-                    <span className="dept-row-name">{org.name}</span>
-                    <span className="dept-row-meta">{org.occupiedBeds} / {org.totalBeds} 床</span>
-                  </div>
-                  <div className="dept-track">
-                    <div className="dept-fill" style={{ width: `${rate}%`, background: getDeptColor(rate) }} />
-                  </div>
-                  <div className="dept-pct">
-                    <span className="dept-pct-val">{rate}%</span>
-                  </div>
+            <div className="kpi-grid" style={{ marginBottom: 16 }}>
+              <StatCard icon={<Users size={18} />} label="在住长者" value={kpis.elderCount} sub="Elder Service" color="primary" />
+              <StatCard icon={<Home size={18} />} label="活跃租户" value={kpis.tenantCount} sub="Tenant Service" color="success" />
+              <StatCard icon={<Activity size={18} />} label="待处理告警" value={kpis.pendingAlerts} sub="pending + processing" color="warning" />
+              <StatCard icon={<DollarSign size={18} />} label="护理待处理" value={kpis.workflowPendingCount} sub="待复核 + 未分配" color="info" />
+            </div>
+
+            <div className="dd-card-grid">
+              <DataCard icon={<TrendingUp size={15} />} title="告警模块分布" subtitle="实时告警摘要">
+                <BarChart data={mapBarItems(alertModules.map(item => ({ label: item.label, value: item.totalOpen })))} maxVal={getMaxValue(alertModules.map(item => ({ label: item.label, value: item.totalOpen })))} unit="条" />
+              </DataCard>
+
+              <DataCard icon={<BarChart3 size={15} />} title="通知投递摘要" subtitle="Notification Service">
+                <BarChart data={mapBarItems(notificationBreakdown)} maxVal={getMaxValue(notificationBreakdown)} unit="条" />
+              </DataCard>
+
+              <DataCard icon={<DollarSign size={15} />} title="财务处理概览" subtitle="Billing Service">
+                <BarChart data={mapBarItems(financeBreakdown)} maxVal={getMaxValue(financeBreakdown)} unit="项" />
+              </DataCard>
+
+              <DataCard icon={<Home size={15} />} title="护理工作流摘要" subtitle="Care Service">
+                <BarChart data={mapBarItems(workflowBreakdown)} maxVal={getMaxValue(workflowBreakdown)} unit="项" />
+              </DataCard>
+            </div>
+
+            <div className="data-card" style={{ marginTop: 16 }}>
+              <div className="data-card-header">
+                <div className="flex-center" style={{ gap: 8 }}>
+                  <div className="data-card-icon-wrap"><Award size={15} /></div>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>员工效率排行</span>
                 </div>
-              )
-            })}
-          </div>
-        </DataCard>
-      </div>
+                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>本月 · 前7名</span>
+              </div>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 48 }}>#</th>
+                      <th>姓名</th>
+                      <th>岗位</th>
+                      <th>任务总数</th>
+                      <th>已完成</th>
+                      <th>完成率</th>
+                      <th>趋势</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {staffRanking.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '24px 16px', color: 'var(--color-muted)', textAlign: 'center' }}>
+                          暂无护理任务排行数据。
+                        </td>
+                      </tr>
+                    ) : staffRanking.map((s, i) => (
+                      <tr key={`${s.name}-${s.role}`} className="table-hover-row">
+                        <td>
+                          {i === 0 && <span className="staff-rank-badge">🥇</span>}
+                          {i === 1 && <span className="staff-rank-badge">🥈</span>}
+                          {i === 2 && <span className="staff-rank-badge">🥉</span>}
+                          {i > 2 && <span className="staff-rank-num">{i + 1}</span>}
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{s.name}</td>
+                        <td><Tag variant={s.role === '医生' ? 'info' : s.role === '护士' ? 'primary' : 'neutral'}>{s.role}</Tag></td>
+                        <td>{s.tasks}</td>
+                        <td>{s.completed}</td>
+                        <td>
+                          <span className={`table-rate ${getRateClass(s.completionRate)}`}>{s.completionRate}%</span>
+                        </td>
+                        <td>
+                          {s.trend === 'up'
+                            ? <span className="trend-up"><ArrowUp size={11} />上升</span>
+                            : <span className="trend-down"><ArrowDown size={11} />下降</span>
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="分析上下文" subtitle="把快照来源、页面定位和兼容入口后置展示。" badge={<Tag variant="info">Context</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">当前快照：{error ? 'Live Unavailable' : loading ? 'Syncing Snapshot' : 'Live Snapshot'}。</div>
+                <div className="page-help-card-item">兼容入口：`/analytics` 与当前源页面共用同一数据分析主视图。</div>
+                <div className="page-help-card-item">主区只保留 KPI、图表和排行，口径说明统一后置。</div>
+              </div>
+            </DataCard>
 
-      {/* Staff ranking table */}
-      <div className="data-card" style={{ marginTop: 16 }}>
-        <div className="data-card-header">
-          <div className="flex-center" style={{ gap: 8 }}>
-            <div className="data-card-icon-wrap"><Award size={15} /></div>
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>员工效率排行</span>
-          </div>
-          <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>本月 · 前7名</span>
-        </div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ width: 48 }}>#</th>
-                <th>姓名</th>
-                <th>岗位</th>
-                <th>任务总数</th>
-                <th>已完成</th>
-                <th>完成率</th>
-                <th>趋势</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staffRanking.map((s, i) => (
-                <tr key={s.rank} className="table-hover-row">
-                  <td>
-                    {i === 0 && <span className="staff-rank-badge">🥇</span>}
-                    {i === 1 && <span className="staff-rank-badge">🥈</span>}
-                    {i === 2 && <span className="staff-rank-badge">🥉</span>}
-                    {i > 2 && <span className="staff-rank-num">{s.rank}</span>}
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{s.name}</td>
-                  <td><Tag variant={s.role === '医生' ? 'info' : s.role === '护士' ? 'primary' : 'neutral'}>{s.role}</Tag></td>
-                  <td>{s.tasks}</td>
-                  <td>{s.completed}</td>
-                  <td>
-                    <span className={`table-rate ${getRateClass(s.rate)}`}>{s.rate}%</span>
-                  </td>
-                  <td>
-                    {s.trend === 'up'
-                      ? <span className="trend-up"><ArrowUp size={11} />上升</span>
-                      : <span className="trend-down"><ArrowDown size={11} />下降</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            <DataCard title="当前聚合焦点" subtitle="帮助理解这次快照最值得看的模块。" badge={<Tag variant="warning">Focus</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">待处理告警：{kpis.pendingAlerts} 条。</div>
+                <div className="page-help-card-item">护理待处理：{kpis.workflowPendingCount} 项。</div>
+                <div className="page-help-card-item">通知、财务和护理工作流图表均沿用同一 Admin BFF 聚合快照。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整分析页说明迁移到显式帮助页"
+              summary="数据分析页现在只保留 KPI、结构图表和排行表，说明型内容与入口解释统一后置。"
+              items={[
+                '先看 KPI，再看四个聚合图表，最后核对员工排行。',
+                '若快照异常或图表为空，以顶部状态卡和显式空态为准。',
+                '若需要完整页面定位和兼容入口说明，进入帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看数据分析帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

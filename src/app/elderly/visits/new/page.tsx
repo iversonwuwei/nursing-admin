@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import { elderlyList } from '@/lib/data'
 import { addVisitAppointment, EMPTY_VISIT_FORM, validateVisitForm, type VisitCreateFormState } from '@/lib/mock/care-service-workflow'
 import { AlertCircle, ArrowLeft, Save, UserCheck, Video } from 'lucide-react'
@@ -15,6 +15,7 @@ export default function VisitsNewPage() {
   const [form, setForm] = useState<VisitCreateFormState>(EMPTY_VISIT_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const helpHref = '/elderly/help'
 
   function updateForm<K extends keyof VisitCreateFormState>(key: K, value: VisitCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -44,26 +45,29 @@ export default function VisitsNewPage() {
         </div>
       </div>
 
-      <DataCard title="探视预约闭环" subtitle="首批流程为预约 -> 待审核 -> 已登记，避免未审核预约直接进入来访口径。">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { title: '1. 预约登记', description: '采集老人、访客、关系和探视时间。', icon: <UserCheck size={16} /> },
-            { title: '2. 待审核', description: '提交后先等待前台或护理主管审核。', icon: <Video size={16} /> },
-            { title: '3. 通过预约', description: '审核通过后再进入已登记探视列表。', icon: <UserCheck size={16} /> },
-          ].map(item => (
-            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard title="探视预约闭环" subtitle="首批流程为预约 -> 待审核 -> 已登记，避免未审核预约直接进入来访口径。">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { title: '1. 预约登记', description: '采集老人、访客、关系和探视时间。', icon: <UserCheck size={16} /> },
+                  { title: '2. 待审核', description: '提交后先等待前台或护理主管审核。', icon: <Video size={16} /> },
+                  { title: '3. 通过预约', description: '审核通过后再进入已登记探视列表。', icon: <UserCheck size={16} /> },
+                ].map(item => (
+                  <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
-      <form onSubmit={handleSubmit}>
-        {error ? <div className="form-error" style={{ marginTop: 16 }}><AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} /><span className="form-error-text">{error}</span></div> : null}
-        <div style={{ marginTop: 16 }}>
-          <DataCard icon={<UserCheck size={18} />} title="预约信息" bodyClassName="form-section">
-            <div className="form-grid">
+            <form onSubmit={handleSubmit}>
+              {error ? <div className="form-error" style={{ marginTop: 16 }}><AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} /><span className="form-error-text">{error}</span></div> : null}
+              <div style={{ marginTop: 16 }}>
+                <DataCard icon={<UserCheck size={18} />} title="预约信息" bodyClassName="form-section">
+                  <div className="form-grid">
               <div className="form-grid-full">
                 <label className="form-label">老人</label>
                 <select className={inputClass} value={form.elderlyId} onChange={event => updateForm('elderlyId', event.target.value)}>
@@ -77,14 +81,41 @@ export default function VisitsNewPage() {
               <div><label className="form-label">探视日期</label><input className={inputClass} type="date" value={form.date} onChange={event => updateForm('date', event.target.value)} /></div>
               <div><label className="form-label">探视时间</label><input className={inputClass} type="time" value={form.time} onChange={event => updateForm('time', event.target.value)} /></div>
               <div><label className="form-label">探视方式</label><select className={inputClass} value={form.type} onChange={event => updateForm('type', event.target.value as VisitCreateFormState['type'])}><option value="现场">现场</option><option value="视频">视频</option></select></div>
-            </div>
-          </DataCard>
-        </div>
-        <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
-          <Link href="/elderly/visits" className="btn btn-ghost btn-md">取消</Link>
-          <button type="submit" className="btn btn-primary btn-md" disabled={loading}>{loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待审核</>}</button>
-        </div>
-      </form>
+                  </div>
+                </DataCard>
+              </div>
+              <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
+                <Link href="/elderly/visits" className="btn btn-ghost btn-md">取消</Link>
+                <button type="submit" className="btn btn-primary btn-md" disabled={loading}>{loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待审核</>}</button>
+              </div>
+            </form>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="预约边界" subtitle="主区只保留预约录入和提交动作。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">新预约提交后先进入待审核，不直接进入已登记探视列表。</div>
+                <div className="page-help-card-item">family 回流和 admin 手工预约共享同一审核口径，但保留来源区分。</div>
+                <div className="page-help-card-item">完整页面定位与审核边界迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整探视预约说明迁移到显式帮助页"
+              summary="探视预约页现在只保留预约闭环和表单字段，页面解释与审核顺序统一后置。"
+              items={[
+                '先录入老人、访客和探视时间。',
+                '提交后进入待审核，再由探视列表确认通过。',
+                '若需要完整说明，进入老人帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看老人帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

@@ -340,6 +340,8 @@ const EMPTY_SNAPSHOT: NursingServiceSnapshot = {
 let snapshotState = EMPTY_SNAPSHOT
 let hasLoaded = false
 let inflightRefresh: Promise<NursingServiceSnapshot> | null = null
+let bffFallbackActive = false
+let nextBffRetryAt = 0
 let demoStateCache: DemoWorkflowState | null = null
 const listeners = new Set<() => void>()
 
@@ -1112,6 +1114,15 @@ async function requestWorkflow(path: string, init?: RequestInit) {
   return readJsonResponse(response)
 }
 
+function buildBffFallbackSnapshot(detail: string) {
+  const fallbackSnapshot = buildDemoSnapshot(getDemoState())
+
+  return {
+    ...fallbackSnapshot,
+    error: `${detail} 已自动回退到本地 Demo 视图。`,
+  }
+}
+
 function normalizeSnapshot(payload: Partial<NursingServiceSnapshot> | null | undefined): NursingServiceSnapshot {
   return {
     packages: Array.isArray(payload?.packages) ? payload.packages : [],
@@ -1206,6 +1217,10 @@ export async function refreshNursingServiceWorkflow() {
     return inflightRefresh
   }
 
+  if (bffFallbackActive && hasLoaded && Date.now() < nextBffRetryAt) {
+    return Promise.resolve(snapshotState)
+  }
+
   snapshotState = {
     ...snapshotState,
     loading: true,
@@ -1215,19 +1230,21 @@ export async function refreshNursingServiceWorkflow() {
 
   inflightRefresh = requestWorkflow('/board')
     .then(payload => {
+      bffFallbackActive = false
+      nextBffRetryAt = 0
       snapshotState = normalizeSnapshot(payload as Partial<NursingServiceSnapshot>)
       hasLoaded = true
       emit()
       return snapshotState
     })
     .catch(error => {
-      snapshotState = {
-        ...snapshotState,
-        loading: false,
-        error: error instanceof Error ? error.message : '护理工作流加载失败。',
-      }
+      const detail = error instanceof Error ? error.message : '护理工作流加载失败。'
+      bffFallbackActive = true
+      nextBffRetryAt = Date.now() + 30_000
+      snapshotState = buildBffFallbackSnapshot(detail)
+      hasLoaded = true
       emit()
-      throw error
+      return snapshotState
     })
     .finally(() => {
       inflightRefresh = null

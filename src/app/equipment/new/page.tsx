@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
 import { addEquipmentDraft, EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentCreateFormState } from '@/lib/mock/resource-workflow'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Monitor, Save, ShieldCheck } from 'lucide-react'
@@ -20,6 +20,7 @@ export default function EquipmentNewPage() {
   const [form, setForm] = useState<EquipmentCreateFormState>(EMPTY_EQUIPMENT_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const helpHref = '/equipment/help'
 
   function updateForm<K extends keyof EquipmentCreateFormState>(key: K, value: EquipmentCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -51,87 +52,117 @@ export default function EquipmentNewPage() {
         </div>
       </div>
 
-      <DataCard title="设备新建闭环" subtitle="首批流程为录入 -> 资产验收 -> 纳入设备台账，避免未验收设备直接出现在巡检口径。">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { title: '1. 资产录入', description: '记录设备名称、分类、序列号和安装位置。', icon: <Monitor size={16} /> },
-            { title: '2. 待验收', description: '提交后先进入待验收，不立即混入在册设备。', icon: <ClipboardCheck size={16} /> },
-            { title: '3. 完成验收', description: '资产管理员确认后再纳入巡检和监控口径。', icon: <ShieldCheck size={16} /> },
-          ].map(item => (
-            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard title="设备新建闭环" subtitle="首批流程为录入 -> 资产验收 -> 纳入设备台账，避免未验收设备直接出现在巡检口径。">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { title: '1. 资产录入', description: '记录设备名称、分类、序列号和安装位置。', icon: <Monitor size={16} /> },
+                  { title: '2. 待验收', description: '提交后先进入待验收，不立即混入在册设备。', icon: <ClipboardCheck size={16} /> },
+                  { title: '3. 完成验收', description: '资产管理员确认后再纳入巡检和监控口径。', icon: <ShieldCheck size={16} /> },
+                ].map(item => (
+                  <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
-      <form onSubmit={handleSubmit}>
-        {error ? (
-          <div className="form-error" style={{ marginTop: 16 }}>
-            <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
-            <span className="form-error-text">{error}</span>
-          </div>
-        ) : null}
+            <form onSubmit={handleSubmit}>
+              {error ? (
+                <div className="form-error" style={{ marginTop: 16 }}>
+                  <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
+                  <span className="form-error-text">{error}</span>
+                </div>
+              ) : null}
 
-        <div style={{ marginTop: 16 }}>
-          <DataCard icon={<Monitor size={18} />} title="设备主数据" bodyClassName="form-section">
-            <div className="form-grid">
-              <div>
-                <label className="form-label">设备名称</label>
-                <input className={inputClass} value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="请输入设备名称" />
+              <div style={{ marginTop: 16 }}>
+                <DataCard icon={<Monitor size={18} />} title="设备主数据" bodyClassName="form-section">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">设备名称</label>
+                      <input className={inputClass} value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="请输入设备名称" />
+                    </div>
+                    <div>
+                      <label className="form-label">设备分类</label>
+                      <select className={inputClass} value={form.category} onChange={event => updateForm('category', event.target.value as EquipmentCreateFormState['category'])}>
+                        <option value="医疗设备">医疗设备</option>
+                        <option value="康复设备">康复设备</option>
+                        <option value="生活设备">生活设备</option>
+                        <option value="智能设备">智能设备</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">型号</label>
+                      <input className={inputClass} value={form.model} onChange={event => updateForm('model', event.target.value)} placeholder="请输入型号" />
+                    </div>
+                    <div>
+                      <label className="form-label">序列号</label>
+                      <input className={inputClass} value={form.serialNumber} onChange={event => updateForm('serialNumber', event.target.value)} placeholder="请输入序列号" />
+                    </div>
+                    <div>
+                      <label className="form-label">安装位置</label>
+                      <input className={inputClass} value={form.location} onChange={event => updateForm('location', event.target.value)} placeholder="如 浦东店-101-1" />
+                    </div>
+                    <div>
+                      <label className="form-label">所属机构</label>
+                      <select className={inputClass} value={form.organizationId} onChange={event => updateForm('organizationId', event.target.value)}>
+                        <option value="">请选择</option>
+                        {masterData.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">采购日期</label>
+                      <input className={inputClass} type="date" value={form.purchaseDate} onChange={event => updateForm('purchaseDate', event.target.value)} />
+                    </div>
+                    <div>
+                      <label className="form-label">维保周期（月）</label>
+                      <input className={inputClass} type="number" value={form.maintenanceCycle} onChange={event => updateForm('maintenanceCycle', event.target.value)} placeholder="如 12" />
+                    </div>
+                    <div className="form-grid-full">
+                      <label className="form-label">设备备注</label>
+                      <input className={inputClass} value={form.remarks} onChange={event => updateForm('remarks', event.target.value)} placeholder="可补充放置说明、使用对象或验收备注" />
+                    </div>
+                  </div>
+                </DataCard>
               </div>
-              <div>
-                <label className="form-label">设备分类</label>
-                <select className={inputClass} value={form.category} onChange={event => updateForm('category', event.target.value as EquipmentCreateFormState['category'])}>
-                  <option value="医疗设备">医疗设备</option>
-                  <option value="康复设备">康复设备</option>
-                  <option value="生活设备">生活设备</option>
-                  <option value="智能设备">智能设备</option>
-                </select>
-              </div>
-              <div>
-                <label className="form-label">型号</label>
-                <input className={inputClass} value={form.model} onChange={event => updateForm('model', event.target.value)} placeholder="请输入型号" />
-              </div>
-              <div>
-                <label className="form-label">序列号</label>
-                <input className={inputClass} value={form.serialNumber} onChange={event => updateForm('serialNumber', event.target.value)} placeholder="请输入序列号" />
-              </div>
-              <div>
-                <label className="form-label">安装位置</label>
-                <input className={inputClass} value={form.location} onChange={event => updateForm('location', event.target.value)} placeholder="如 浦东店-101-1" />
-              </div>
-              <div>
-                <label className="form-label">所属机构</label>
-                <select className={inputClass} value={form.organizationId} onChange={event => updateForm('organizationId', event.target.value)}>
-                  <option value="">请选择</option>
-                  {masterData.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="form-label">采购日期</label>
-                <input className={inputClass} type="date" value={form.purchaseDate} onChange={event => updateForm('purchaseDate', event.target.value)} />
-              </div>
-              <div>
-                <label className="form-label">维保周期（月）</label>
-                <input className={inputClass} type="number" value={form.maintenanceCycle} onChange={event => updateForm('maintenanceCycle', event.target.value)} placeholder="如 12" />
-              </div>
-              <div className="form-grid-full">
-                <label className="form-label">设备备注</label>
-                <input className={inputClass} value={form.remarks} onChange={event => updateForm('remarks', event.target.value)} placeholder="可补充放置说明、使用对象或验收备注" />
-              </div>
-            </div>
-          </DataCard>
-        </div>
 
-        <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
-          <Link href="/equipment" className="btn btn-ghost btn-md">取消</Link>
-          <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
-            {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待验收</>}
-          </button>
-        </div>
-      </form>
+              <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
+                <Link href="/equipment" className="btn btn-ghost btn-md">取消</Link>
+                <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
+                  {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待验收</>}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="新建边界" subtitle="主区只保留录入与提交，不在表单旁混排长说明。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">提交后先进入待验收，不直接进入在册巡检口径。</div>
+                <div className="page-help-card-item">机构、序列号和维保周期属于关键事实，优先保证录入完整。</div>
+                <div className="page-help-card-item">完整设备模块说明统一回到设备帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整设备创建说明迁移到显式帮助页"
+              summary="设备新建页现在只保留录入流程与表单字段，说明型内容统一后置。"
+              items={[
+                '先录入主数据，再提交进入待验收。',
+                '待验收前不进入设备台账和巡检优先队列。',
+                '若需要完整说明，进入设备帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看设备帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

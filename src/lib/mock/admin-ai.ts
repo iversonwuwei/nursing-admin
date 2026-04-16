@@ -1006,6 +1006,8 @@ function getAlertTitle(alert: AlertRecord) {
   if (alert.type === 'fall') return '疑似跌倒事件解释'
   if (alert.type === 'device') return '设备监测盲区解释'
   if (alert.type === 'health') return '健康异常解释'
+  if (alert.type === 'bedExit') return '离床风险解释'
+  if (alert.type === 'sos') return 'SOS 联动解释'
   return '呼叫事件建议'
 }
 
@@ -1022,10 +1024,20 @@ function getAlertActions(alert: AlertRecord) {
     return ['先复测异常指标，确认是否为连续异常。', '若合并低氧或高热，直接通知医生复核。']
   }
 
+  if (alert.type === 'bedExit') {
+    return ['先确认老人是否安全回床，并排查夜间离床原因。', '若连续触发，应同步护理计划与巡房频次。']
+  }
+
+  if (alert.type === 'sos') {
+    return ['先确认现场是否存在跌倒、呼吸困难或突发疼痛。', '同步通知值班医生，并在 10 分钟内补齐到场记录。']
+  }
+
   return ['优先判断是否属于生活协助或紧急呼救。', '若超过 5 分钟未响应，应自动升级为值班提醒。']
 }
 
 function getAlertEscalation(alert: AlertRecord) {
+  if (alert.type === 'sos') return '若 5 分钟内未形成到场记录，必须升级到护理主管、值班医生与安保。'
+  if (alert.type === 'bedExit') return '若同一老人夜间重复离床 2 次以上，建议转护理计划复核与家属告知。'
   if (alert.level === 'critical') return '若 10 分钟内未形成处理记录，建议自动升级到护理主管与值班医生。'
   if (alert.type === 'device') return '若同类设备在同楼层连续 2 次失联，建议转设备部排查。'
   return '若本班内重复出现同类事件，建议生成 follow-up 任务。'
@@ -1140,6 +1152,10 @@ export function getAlertAiSuggestion(alert: AlertRecord): AiAlertSuggestion {
         ? '该事件的核心风险不是设备本身，而是监测数据中断后造成的护理盲区。'
         : alert.type === 'health'
           ? '该事件更像是连续指标异常而非一次性偏差，建议以人工复测作为第一确认动作。'
+          : alert.type === 'bedExit'
+            ? '离床类事件的重点是判断老人是否处于独立活动、迷走或跌倒前状态。'
+            : alert.type === 'sos'
+              ? 'SOS 类事件默认按高风险现场事件处理，优先级应高于普通呼叫。'
           : alert.type === 'fall'
             ? '跌倒类事件需要先确认身体损伤与二次跌倒风险，再决定是否升级医疗处置。'
             : '当前更偏向服务响应场景，但若长时间无人接单，会转化为满意度和时效风险。',

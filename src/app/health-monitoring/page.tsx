@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, EmptyState, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { healthStats, healthTrends, healthVitals, VITAL_RANGES } from '@/lib/data/health-data'
 import { getHealthAiInsights, getHealthFollowupActions, getHealthTrendNarratives } from '@/lib/mock/admin-ai'
@@ -156,6 +156,8 @@ export default function HealthMonitoringPage() {
   const aiInsights = getHealthAiInsights()
   const trendNarratives = getHealthTrendNarratives()
   const followupActions = getHealthFollowupActions(aiInsights)
+  const highestRisk = followupActions[0] ?? null
+  const helpHref = '/health-monitoring/help'
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
     source: 'health-monitoring',
     entityId: entityId ?? 'health-board',
@@ -187,164 +189,225 @@ export default function HealthMonitoringPage() {
         }
       />
 
-      {/* KPI row */}
-      <div className="kpi-grid">
-        <StatCard icon={<Activity size={18} />} label="监测中" value={healthStats.totalMonitored} sub="当前在线" color="primary" />
-        <StatCard icon={<Heart size={18} />} label="异常预警" value={healthStats.abnormalCount} sub={`含 ${healthStats.criticalCount} 例严重`} color="danger" />
-        <StatCard icon={<Heart size={18} />} label="平均心率" value={`${healthStats.avgHeartRate}`} sub={VITAL_RANGES.heartRate.unit} color="info" />
-        <StatCard icon={<Droplets size={18} />} label="平均血氧" value={healthStats.avgBloodOxygen} sub={VITAL_RANGES.bloodOxygen.unit} color="success" />
-      </div>
+      <InteractionRailLayout
+        main={(
+          <>
+            <WorkflowOverviewCard
+              eyebrow="Health Monitoring"
+              title="健康监测总览"
+              description="主区只保留异常对象、跟进动作、趋势图和生命体征对象卡，先帮助值班人员决定跟进谁。"
+              badge={<Tag variant="warning">Health Board</Tag>}
+              metrics={[
+                { label: '监测中', value: healthStats.totalMonitored, hint: '当前在线监测对象', tone: 'primary' },
+                { label: '异常预警', value: healthStats.abnormalCount, hint: `含 ${healthStats.criticalCount} 例严重`, tone: healthStats.abnormalCount > 0 ? 'danger' : 'success' },
+                { label: '平均心率', value: `${healthStats.avgHeartRate}`, hint: VITAL_RANGES.heartRate.unit, tone: 'info' },
+                { label: '平均血氧', value: `${healthStats.avgBloodOxygen}`, hint: VITAL_RANGES.bloodOxygen.unit, tone: 'success' },
+              ]}
+              signals={[
+                { label: highestRisk ? `当前优先跟进：${highestRisk.elderlyName}` : '当前无异常跟进对象', tone: highestRisk?.severity === '高风险' ? 'danger' : 'info' },
+                { label: view === 'abnormal' ? '当前只显示异常对象卡，便于值班快速跟进。' : '当前显示全部对象，可从对象卡继续下钻。', tone: 'primary' },
+                { label: 'AI 风险解释与趋势说明已后置到右轨，不在主区占用判断空间。', tone: 'neutral' },
+              ]}
+              actions={
+                <>
+                  <Link href={buildAiHref('health-followup', 'logs')} className="btn btn-secondary btn-sm">查看 AI 跟进</Link>
+                  <Link href={buildAiHref('health-trend', 'rules')} className="btn btn-secondary btn-sm">查看趋势说明</Link>
+                </>
+              }
+            />
 
-      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
-        <DataCard
-          icon={<Bot size={16} />}
-          title="AI 风险解释"
-          subtitle="对连续异常和组合异常给出解释与建议动作，仍需人工复核后再升级。"
-          badge={<Tag variant="warning">需人工确认</Tag>}
-        >
-          <div style={{ display: 'grid', gap: 10 }}>
-            {aiInsights.slice(0, 4).map(item => (
-              <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.roomNumber} · {item.title}</div>
+            <div className="kpi-grid">
+              <StatCard icon={<Activity size={18} />} label="监测中" value={healthStats.totalMonitored} sub="当前在线" color="primary" />
+              <StatCard icon={<Heart size={18} />} label="异常预警" value={healthStats.abnormalCount} sub={`含 ${healthStats.criticalCount} 例严重`} color="danger" />
+              <StatCard icon={<Heart size={18} />} label="平均心率" value={`${healthStats.avgHeartRate}`} sub={VITAL_RANGES.heartRate.unit} color="info" />
+              <StatCard icon={<Droplets size={18} />} label="平均血氧" value={healthStats.avgBloodOxygen} sub={VITAL_RANGES.bloodOxygen.unit} color="success" />
+            </div>
+
+            <DataCard icon={<Bot size={16} />} title="当班跟进队列" subtitle="把重点异常对象压成当班执行序列，并带着对象上下文进入 AI 运营中心。" badge={<Tag variant="warning">Follow-up Board</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {followupActions.map(item => (
+                  <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.title}</div>
+                      </div>
+                      <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.summary}</div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
+                      <Link href={buildAiHref('health-followup', 'logs', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">带上下文追踪</Link>
+                    </div>
                   </div>
-                  <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+                ))}
+              </div>
+            </DataCard>
+
+            <div className="hm-chart-grid">
+              <div className="data-card">
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                    <div className="data-card-icon-wrap"><Heart size={15} /></div>
+                    <span className="lc-label">心率趋势</span>
+                  </div>
+                  <span className="lc-current">近7日</span>
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.explanation}</div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
-                <div style={{ marginTop: 8 }}>
-                  <Link href={buildAiHref('health-risk', 'inference', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+                <LineChart
+                  data={healthTrends}
+                  dataKey="heartRateAvg"
+                  color="var(--color-danger)"
+                  label="平均心率"
+                  unit=" bpm"
+                  maxVal={80}
+                  minVal={65}
+                />
+              </div>
+              <div className="data-card">
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                    <div className="data-card-icon-wrap"><Activity size={15} /></div>
+                    <span className="lc-label">血压趋势</span>
+                  </div>
+                  <span className="lc-current">近7日</span>
                 </div>
+                <LineChart
+                  data={healthTrends}
+                  dataKey="bloodPressureHighAvg"
+                  color="var(--color-info)"
+                  label="平均高压"
+                  unit=" mmHg"
+                  maxVal={160}
+                  minVal={120}
+                />
               </div>
-            ))}
-          </div>
-        </DataCard>
-
-        <DataCard
-          icon={<Activity size={16} />}
-          title="AI 趋势解读"
-          subtitle="把近 7 日健康趋势转成管理可读的摘要，不直接给医疗诊断。"
-        >
-          <div style={{ display: 'grid', gap: 10 }}>
-            {trendNarratives.map(item => (
-              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
-                {item}
-              </div>
-            ))}
-            <div>
-              <Link href={buildAiHref('health-trend', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-            </div>
-          </div>
-        </DataCard>
-      </div>
-
-      <DataCard icon={<Bot size={16} />} title="AI 跟进动作" subtitle="把重点异常对象压成当班跟进序列，并带着对象上下文进入 AI 运营中心。" badge={<Tag variant="warning">Follow-up Board</Tag>}>
-        <div style={{ display: 'grid', gap: 10 }}>
-          {followupActions.map(item => (
-            <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.title}</div>
+              <div className="data-card">
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                    <div className="data-card-icon-wrap"><Droplets size={15} /></div>
+                    <span className="lc-label">血氧趋势</span>
+                  </div>
+                  <span className="lc-current">近7日</span>
                 </div>
-                <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+                <LineChart
+                  data={healthTrends}
+                  dataKey="bloodOxygenAvg"
+                  color="var(--color-success)"
+                  label="平均血氧"
+                  unit="%"
+                  maxVal={98}
+                  minVal={93}
+                />
               </div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.summary}</div>
-              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
-              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
-                <Link href={buildAiHref('health-followup', 'logs', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">带上下文追踪</Link>
+              <div className="data-card">
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: 'center' }}>
+                    <div className="data-card-icon-wrap"><Droplets size={15} /></div>
+                    <span className="lc-label">血糖趋势</span>
+                  </div>
+                  <span className="lc-current">近7日</span>
+                </div>
+                <LineChart
+                  data={healthTrends}
+                  dataKey="bloodSugarAvg"
+                  color="var(--color-purple)"
+                  label="平均血糖"
+                  unit=" mmol/L"
+                  maxVal={7.5}
+                  minVal={4.5}
+                />
               </div>
             </div>
-          ))}
-        </div>
-      </DataCard>
 
-      {/* Trend Charts */}
-      <div className="hm-chart-grid">
-        <div className="data-card">
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
-              <div className="data-card-icon-wrap"><Heart size={15} /></div>
-              <span className="lc-label">心率趋势</span>
-            </div>
-            <span className="lc-current">近7日</span>
-          </div>
-          <LineChart
-            data={healthTrends}
-            dataKey="heartRateAvg"
-            color="var(--color-danger)"
-            label="平均心率"
-            unit=" bpm"
-            maxVal={80}
-            minVal={65}
-          />
-        </div>
-        <div className="data-card">
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
-              <div className="data-card-icon-wrap"><Activity size={15} /></div>
-              <span className="lc-label">血压趋势</span>
-            </div>
-            <span className="lc-current">近7日</span>
-          </div>
-          <LineChart
-            data={healthTrends}
-            dataKey="bloodPressureHighAvg"
-            color="var(--color-info)"
-            label="平均高压"
-            unit=" mmHg"
-            maxVal={160}
-            minVal={120}
-          />
-        </div>
-        <div className="data-card">
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
-              <div className="data-card-icon-wrap"><Droplets size={15} /></div>
-              <span className="lc-label">血氧趋势</span>
-            </div>
-            <span className="lc-current">近7日</span>
-          </div>
-          <LineChart
-            data={healthTrends}
-            dataKey="bloodOxygenAvg"
-            color="var(--color-success)"
-            label="平均血氧"
-            unit="%"
-            maxVal={98}
-            minVal={93}
-          />
-        </div>
-        <div className="data-card">
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
-              <div className="data-card-icon-wrap"><Droplets size={15} /></div>
-              <span className="lc-label">血糖趋势</span>
-            </div>
-            <span className="lc-current">近7日</span>
-          </div>
-          <LineChart
-            data={healthTrends}
-            dataKey="bloodSugarAvg"
-            color="var(--color-purple)"
-            label="平均血糖"
-            unit=" mmol/L"
-            maxVal={7.5}
-            minVal={4.5}
-          />
-        </div>
-      </div>
+            {displayVitals.length === 0 ? (
+              <EmptyState
+                variant="danger"
+                title="当前没有异常对象"
+                description="异常筛选下暂时没有需要跟进的老人，可切回全部视图继续巡视。"
+                action={<button className="btn btn-secondary btn-sm" onClick={() => setView('all')}>查看全部对象</button>}
+              />
+            ) : (
+              <div className="hm-vital-grid" style={{ marginTop: 4 }}>
+                {displayVitals.map(vital => (
+                  <VitalCard key={vital.elderlyId} vital={vital} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard
+              icon={<AlertTriangle size={16} />}
+              title="监测上下文"
+              subtitle="后置展示当前筛选、最高风险对象和判断口径。"
+              badge={<Tag variant="info">Context</Tag>}
+            >
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">当前视图：{view === 'abnormal' ? '仅异常对象' : '全部对象'}。</div>
+                <div className="page-help-card-item">最高优先：{highestRisk ? `${highestRisk.elderlyName} · ${highestRisk.severity}` : '当前无异常跟进对象。'}</div>
+                <div className="page-help-card-item">判断口径：主区先看跟进动作、趋势和对象卡，AI 解释只做辅助判断。</div>
+              </div>
+            </DataCard>
 
-      {/* Vital cards */}
-      <div className="hm-vital-grid" style={{ marginTop: 4 }}>
-        {displayVitals.map(vital => (
-          <VitalCard key={vital.elderlyId} vital={vital} />
-        ))}
-      </div>
+            <DataCard
+              icon={<Bot size={16} />}
+              title="AI 风险解释"
+              subtitle="对连续异常和组合异常给出解释与建议动作，仍需人工复核后再升级。"
+              badge={<Tag variant="warning">需人工确认</Tag>}
+            >
+              <div style={{ display: 'grid', gap: 10 }}>
+                {aiInsights.slice(0, 4).map(item => (
+                  <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.roomNumber} · {item.title}</div>
+                      </div>
+                      <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.explanation}</div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.action}</div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>置信度 {item.confidence}%</div>
+                    <div style={{ marginTop: 8 }}>
+                      <Link href={buildAiHref('health-risk', 'inference', item.elderlyId, item.elderlyName)} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+
+            <DataCard
+              icon={<Activity size={16} />}
+              title="AI 趋势解读"
+              subtitle="把近 7 日健康趋势转成管理可读的摘要，不直接给医疗诊断。"
+            >
+              <div style={{ display: 'grid', gap: 10 }}>
+                {trendNarratives.map(item => (
+                  <div key={item} className="page-help-card-item">{item}</div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Link href={buildAiHref('health-trend', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整健康监测说明迁移到显式帮助页"
+              summary="健康监测页现在只保留跟进队列、趋势图和对象卡，AI 风险解释与趋势摘要统一后置到右轨和帮助页。"
+              items={[
+                '先看异常对象和跟进动作，再决定是否进入对象上下文追踪。',
+                '异常筛选无结果时，以显式空态为准，不再让说明卡替代状态反馈。',
+                '若需要完整页面定位和 AI 边界说明，进入帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看健康监测帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

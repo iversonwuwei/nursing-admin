@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import {
     EMPTY_ROOM_FORM,
     addRoomDraft,
@@ -27,6 +27,7 @@ export default function NewRoomPage() {
   const [form, setForm] = useState<RoomCreateFormState>(EMPTY_ROOM_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const helpHref = '/rooms/help'
 
   function updateForm<K extends keyof RoomCreateFormState>(key: K, value: RoomCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -58,79 +59,109 @@ export default function NewRoomPage() {
         </div>
       </div>
 
-      <DataCard title="房间新建闭环" subtitle="首批流程为录入 -> 资源复核 -> 启用可排房，避免未清洁或未核验房间提前暴露。">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { title: '1. 房间录入', description: '录入编号、楼层、机构、床位数和设施。', icon: <DoorOpen size={16} /> },
-            { title: '2. 待启用', description: '提交后先进入待启用，不直接参与可入住统计。', icon: <ClipboardCheck size={16} /> },
-            { title: '3. 启用入池', description: '复核后进入房间列表与详情页，并可用于后续排房。', icon: <ShieldCheck size={16} /> },
-          ].map(item => (
-            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard title="房间新建闭环" subtitle="首批流程为录入 -> 资源复核 -> 启用可排房，避免未清洁或未核验房间提前暴露。">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { title: '1. 房间录入', description: '录入编号、楼层、机构、床位数和设施。', icon: <DoorOpen size={16} /> },
+                  { title: '2. 待启用', description: '提交后先进入待启用，不直接参与可入住统计。', icon: <ClipboardCheck size={16} /> },
+                  { title: '3. 启用入池', description: '复核后进入房间列表与详情页，并可用于后续排房。', icon: <ShieldCheck size={16} /> },
+                ].map(item => (
+                  <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
-      <form onSubmit={handleSubmit}>
-        {error ? (
-          <div className="form-error" style={{ marginTop: 16 }}>
-            <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
-            <span className="form-error-text">{error}</span>
-          </div>
-        ) : null}
+            <form onSubmit={handleSubmit}>
+              {error ? (
+                <div className="form-error" style={{ marginTop: 16 }}>
+                  <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
+                  <span className="form-error-text">{error}</span>
+                </div>
+              ) : null}
 
-        <div style={{ marginTop: 16 }}>
-          <DataCard icon={<DoorOpen size={18} />} title="房间主数据" bodyClassName="form-section">
-            <div className="form-grid">
-              <div>
-                <label className="form-label">房间编号</label>
-                <input className={inputClass} value={form.id} onChange={event => updateForm('id', event.target.value)} placeholder="如 R501" />
+              <div style={{ marginTop: 16 }}>
+                <DataCard icon={<DoorOpen size={18} />} title="房间主数据" bodyClassName="form-section">
+                  <div className="form-grid">
+                    <div>
+                      <label className="form-label">房间编号</label>
+                      <input className={inputClass} value={form.id} onChange={event => updateForm('id', event.target.value)} placeholder="如 R501" />
+                    </div>
+                    <div>
+                      <label className="form-label">房间名称</label>
+                      <input className={inputClass} value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="如 康复双人间" />
+                    </div>
+                    <div>
+                      <label className="form-label">所属机构</label>
+                      <select className={inputClass} value={form.organizationId} onChange={event => updateForm('organizationId', event.target.value)}>
+                        <option value="">请选择</option>
+                        {snapshot.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">楼层</label>
+                      <input className={inputClass} value={form.floor} onChange={event => updateForm('floor', event.target.value)} placeholder="如 5" type="number" />
+                    </div>
+                    <div>
+                      <label className="form-label">房型</label>
+                      <select className={inputClass} value={form.type} onChange={event => updateForm('type', event.target.value as LiveRoom['type'])}>
+                        <option value="单人间">单人间</option>
+                        <option value="双人间">双人间</option>
+                        <option value="护理间">护理间</option>
+                        <option value="套间">套间</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">床位数</label>
+                      <input className={inputClass} value={form.capacity} onChange={event => updateForm('capacity', event.target.value)} placeholder="如 2" type="number" />
+                    </div>
+                    <div className="form-grid-full">
+                      <label className="form-label">设施清单</label>
+                      <input className={inputClass} value={form.facilities} onChange={event => updateForm('facilities', event.target.value)} placeholder="如 空调、独立卫浴、紧急呼叫" />
+                    </div>
+                  </div>
+                </DataCard>
               </div>
-              <div>
-                <label className="form-label">房间名称</label>
-                <input className={inputClass} value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="如 康复双人间" />
-              </div>
-              <div>
-                <label className="form-label">所属机构</label>
-                <select className={inputClass} value={form.organizationId} onChange={event => updateForm('organizationId', event.target.value)}>
-                  <option value="">请选择</option>
-                  {snapshot.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="form-label">楼层</label>
-                <input className={inputClass} value={form.floor} onChange={event => updateForm('floor', event.target.value)} placeholder="如 5" type="number" />
-              </div>
-              <div>
-                <label className="form-label">房型</label>
-                <select className={inputClass} value={form.type} onChange={event => updateForm('type', event.target.value as LiveRoom['type'])}>
-                  <option value="单人间">单人间</option>
-                  <option value="双人间">双人间</option>
-                  <option value="护理间">护理间</option>
-                  <option value="套间">套间</option>
-                </select>
-              </div>
-              <div>
-                <label className="form-label">床位数</label>
-                <input className={inputClass} value={form.capacity} onChange={event => updateForm('capacity', event.target.value)} placeholder="如 2" type="number" />
-              </div>
-              <div className="form-grid-full">
-                <label className="form-label">设施清单</label>
-                <input className={inputClass} value={form.facilities} onChange={event => updateForm('facilities', event.target.value)} placeholder="如 空调、独立卫浴、紧急呼叫" />
-              </div>
-            </div>
-          </DataCard>
-        </div>
 
-        <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
-          <Link href="/rooms" className="btn btn-ghost btn-md">取消</Link>
-          <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
-            {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待启用</>}
-          </button>
-        </div>
-      </form>
+              <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
+                <Link href="/rooms" className="btn btn-ghost btn-md">取消</Link>
+                <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
+                  {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待启用</>}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="创建边界" subtitle="主区只保留录入和提交动作，房间启用口径后置到这里。" badge={<Tag variant="info">Room Intake</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">当前可选机构 {snapshot.organizations.length} 家，提交后统一先进入待启用，不直接参与可入住统计。</div>
+                <div className="page-help-card-item">启用动作只改变房间资源可见性，不自动分配入住对象。</div>
+                <div className="page-help-card-item">完整房间治理说明统一迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整房间管理说明迁移到显式帮助页"
+              summary="新增房间页现在只保留新建闭环和表单字段，机构覆盖与启用边界统一后置。"
+              items={[
+                '先录入房间主数据，再提交进入待启用。',
+                '待启用房间不直接进入排房资源池。',
+                '如需完整承接说明，进入房间帮助页。',
+              ]}
+              href={helpHref}
+              actionLabel="查看房间帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

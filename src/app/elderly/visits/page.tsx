@@ -1,5 +1,5 @@
 "use client"
-import { DataCard, Tag } from "@/components/nh"
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag } from "@/components/nh"
 import { getVisitAiSuggestions } from "@/lib/mock/app-ai"
 import { approveVisitAppointment, getCareServiceSnapshot, rejectVisitAppointment, subscribeCareServiceWorkflow } from '@/lib/mock/care-service-workflow'
 import { Clock, Plus, Search, UserCheck, Video } from "lucide-react"
@@ -37,6 +37,7 @@ export default function VisitsPage() {
   const familyPendingCount = visits.filter(v => v.source === 'family' && v.lifecycleStatus === '待审核').length
   const familyAutoApprovedCount = visits.filter(v => v.source === 'family' && v.reviewMode === '自动通过' && v.lifecycleStatus === '已审核').length
   const aiSuggestions = getVisitAiSuggestions()
+  const helpHref = '/elderly/help'
   const reviewNote = selectedVisit
     ? (reviewNotes[selectedVisit.id] ?? selectedVisit.approvalNote ?? selectedVisit.rejectionNote ?? "")
     : ""
@@ -80,7 +81,10 @@ export default function VisitsPage() {
         </DataCard>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <InteractionRailLayout
+        main={(
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         {[
           { label: "今日探视", value: todayCount, icon: UserCheck, color: "var(--color-primary)", bg: "var(--color-primary-light)" },
           { label: "待审核", value: pendingCount, icon: Clock, color: "var(--color-warning)", bg: "rgba(245,158,11,0.1)" },
@@ -99,29 +103,14 @@ export default function VisitsPage() {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="filter-bar">
-        <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
-          <span className="input-icon"><Search size={16} /></span>
-          <input className="input" placeholder="搜索老人姓名或探视人..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
-        </div>
-      </div>
-
-      <DataCard title="AI 探视助手" subtitle="把探视审核、视频沟通和家属通知统一成可执行建议。" badge={<Tag variant="primary">Family AI</Tag>}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-          {aiSuggestions.map(item => (
-            <div key={item.title} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
-                <Tag variant={item.type === "视频" ? "info" : item.type === "现场" ? "warning" : "primary"}>{item.type}</Tag>
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
-              <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>{item.action}</div>
             </div>
-          ))}
-        </div>
-      </DataCard>
+
+            <div className="filter-bar">
+              <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
+                <span className="input-icon"><Search size={16} /></span>
+                <input className="input" placeholder="搜索老人姓名或探视人..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
+              </div>
+            </div>
 
       {selectedVisit ? (
         <DataCard
@@ -203,9 +192,10 @@ export default function VisitsPage() {
         </DataCard>
       ) : null}
 
-      <DataCard>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table">
+            <DataCard>
+              {filtered.length > 0 ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table">
             <thead>
               <tr><th>老人</th><th>访客</th><th>来源</th><th>日期</th><th>时间</th><th>方式</th><th>审核模式</th><th>状态</th><th></th></tr>
             </thead>
@@ -231,9 +221,54 @@ export default function VisitsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-      </DataCard>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState variant="search" title="暂无匹配探视记录" description="调整搜索词后重试；若当前没有待审核对象，列表会在全部视图中显示已登记记录。" />
+              )}
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="审核边界" subtitle="主区只保留待审核对象、审核动作和列表。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">family 回流与 admin 手工预约共享同一审核口径，但保留来源区分。</div>
+                <div className="page-help-card-item">AI 建议只做审核辅助，不替代通过或驳回决策。</div>
+                <div className="page-help-card-item">完整探视流程与使用顺序迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <DataCard title="AI 探视助手" subtitle="把探视审核、视频沟通和家属通知统一成可执行建议。" badge={<Tag variant="primary">Family AI</Tag>}>
+              <div style={{ display: "grid", gap: 12 }}>
+                {aiSuggestions.map(item => (
+                  <div key={item.title} style={{ borderRadius: 10, border: "1px solid var(--color-border)", padding: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
+                      <Tag variant={item.type === "视频" ? "info" : item.type === "现场" ? "warning" : "primary"}>{item.type}</Tag>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>{item.action}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整探视审核说明迁移到显式帮助页"
+              summary="探视记录页现在只保留待审核对象、审核动作和探视列表，AI 建议与帮助统一后置。"
+              items={[
+                '先处理待审核对象，再回看已登记或已驳回记录。',
+                'AI 探视助手只做审核辅助，不替代人工判断。',
+                '若需要完整说明，进入老人帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看老人帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

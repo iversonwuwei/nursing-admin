@@ -1,5 +1,5 @@
 "use client"
-import { DataCard, FilterBar, FilterItem, PageHeader, StatCard } from "@/components/nh"
+import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag } from "@/components/nh"
 import { getCareServiceSnapshot, subscribeCareServiceWorkflow } from '@/lib/mock/care-service-workflow'
 import { Activity, Minus, Plus, Search, TrendingDown, TrendingUp } from "lucide-react"
 import Link from "next/link"
@@ -24,6 +24,7 @@ export default function VitalsPage() {
     [preselectedId, records],
   )
   const filtered = records.filter(r => r.elder.includes(search) || r.room.includes(search))
+  const helpHref = '/elderly/help'
 
   return (
     <div className="page-root animate-fade-up">
@@ -45,7 +46,10 @@ export default function VitalsPage() {
         </DataCard>
       ) : null}
 
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+      <InteractionRailLayout
+        main={(
+          <>
+            <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
           { label: "血压", value: "38/38", icon: Activity, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)", norm: "90-140/60-90" },
           { label: "心率", value: "72bpm", icon: Activity, color: "var(--color-primary)", bg: "var(--color-primary-light)", norm: "60-100bpm" },
@@ -55,20 +59,21 @@ export default function VitalsPage() {
         ].map(({ label, value, icon: Icon, norm }) => (
           <StatCard key={label} icon={<Icon size={18} />} label={label} value={value} sub={`正常: ${norm}`} color={label === "血压" ? "danger" : label === "心率" ? "primary" : label === "体温" ? "warning" : label === "血氧" ? "info" : "purple"} />
         ))}
-      </div>
+            </div>
 
-      <FilterBar>
-        <FilterItem label="搜索">
-          <div className="input-wrap" style={{ minWidth: 240 }}>
-            <span className="input-icon"><Search size={14} /></span>
-            <input className="input" placeholder="搜索老人姓名或房间..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
-          </div>
-        </FilterItem>
-      </FilterBar>
+            <FilterBar>
+              <FilterItem label="搜索">
+                <div className="input-wrap" style={{ minWidth: 240 }}>
+                  <span className="input-icon"><Search size={14} /></span>
+                  <input className="input" placeholder="搜索老人姓名或房间..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 34 }} />
+                </div>
+              </FilterItem>
+            </FilterBar>
 
-      <DataCard>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table">
+            <DataCard>
+              {filtered.length > 0 ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table">
             <thead>
               <tr><th>老人</th><th>血压<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>mmHg</span></th><th>心率<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>bpm</span></th><th>体温<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>℃</span></th><th>血氧<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>%</span></th><th>血糖<br/><span style={{fontSize:10,color:"var(--color-muted)",fontWeight:400}}>mmol/L</span></th><th>记录人</th><th>时间</th><th></th></tr>
             </thead>
@@ -119,9 +124,49 @@ export default function VitalsPage() {
                 )
               })}
             </tbody>
-          </table>
-        </div>
-      </DataCard>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState variant="search" title="暂无匹配体征记录" description="调整搜索词后重试，或返回查看全部当班体征录入。" />
+              )}
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            {selectedRecord ? (
+              <DataCard title="当前回流记录" subtitle="对象事实后置展示，避免打散主区表格核对。" badge={<Tag variant="info">Selected</Tag>}>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div className="page-help-card-item">对象：{selectedRecord.elder} · {selectedRecord.room}</div>
+                  <div className="page-help-card-item">记录人：{selectedRecord.recordedBy} · 时间：{selectedRecord.time}</div>
+                  <div className="page-help-card-item">当前已回流体征列表，可继续进入老人详情查看上下文。</div>
+                </div>
+              </DataCard>
+            ) : null}
+
+            <DataCard title="体征判读边界" subtitle="主区只保留 KPI、筛选和体征表格。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">趋势图标只做快速判读，不替代详细病情判断。</div>
+                <div className="page-help-card-item">异常对象的连续变化应回到健康监测或老人详情继续核对。</div>
+                <div className="page-help-card-item">完整页面定位和使用顺序迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整体征记录说明迁移到显式帮助页"
+              summary="体征记录页现在只保留 KPI、筛选和表格明细，趋势解释与帮助统一后置。"
+              items={[
+                '先筛选目标老人，再核对当班体征记录。',
+                '趋势图标只做快速提示，不替代详细判断。',
+                '若需要完整说明，进入老人帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看老人帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

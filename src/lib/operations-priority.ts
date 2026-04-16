@@ -8,7 +8,7 @@ function getActivityDateTime(activity: Pick<LiveActivity, 'date' | 'time'>) {
 export function getAlertPriorityScore(alert: Pick<AlertRecord, 'status' | 'level' | 'type'>) {
   const statusWeight = { pending: 300, processing: 200, resolved: 100 }[alert.status]
   const levelWeight = { critical: 90, warning: 60, info: 30 }[alert.level]
-  const typeWeight = { fall: 20, health: 16, device: 12, call: 8 }[alert.type]
+  const typeWeight = { fall: 20, health: 16, device: 12, call: 10, bedExit: 18, sos: 24 }[alert.type]
 
   return statusWeight + levelWeight + typeWeight
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import { EMPTY_PARTNER_FORM, addPartnerDraft, validatePartnerForm, type PartnerAgencyCreateFormState } from '@/lib/mock/master-data-workflow'
 import { AlertCircle, ArrowLeft, Handshake, Save, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
@@ -12,6 +12,7 @@ export default function PartnerNewPage() {
   const [form, setForm] = useState<PartnerAgencyCreateFormState>(EMPTY_PARTNER_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const helpHref = '/organizations/partners/help'
 
   function updateForm<K extends keyof PartnerAgencyCreateFormState>(key: K, value: PartnerAgencyCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -43,32 +44,35 @@ export default function PartnerNewPage() {
         </div>
       </div>
 
-      <DataCard title="定点机构 workflow" subtitle="先录入机构类型和合作边界，再启用，再进入对应业务链路。">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { title: '1. 定点机构录入', description: '采集机构类型、服务类型、联系人与合同信息。', icon: <Handshake size={16} /> },
-            { title: '2. 待启用', description: '提交后先进入待启用，不立即开放给评估或执行链路。', icon: <ShieldCheck size={16} /> },
-            { title: '3. 进入链路', description: '评估机构进入认定协同，护理服务机构才能给第三方员工或护工绑定。', icon: <UserCheck size={16} /> },
-          ].map(item => (
-            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard title="定点机构 workflow" subtitle="先录入机构类型和合作边界，再启用，再进入对应业务链路。">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { title: '1. 定点机构录入', description: '采集机构类型、服务类型、联系人与合同信息。', icon: <Handshake size={16} /> },
+                  { title: '2. 待启用', description: '提交后先进入待启用，不立即开放给评估或执行链路。', icon: <ShieldCheck size={16} /> },
+                  { title: '3. 进入链路', description: '评估机构进入认定协同，护理服务机构才能给第三方员工或护工绑定。', icon: <UserCheck size={16} /> },
+                ].map(item => (
+                  <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
-      <form onSubmit={handleSubmit}>
-        {error ? (
-          <div className="form-error" style={{ marginTop: 16 }}>
-            <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
-            <span className="form-error-text">{error}</span>
-          </div>
-        ) : null}
+            <form onSubmit={handleSubmit}>
+              {error ? (
+                <div className="form-error" style={{ marginTop: 16 }}>
+                  <AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} />
+                  <span className="form-error-text">{error}</span>
+                </div>
+              ) : null}
 
-        <div style={{ marginTop: 16 }}>
-          <DataCard icon={<Handshake size={18} />} title="定点机构主数据" bodyClassName="form-section">
-            <div className="form-grid">
+              <div style={{ marginTop: 16 }}>
+                <DataCard icon={<Handshake size={18} />} title="定点机构主数据" bodyClassName="form-section">
+                  <div className="form-grid">
               <div>
                 <label className="form-label">机构名称</label>
                 <input className="input" value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="请输入机构名称" />
@@ -133,26 +137,53 @@ export default function PartnerNewPage() {
                 <label className="form-label">合同结束</label>
                 <input className="input" type="date" value={form.contractEnd} onChange={event => updateForm('contractEnd', event.target.value)} />
               </div>
-            </div>
-            <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--color-bg)', fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-              {form.institutionType === '评估机构'
-                ? '评估机构只进入长护险评估认定与复评协同，不参与第三方人员绑定。'
-                : '护理服务机构会进入第三方员工/护工绑定、服务执行和结算对账链路。'}
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <label className="form-label">合作说明</label>
-              <textarea className="input" rows={4} value={form.description} onChange={event => updateForm('description', event.target.value)} placeholder="补充服务边界、合作说明或注意事项" />
-            </div>
-          </DataCard>
-        </div>
+                  </div>
+                  <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 10, background: 'var(--color-bg)', fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                    {form.institutionType === '评估机构'
+                      ? '评估机构只进入长护险评估认定与复评协同，不参与第三方人员绑定。'
+                      : '护理服务机构会进入第三方员工/护工绑定、服务执行和结算对账链路。'}
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <label className="form-label">合作说明</label>
+                    <textarea className="input" rows={4} value={form.description} onChange={event => updateForm('description', event.target.value)} placeholder="补充服务边界、合作说明或注意事项" />
+                  </div>
+                </DataCard>
+              </div>
 
-        <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
-          <Link href="/organizations/partners" className="btn btn-ghost btn-md">取消</Link>
-          <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
-            {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待启用</>}
-          </button>
-        </div>
-      </form>
+              <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
+                <Link href="/organizations/partners" className="btn btn-ghost btn-md">取消</Link>
+                <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
+                  {loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并进入待启用</>}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="新建边界" subtitle="主区只保留定点机构录入闭环和表单。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">提交后先进入待启用，不直接进入评估或执行链路。</div>
+                <div className="page-help-card-item">评估机构与护理服务机构的边界以后置说明为准。</div>
+                <div className="page-help-card-item">完整角色边界与协同说明迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整定点机构创建说明迁移到显式帮助页"
+              summary="定点机构新建页现在只保留录入闭环和表单字段，协同边界与使用顺序统一后置。"
+              items={[
+                '先录入机构类型与合同信息，再提交进入待启用。',
+                '评估机构与护理服务机构进入不同后续链路。',
+                '若需要完整说明，进入定点机构帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看定点机构帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

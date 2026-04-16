@@ -1,7 +1,7 @@
 'use client'
 
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag } from '@/components/nh'
 import {
   fetchAdminTaskPriorityFocus,
   fetchStaffAiCareCopilot,
@@ -34,6 +34,7 @@ export default function StaffAppAiPage() {
   const activeAlerts = useMemo(() => alertRecords.filter(item => item.status !== 'resolved'), [])
   const focusItems = demoMode ? STAFF_APP_FOCUS : liveFocusItems
   const moduleCards = demoMode ? STAFF_APP_AI_MODULES : liveModuleCards
+  const helpHref = '/ai-assistant/help'
 
   useEffect(() => {
     if (demoMode) {
@@ -142,52 +143,80 @@ export default function StaffAppAiPage() {
         <StatCard icon={<Bot size={18} />} label="当前阶段" value={demoMode ? '预览' : 'BFF'} sub={demoMode ? '先验证信息结构' : '已接真实 AI'} color="info" />
       </div>
 
-      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
-        <DataCard icon={<Smartphone size={16} />} title="员工端 AI 模块" subtitle="当前先用 Web 原型承接，后续可迁移到 Flutter 页面。">
-          <div style={{ display: 'grid', gap: 10 }}>
-            {moduleCards.map(item => (
-              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
-                  <Tag variant={item.status === '已接入' ? 'success' : 'warning'}>{item.status}</Tag>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{item.primaryMetric}</div>
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard icon={<Sparkles size={16} />} title="班次首页 AI 摘要" subtitle="强调“先结论、后解释、再动作”的移动端压缩表达。">
+              <div style={{ display: 'grid', gap: 10 }}>
+                {focusItems.map(item => (
+                  <div key={item.title} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                      <Tag variant={item.severity === '高' ? 'danger' : item.severity === '中' ? 'warning' : 'info'}>{item.severity}</Tag>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.reason}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-muted)' }}>{item.slaHint}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </DataCard>
+            </DataCard>
 
-        <DataCard icon={<Sparkles size={16} />} title="班次首页 AI 摘要" subtitle="强调“先结论、后解释、再动作”的移动端压缩表达。">
-          <div style={{ display: 'grid', gap: 10 }}>
-            {focusItems.map(item => (
-              <div key={item.title} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
-                  <Tag variant={item.severity === '高' ? 'danger' : item.severity === '中' ? 'warning' : 'info'}>{item.severity}</Tag>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.reason}</div>
-                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-muted)' }}>{item.slaHint}</div>
+            <DataCard icon={<Bot size={16} />} title="员工端 AI 输出预览" subtitle="在员工端重点验证班次摘要、交接班草稿和升级建议是否足够短、够可执行。">
+              <div style={{ display: 'grid', gap: 10 }}>
+                {[
+                  shiftSummary || '员工端 AI 首屏优先展示 3 条以内的重点对象，不应把所有解释堆成长文本。',
+                  careCopilotSuggestion || '报警响应提示需要把现场动作拆成 2 到 3 步，避免一线护工还要自行二次理解。',
+                  handoverDraft || '对报警和任务建议，必须输出“先做什么”，而不是只解释为什么。',
+                  escalationDraft || '交接班 AI 草稿要默认突出未闭环任务、异常对象和下一班动作。',
+                ].map(item => (
+                  <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                    {item}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard icon={<Smartphone size={16} />} title="员工端 AI 模块" subtitle="当前先用 Web 原型承接，后续可迁移到 Flutter 页面。">
+              <div style={{ display: 'grid', gap: 10 }}>
+                {moduleCards.map(item => (
+                  <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                      <Tag variant={item.status === '已接入' ? 'success' : 'warning'}>{item.status}</Tag>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{item.primaryMetric}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
-      <DataCard icon={<Bot size={16} />} title="员工端 AI 输出预览" subtitle="在员工端重点验证班次摘要、交接班草稿和升级建议是否足够短、够可执行。">
-        <div style={{ display: 'grid', gap: 10 }}>
-          {[
-            shiftSummary || '员工端 AI 首屏优先展示 3 条以内的重点对象，不应把所有解释堆成长文本。',
-            careCopilotSuggestion || '报警响应提示需要把现场动作拆成 2 到 3 步，避免一线护工还要自行二次理解。',
-            handoverDraft || '对报警和任务建议，必须输出“先做什么”，而不是只解释为什么。',
-            escalationDraft || '交接班 AI 草稿要默认突出未闭环任务、异常对象和下一班动作。',
-          ].map(item => (
-            <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
-              {item}
-            </div>
-          ))}
-        </div>
-      </DataCard>
+            <DataCard title="预览边界" subtitle="主区保留一线人员可直接消费的输出，说明型内容后置。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">主区优先展示班次重点、交接草稿和升级建议，不混排模块介绍。</div>
+                <div className="page-help-card-item">员工端输出必须足够短且可执行，不能把治理说明直接塞给一线人员。</div>
+                <div className="page-help-card-item">完整 AI 模块定位和治理口径统一回到 AI 帮助页。</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整 AI 预览说明迁移到显式帮助页"
+              summary="员工端 AI 预览页现在优先展示一线可执行输出，模块说明和边界信息统一后置。"
+              items={[
+                '先看班次摘要，再看报警和交接建议。',
+                '员工端 AI 只辅助执行，不替代人工确认。',
+                '若需要完整 AI 使用说明，进入 AI 帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看 AI 帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

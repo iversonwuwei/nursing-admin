@@ -1,6 +1,8 @@
 'use client'
 
 import { DataCard, EmptyState, FilterBar, FilterItem, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
+import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getCareScene, matchesEmploymentScene, withSceneQuery } from '@/lib/care-scenes'
 import {
     getNursingServiceSnapshot,
     isNursingWorkflowDemoMode,
@@ -12,6 +14,7 @@ import {
 } from '@/lib/mock/nursing-service-workflow'
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Search, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 const STATUS_OPTIONS = ['全部', '待执行', '服务中', '异常待复核', '待主管确认', '已确认'] as const
@@ -26,6 +29,8 @@ function getStatusVariant(status: ServiceClockInRecord['status']) {
 }
 
 export function NursingCheckinManagementPage() {
+  const searchParams = useSearchParams()
+  const scene = getCareScene(searchParams.get('scene'))
   const demoMode = isNursingWorkflowDemoMode()
   const serviceSnapshot = useSyncExternalStore(
     subscribeNursingServiceWorkflow,
@@ -43,6 +48,34 @@ export function NursingCheckinManagementPage() {
   }, [])
 
   const records = serviceSnapshot.clockInRecords
+  const staffEmploymentMap = useMemo(
+    () => new Map(serviceSnapshot.schedule.staffRows.map(item => [item.staffName, item.employmentSource])),
+    [serviceSnapshot.schedule.staffRows],
+  )
+  const sceneScopedRecords = useMemo(() => records.filter(record => {
+    const employmentSource = staffEmploymentMap.get(record.ownerName) ?? (record.ownerRole.includes('第三方') ? '第三方合作' : '自有团队')
+    return matchesEmploymentScene(employmentSource, scene)
+  }), [records, scene, staffEmploymentMap])
+  const sceneMeta = scene === 'home'
+    ? {
+      title: '居家服务回执台',
+      subtitle: '聚焦第三方协同到场、回执补录与主管复核',
+      overviewTitle: '居家服务留痕总览',
+      overviewDescription: '把上门服务到场、异常说明和主管确认收敛到同一条居家回执链路，避免跨机构协同断档。',
+    }
+    : scene === 'institutional'
+      ? {
+        title: '机构服务打卡台',
+        subtitle: '聚焦院内自有团队执行留痕与主管确认',
+        overviewTitle: '机构服务打卡总览',
+        overviewDescription: '把院内到场留痕、异常说明和主管确认收敛成一条可追踪的执行管理链路。',
+      }
+      : {
+        title: '打卡管理台',
+        subtitle: '统一查看服务到场、执行中、异常待复核与主管确认结果',
+        overviewTitle: '服务打卡与主管确认总览',
+        overviewDescription: '这不是单纯的任务状态镜像，而是把到场留痕、异常说明和主管确认收敛成一条可追踪的管理链路。',
+      }
   const filteredRecords = useMemo(() => records.filter(record => {
     const matchesSearch = !search
       || record.elderlyName.includes(search)
@@ -53,14 +86,23 @@ export function NursingCheckinManagementPage() {
     const matchesShift = shift === '全部' || record.shift === shift
     return matchesSearch && matchesStatus && matchesShift
   }), [records, search, shift, status])
+  const visibleFilteredRecords = useMemo(() => filteredRecords.filter(record => sceneScopedRecords.some(item => item.id === record.id)), [filteredRecords, sceneScopedRecords])
 
   const stats = useMemo(() => ({
-    total: records.length,
-    inProgress: records.filter(record => record.status === '服务中').length,
-    exceptions: records.filter(record => record.status === '异常待复核').length,
-    pendingReview: records.filter(record => record.status === '待主管确认').length,
-    confirmed: records.filter(record => record.status === '已确认').length,
-  }), [records])
+    total: sceneScopedRecords.length,
+    inProgress: sceneScopedRecords.filter(record => record.status === '服务中').length,
+    exceptions: sceneScopedRecords.filter(record => record.status === '异常待复核').length,
+    pendingReview: sceneScopedRecords.filter(record => record.status === '待主管确认').length,
+    confirmed: sceneScopedRecords.filter(record => record.status === '已确认').length,
+  }), [sceneScopedRecords])
+  const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
+    source: 'nursing-checkin',
+    entityId: scene ?? 'general',
+    entityName: scene === 'home' ? '居家服务留痕' : scene === 'institutional' ? '机构服务打卡' : '服务打卡管理',
+    focus,
+    target,
+    scene: scene ?? undefined,
+  })
 
   async function handleResetDemo() {
     setBusyAction('workflow:reset')
@@ -90,8 +132,8 @@ export function NursingCheckinManagementPage() {
   return (
     <div className="page-root animate-fade-up">
       <PageHeader
-        title="打卡管理台"
-        subtitle={`统一查看服务到场、执行中、异常待复核与主管确认结果 · 当前 ${records.length} 条打卡记录`}
+        title={sceneMeta.title}
+        subtitle={`${sceneMeta.subtitle} · 当前 ${sceneScopedRecords.length} 条打卡记录`}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {demoMode ? (
@@ -99,19 +141,20 @@ export function NursingCheckinManagementPage() {
                 {busyAction === 'workflow:reset' ? '重置中...' : '重置 Demo 数据'}
               </button>
             ) : null}
-            <Link href="/staff/tasks" className="btn btn-secondary btn-sm">返回现场评定任务</Link>
-            <Link href="/staff/schedule" className="btn btn-secondary btn-sm">查看派案排期</Link>
+            <Link href={withSceneQuery('/staff/tasks', scene)} className="btn btn-secondary btn-sm">返回现场评定任务</Link>
+            <Link href={withSceneQuery('/staff/schedule', scene)} className="btn btn-secondary btn-sm">查看派案排期</Link>
+            <Link href={buildAiHref(scene === 'home' ? 'home-checkin-audit' : 'institutional-checkin-audit', 'logs')} className="btn btn-secondary btn-sm">查看 AI 留痕</Link>
           </div>
         }
       />
 
       <WorkflowOverviewCard
         eyebrow="Clock-in Operations"
-        title="服务打卡与主管确认总览"
-        description="这不是单纯的任务状态镜像，而是把到场留痕、异常说明和主管确认收敛成一条可追踪的管理链路。"
+        title={sceneMeta.overviewTitle}
+        description={sceneMeta.overviewDescription}
         badge={<Tag variant={demoMode ? 'info' : 'success'}>{demoMode ? 'Demo Workflow' : 'Live Workflow'}</Tag>}
         metrics={[
-          { label: '打卡总数', value: stats.total, hint: `当前筛选后 ${filteredRecords.length} 条`, tone: 'primary' },
+          { label: '打卡总数', value: stats.total, hint: `当前筛选后 ${visibleFilteredRecords.length} 条`, tone: 'primary' },
           { label: '服务中', value: stats.inProgress, hint: '已到场但尚未形成闭环', tone: stats.inProgress > 0 ? 'warning' : 'success' },
           { label: '异常待复核', value: stats.exceptions, hint: '需主管或值班管理介入', tone: stats.exceptions > 0 ? 'danger' : 'success' },
           { label: '待主管确认', value: stats.pendingReview, hint: `已确认 ${stats.confirmed} 条`, tone: stats.pendingReview > 0 ? 'info' : 'success' },
@@ -122,8 +165,9 @@ export function NursingCheckinManagementPage() {
         ]}
         actions={
           <>
-            <Link href="/staff/tasks" className="btn btn-secondary btn-sm">查看任务执行</Link>
-            <Link href="/staff/schedule" className="btn btn-secondary btn-sm">查看班次负荷</Link>
+            <Link href={withSceneQuery('/staff/tasks', scene)} className="btn btn-secondary btn-sm">查看任务执行</Link>
+            <Link href={withSceneQuery('/staff/schedule', scene)} className="btn btn-secondary btn-sm">查看班次负荷</Link>
+            <Link href={buildAiHref(scene === 'home' ? 'home-checkin-compliance' : 'institutional-checkin-compliance', 'rules')} className="btn btn-secondary btn-sm">查看 AI 治理</Link>
           </>
         }
       />
@@ -154,12 +198,12 @@ export function NursingCheckinManagementPage() {
         </FilterItem>
       </FilterBar>
 
-      <DataCard title="打卡记录列表" subtitle="优先处理异常待复核与待主管确认记录，避免服务已完成但管理链路停留在中间态。">
-        {filteredRecords.length === 0 ? (
+      <DataCard title="打卡记录列表" subtitle={scene === 'home' ? '优先处理第三方协同和上门服务回执中的异常待复核与待主管确认记录。' : scene === 'institutional' ? '优先处理院内自有团队执行中的异常待复核与待主管确认记录。' : '优先处理异常待复核与待主管确认记录，避免服务已完成但管理链路停留在中间态。'}>
+        {visibleFilteredRecords.length === 0 ? (
           <EmptyState variant="search" title="暂无打卡记录" description="调整搜索词、状态或班次后再试。" />
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
-            {filteredRecords.map(record => (
+              {visibleFilteredRecords.map(record => (
               <div key={record.id} style={{ border: '1px solid var(--color-border)', borderRadius: 16, padding: 16, display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ display: 'grid', gap: 6 }}>
@@ -207,7 +251,7 @@ export function NursingCheckinManagementPage() {
                       {busyAction === `record:${record.id}:review` ? '确认中...' : '主管确认'}
                     </button>
                   ) : null}
-                  <Link href="/staff/tasks" className="btn btn-secondary btn-sm">回到任务台账</Link>
+                  <Link href={withSceneQuery('/staff/tasks', scene)} className="btn btn-secondary btn-sm">回到任务台账</Link>
                 </div>
               </div>
             ))}

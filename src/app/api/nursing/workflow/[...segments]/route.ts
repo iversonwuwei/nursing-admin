@@ -71,7 +71,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的护理工作流读取路径。' }, { status: 404 })
   }
 
-  return forwardWorkflowRequest('GET', path)
+  return forwardWorkflowRequest(request, 'GET', path)
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的护理工作流写入路径。' }, { status: 404 })
   }
 
-  return forwardWorkflowRequest('POST', path, await readJsonBody(request))
+  return forwardWorkflowRequest(request, 'POST', path, await readJsonBody(request))
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
@@ -93,5 +93,5 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的护理工作流更新路径。' }, { status: 404 })
   }
 
-  return forwardWorkflowRequest('PUT', path, await readJsonBody(request))
+  return forwardWorkflowRequest(request, 'PUT', path, await readJsonBody(request))
 }

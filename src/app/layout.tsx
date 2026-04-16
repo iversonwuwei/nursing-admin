@@ -1,14 +1,8 @@
 import { AppWrapper } from "@/components/layout/app-wrapper"
 import { SessionProvider } from "@/components/providers/session-provider"
 import type { Metadata } from "next"
-import { Fira_Code, Inter } from "next/font/google"
+import { Fira_Code } from "next/font/google"
 import "./globals.css"
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sans",
-})
 
 const firaCode = Fira_Code({
   subsets: ["latin"],
@@ -27,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="zh-CN" className={`${inter.variable} ${firaCode.variable}`}>
+    <html lang="zh-CN" className={firaCode.variable}>
       <body>
         <SessionProvider>
           <AppWrapper>{children}</AppWrapper>

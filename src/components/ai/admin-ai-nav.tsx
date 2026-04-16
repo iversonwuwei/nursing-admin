@@ -1,13 +1,14 @@
 'use client'
 
 import { appendAiTrackingContext, readAiTrackingContext } from '@/lib/ai-context'
-import { Bot, Cpu, Power, ScrollText } from 'lucide-react'
+import { Bot, Cpu, MessageSquareText, Power, ScrollText } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 
 const NAV_ITEMS = [
   { href: '/ai-assistant', label: 'AI 总览', icon: Bot },
   { href: '/ai-assistant/inference', label: '推理详情', icon: Cpu },
+  { href: '/ai-assistant/qa', label: 'AI 问答', icon: MessageSquareText },
   { href: '/ai-assistant/rules', label: '规则治理', icon: Power },
   { href: '/ai-assistant/logs', label: '问答日志', icon: ScrollText },
   { href: '/ai-assistant/staff-app', label: '员工 APP + AI', icon: Bot },
@@ -26,6 +27,8 @@ export function AdminAiNav() {
         const Icon = item.icon
         const target = item.href.endsWith('/inference')
           ? 'inference'
+          : item.href.endsWith('/qa')
+            ? undefined
           : item.href.endsWith('/rules')
             ? 'rules'
             : item.href.endsWith('/logs')

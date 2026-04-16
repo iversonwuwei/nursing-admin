@@ -14,5 +14,5 @@ export default async function HealthMetricPage({
     notFound()
   }
 
-  return <StandardModulePage config={config} />
+  return <StandardModulePage config={config} routePath={`/health/${metric}`} />
 }

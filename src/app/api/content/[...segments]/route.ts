@@ -21,6 +21,40 @@ function resolvePath(segments: string[], search: string): string | null {
     return `/api/admin/${joined}${search}`
   }
 
+  if (segments[0] === 'alerts') {
+    if (segments.length === 1) {
+      return `/api/admin/alerts${search}`
+    }
+
+    if (segments.length === 2 && segments[1] === 'summary') {
+      return `/api/admin/alerts/summary${search}`
+    }
+
+    if (segments.length === 3 && segments[2] === 'actions') {
+      return `/api/admin/alerts/${encodeURIComponent(segments[1])}/actions${search}`
+    }
+  }
+
+  if (segments[0] === 'finance') {
+    if (segments.length === 2 && segments[1] === 'summary') {
+      return `/api/admin/finance/summary${search}`
+    }
+
+    if (segments.length === 2 && segments[1] === 'invoices') {
+      return `/api/admin/finance/invoices${search}`
+    }
+  }
+
+  if (segments[0] === 'notifications') {
+    if (segments.length === 2 && segments[1] === 'summary') {
+      return `/api/admin/notifications/summary${search}`
+    }
+
+    if (segments.length === 2 && segments[1] === 'queue') {
+      return `/api/admin/notifications/queue${search}`
+    }
+  }
+
   return null
 }
 
@@ -34,26 +68,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const { segments } = await context.params
   const path = resolvePath(segments, request.nextUrl.search)
   if (!path) return NextResponse.json({ message: '未知的内容管理路径。' }, { status: 404 })
-  return forwardToAdminBff('GET', path)
+  return forwardToAdminBff(request, 'GET', path)
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { segments } = await context.params
   const path = resolvePath(segments, request.nextUrl.search)
   if (!path) return NextResponse.json({ message: '未知的内容管理路径。' }, { status: 404 })
-  return forwardToAdminBff('POST', path, await readJsonBody(request))
+  return forwardToAdminBff(request, 'POST', path, await readJsonBody(request))
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   const { segments } = await context.params
   const path = resolvePath(segments, request.nextUrl.search)
   if (!path) return NextResponse.json({ message: '未知的内容管理路径。' }, { status: 404 })
-  return forwardToAdminBff('PUT', path, await readJsonBody(request))
+  return forwardToAdminBff(request, 'PUT', path, await readJsonBody(request))
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const { segments } = await context.params
   const path = resolvePath(segments, request.nextUrl.search)
   if (!path) return NextResponse.json({ message: '未知的内容管理路径。' }, { status: 404 })
-  return forwardToAdminBff('DELETE', path)
+  return forwardToAdminBff(request, 'DELETE', path)
 }

@@ -1,6 +1,6 @@
 "use client"
-import { Monitor, CheckCircle2, XCircle, AlertTriangle, TrendingUp, BarChart3, PieChart, Clock } from "lucide-react"
-import { DataCard } from "@/components/nh"
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from "@/components/nh"
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Monitor, PieChart, TrendingUp, XCircle } from "lucide-react"
 
 const WEEKLY = [38, 42, 40, 45, 43, 47, 46]
 const DAYS = ["周一","周二","周三","周四","周五","周六","周日"]
@@ -14,6 +14,7 @@ const TYPE_DATA = [
 ]
 
 export default function EquipmentStatsPage() {
+  const helpHref = '/equipment/help'
   return (
     <div className="page-root animate-fade-up">
       <div className="flex-between" style={{ marginBottom: 0 }}>
@@ -47,117 +48,141 @@ export default function EquipmentStatsPage() {
         ))}
       </div>
 
-      <div className="page-grid-2" style={{ alignItems: "start" }}>
-        {/* Weekly usage trend */}
-        <DataCard>
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: "center" }}>
-              <div className="data-card-icon-wrap" style={{ background: "rgba(59,130,246,0.1)", color: "var(--color-info)" }}>
-                <TrendingUp size={18} />
-              </div>
-              <div>
-                <div className="text-sm font-bold">本周使用次数趋势</div>
-                <div style={{ fontSize: 12, color: "var(--color-muted)" }}>各设备日使用次数统计</div>
-              </div>
-            </div>
-          </div>
-          <div className="eq-bar-chart">
-            {WEEKLY.map((v, i) => (
-              <div key={i} className="eq-bar-col">
-                <div className="eq-bar-count">{v}</div>
-                <div
-                  className={`eq-bar ${v === MAX_W ? "current" : "history"}`}
-                  style={{ height: `${(v / MAX_W) * 120}px` }}
-                />
-                <div className="eq-bar-day">{DAYS[i].replace("周","")}</div>
-              </div>
-            ))}
-          </div>
-        </DataCard>
-
-        {/* Device type distribution */}
-        <DataCard>
-          <div className="data-card-header">
-            <div className="flex gap-2" style={{ alignItems: "center" }}>
-              <div className="data-card-icon-wrap" style={{ background: "rgba(139,92,246,0.1)", color: "var(--color-purple)" }}>
-                <PieChart size={18} />
-              </div>
-              <div>
-                <div className="text-sm font-bold">设备类型分布</div>
-                <div style={{ fontSize: 12, color: "var(--color-muted)" }}>各类别设备数量及在线率</div>
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: "0 12px 12px" }}>
-            {TYPE_DATA.map(cat => (
-              <div key={cat.name} style={{ padding: "10px 0", borderBottom: "1px solid var(--color-bg)" }}>
-                <div className="eq-type-row">
-                  <div className="eq-type-name">
-                    <div className="eq-type-dot" style={{ background: cat.color }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>{cat.name}</span>
-                  </div>
-                  <div className="eq-type-counts">
-                    <CheckCircle2 size={12} style={{ color: "var(--color-success)" }} />
-                    <span style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600 }}>{cat.online}</span>
-                    {cat.fault > 0 && (
-                      <>
-                        <XCircle size={12} style={{ color: "var(--color-danger)" }} />
-                        <span style={{ fontSize: 12, color: "var(--color-danger)", fontWeight: 600 }}>{cat.fault}</span>
-                      </>
-                    )}
+      <InteractionRailLayout
+        main={(
+          <>
+            <div className="page-grid-2" style={{ alignItems: "start" }}>
+              <DataCard>
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: "center" }}>
+                    <div className="data-card-icon-wrap" style={{ background: "rgba(59,130,246,0.1)", color: "var(--color-info)" }}>
+                      <TrendingUp size={18} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold">本周使用次数趋势</div>
+                      <div style={{ fontSize: 12, color: "var(--color-muted)" }}>各设备日使用次数统计</div>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="eq-type-progress">
-                    <div className="eq-type-progress-fill" style={{ width: `${(cat.online / cat.count) * 100}%`, background: cat.color }} />
+                <div className="eq-bar-chart">
+                  {WEEKLY.map((v, i) => (
+                    <div key={i} className="eq-bar-col">
+                      <div className="eq-bar-count">{v}</div>
+                      <div className={`eq-bar ${v === MAX_W ? "current" : "history"}`} style={{ height: `${(v / MAX_W) * 120}px` }} />
+                      <div className="eq-bar-day">{DAYS[i].replace("周", "")}</div>
+                    </div>
+                  ))}
+                </div>
+              </DataCard>
+
+              <DataCard>
+                <div className="data-card-header">
+                  <div className="flex gap-2" style={{ alignItems: "center" }}>
+                    <div className="data-card-icon-wrap" style={{ background: "rgba(139,92,246,0.1)", color: "var(--color-purple)" }}>
+                      <PieChart size={18} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold">设备类型分布</div>
+                      <div style={{ fontSize: 12, color: "var(--color-muted)" }}>各类别设备数量及在线率</div>
+                    </div>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text)", width: 34, textAlign: "right" }}>{cat.count}台</span>
+                </div>
+                <div style={{ padding: "0 12px 12px" }}>
+                  {TYPE_DATA.map(cat => (
+                    <div key={cat.name} style={{ padding: "10px 0", borderBottom: "1px solid var(--color-bg)" }}>
+                      <div className="eq-type-row">
+                        <div className="eq-type-name">
+                          <div className="eq-type-dot" style={{ background: cat.color }} />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>{cat.name}</span>
+                        </div>
+                        <div className="eq-type-counts">
+                          <CheckCircle2 size={12} style={{ color: "var(--color-success)" }} />
+                          <span style={{ fontSize: 12, color: "var(--color-success)", fontWeight: 600 }}>{cat.online}</span>
+                          {cat.fault > 0 && (
+                            <>
+                              <XCircle size={12} style={{ color: "var(--color-danger)" }} />
+                              <span style={{ fontSize: 12, color: "var(--color-danger)", fontWeight: 600 }}>{cat.fault}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="eq-type-progress">
+                          <div className="eq-type-progress-fill" style={{ width: `${(cat.online / cat.count) * 100}%`, background: cat.color }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text)", width: 34, textAlign: "right" }}>{cat.count}台</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </DataCard>
+            </div>
+
+            <DataCard>
+              <div className="data-card-header">
+                <div className="flex gap-2" style={{ alignItems: "center" }}>
+                  <div className="data-card-icon-wrap" style={{ background: "var(--color-primary-light)", color: "var(--color-primary)" }}>
+                    <Monitor size={18} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold">高频使用设备 TOP 5</div>
+                    <div style={{ fontSize: 12, color: "var(--color-muted)" }}>本周使用次数最多的设备</div>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
+              <div style={{ padding: "0 12px 12px" }}>
+                {[
+                  { name: "心电监护仪 #1", room: "201-1床", uses: 128, uptime: "99.2%" },
+                  { name: "血压监测仪", room: "202-1床", uses: 112, uptime: "98.5%" },
+                  { name: "血糖监测仪", room: "204-1床", uses: 98, uptime: "99.8%" },
+                  { name: "呼吸监测仪", room: "205-1床", uses: 86, uptime: "97.3%" },
+                  { name: "智能床垫传感器", room: "203-1床", uses: 74, uptime: "96.1%" },
+                ].map((d, i) => (
+                  <div key={d.name} className="eq-top-device">
+                    <span className="eq-top-rank" style={{ color: i < 3 ? "var(--color-primary)" : "var(--color-muted)" }}>{i + 1}</span>
+                    <div className="eq-top-info">
+                      <div className="eq-top-name">{d.name}</div>
+                      <div className="eq-top-room">{d.room}</div>
+                    </div>
+                    <div className="eq-top-stat">
+                      <div className="eq-top-stat-val" style={{ color: "var(--color-primary)" }}>{d.uses}</div>
+                      <div className="eq-top-stat-lbl">使用次数</div>
+                    </div>
+                    <div className="eq-top-stat">
+                      <div className="eq-top-stat-val" style={{ color: "var(--color-success)" }}>{d.uptime}</div>
+                      <div className="eq-top-stat-lbl">在线率</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="统计边界" subtitle="主区优先保留趋势与 TOP 设备，说明型内容统一后置。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">先看趋势和类型分布，再看高频设备对象。</div>
+                <div className="page-help-card-item">统计页用于观察整体使用与在线率，不直接替代运维处理动作。</div>
+                <div className="page-help-card-item">完整设备模块说明统一回到设备帮助页。</div>
+              </div>
+            </DataCard>
 
-      {/* Top devices */}
-      <DataCard>
-        <div className="data-card-header">
-          <div className="flex gap-2" style={{ alignItems: "center" }}>
-            <div className="data-card-icon-wrap" style={{ background: "var(--color-primary-light)", color: "var(--color-primary)" }}>
-              <Monitor size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-bold">高频使用设备 TOP 5</div>
-              <div style={{ fontSize: 12, color: "var(--color-muted)" }}>本周使用次数最多的设备</div>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: "0 12px 12px" }}>
-          {[
-            { name: "心电监护仪 #1", room: "201-1床", uses: 128, uptime: "99.2%" },
-            { name: "血压监测仪", room: "202-1床", uses: 112, uptime: "98.5%" },
-            { name: "血糖监测仪", room: "204-1床", uses: 98, uptime: "99.8%" },
-            { name: "呼吸监测仪", room: "205-1床", uses: 86, uptime: "97.3%" },
-            { name: "智能床垫传感器", room: "203-1床", uses: 74, uptime: "96.1%" },
-          ].map((d, i) => (
-            <div key={d.name} className="eq-top-device">
-              <span className="eq-top-rank" style={{ color: i < 3 ? "var(--color-primary)" : "var(--color-muted)" }}>{i + 1}</span>
-              <div className="eq-top-info">
-                <div className="eq-top-name">{d.name}</div>
-                <div className="eq-top-room">{d.room}</div>
-              </div>
-              <div className="eq-top-stat">
-                <div className="eq-top-stat-val" style={{ color: "var(--color-primary)" }}>{d.uses}</div>
-                <div className="eq-top-stat-lbl">使用次数</div>
-              </div>
-              <div className="eq-top-stat">
-                <div className="eq-top-stat-val" style={{ color: "var(--color-success)" }}>{d.uptime}</div>
-                <div className="eq-top-stat-lbl">在线率</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整设备统计说明迁移到显式帮助页"
+              summary="设备统计页现在优先展示趋势、类型分布和高频设备，说明型内容统一后置。"
+              items={[
+                '先看总量和趋势，再看类型分布。',
+                'TOP 设备用于识别重点对象，不直接代表风险等级。',
+                '若需要完整说明，进入设备帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看设备帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

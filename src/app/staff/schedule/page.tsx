@@ -1,11 +1,13 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
+import { getCareScene, matchesEmploymentScene } from '@/lib/care-scenes'
 import { getScheduleAiInsights, getScheduleAiNarratives } from '@/lib/mock/admin-ai'
 import { getNursingServiceSnapshot, isNursingWorkflowDemoMode, refreshNursingServiceWorkflow, resetNursingServiceWorkflowDemo, subscribeNursingServiceWorkflow } from '@/lib/mock/nursing-service-workflow'
 import { Bot, BriefcaseMedical, CalendarDays, Sparkles, Users } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -24,6 +26,8 @@ function formatAssessmentPlanLabel(value: string) {
 }
 
 export default function SchedulePage() {
+  const searchParams = useSearchParams()
+  const scene = getCareScene(searchParams.get('scene'))
   const demoMode = isNursingWorkflowDemoMode()
   const [resetBusy, setResetBusy] = useState(false)
   const serviceSnapshot = useSyncExternalStore(
@@ -37,8 +41,63 @@ export default function SchedulePage() {
   }, [])
 
   const schedule = serviceSnapshot.schedule
+  const visibleStaffRows = useMemo(
+    () => schedule.staffRows.filter(item => matchesEmploymentScene(item.employmentSource, scene)),
+    [scene, schedule.staffRows],
+  )
+  const visibleStaffNames = useMemo(
+    () => new Set(visibleStaffRows.map(item => item.staffName)),
+    [visibleStaffRows],
+  )
+  const visibleShiftDemand = useMemo(() => {
+    const counters = new Map<string, number>()
+
+    visibleStaffRows.forEach(item => {
+      item.cells.forEach(cell => {
+        cell.assignments.forEach(assignment => {
+          counters.set(assignment.shift, (counters.get(assignment.shift) ?? 0) + 1)
+        })
+      })
+    })
+
+    return Object.entries(SHIFTS).map(([shift]) => ({ shift, count: counters.get(shift) ?? 0 }))
+  }, [visibleStaffRows])
+  const visibleAssignments = useMemo(
+    () => visibleShiftDemand.reduce((sum, item) => sum + item.count, 0),
+    [visibleShiftDemand],
+  )
+  const visiblePendingReviewPlans = useMemo(
+    () => visibleStaffRows.reduce((sum, item) => sum + item.pendingReviewPlans, 0),
+    [visibleStaffRows],
+  )
+  const visibleAttentionPlans = useMemo(
+    () => schedule.attentionPlans.filter(item => visibleStaffNames.has(item.ownerName)),
+    [schedule.attentionPlans, visibleStaffNames],
+  )
+  const sceneMeta = scene === 'home'
+    ? {
+      title: '居家派案排期',
+      subtitle: `${schedule.weekLabel} · 聚焦第三方协同、上门窗口与路线分派`,
+      overviewTitle: `${schedule.weekLabel} 居家派案总览`,
+      overviewDescription: '排期页优先展示第三方协同人员、上门评定窗口和跨区域派案缺口，方便居家评定主管快速调度。',
+    }
+    : scene === 'institutional'
+      ? {
+        title: '机构派班排期',
+        subtitle: `${schedule.weekLabel} · 聚焦自有团队、院内班次与执行覆盖`,
+        overviewTitle: `${schedule.weekLabel} 机构派班总览`,
+        overviewDescription: '排期页优先展示院内自有团队班次、执行覆盖和待复核模板，方便值班主管调整当班负荷。',
+      }
+      : {
+        title: '派案排期',
+        subtitle: demoMode ? `${schedule.weekLabel} · 直接查看前端 demo 评定派案、班次与复评分派` : `${schedule.weekLabel} · 直接查看后端返回的真实日期、班次与评定派案`,
+        overviewTitle: `${schedule.weekLabel} 派案排期总览`,
+        overviewDescription: demoMode
+          ? '排期页把待复核模板、待分派案件、AI 班次风险和执行覆盖面放在同一屏里，方便排班主管快速决策。'
+          : '排期页把待复核模板、待分派案件和执行覆盖面放在同一屏里，方便排班主管直接基于真实派案做决策。',
+      }
   const aiInputs = useMemo(
-    () => schedule.staffRows.map(item => ({
+    () => visibleStaffRows.map(item => ({
       name: item.staffName,
       shifts: DAYS.map(day => {
         const cell = item.cells.find(entry => entry.dayLabel === day)
@@ -49,18 +108,91 @@ export default function SchedulePage() {
         return Array.from(new Set(cell.assignments.map(entry => entry.shift))).join('/')
       }),
     })),
-    [schedule.staffRows],
+    [visibleStaffRows],
   )
-  const aiInsights = getScheduleAiInsights(aiInputs)
-  const aiNarratives = getScheduleAiNarratives(aiInputs)
-    const totalAssignments = schedule.shiftDemand.reduce((sum, item) => sum + item.count, 0)
+  const localAiInsights = useMemo(
+    () => (demoMode ? getScheduleAiInsights(aiInputs) : []),
+    [aiInputs, demoMode],
+  )
+  const localAiNarratives = useMemo(
+    () => (demoMode ? getScheduleAiNarratives(aiInputs) : []),
+    [aiInputs, demoMode],
+  )
+  const liveScheduleHighlights = useMemo(
+    () => ([
+      {
+        id: 'live-assignment-coverage',
+        title: '真实派案覆盖',
+        summary: visibleAssignments > 0
+          ? `本周已同步 ${visibleAssignments} 条真实班次分派，当前页不再额外叠加前端本地 AI 排班摘要。`
+          : '当前真实派案为空，页面保持 live 空态并等待 Care Service 返回新分派。',
+        metric: `${visibleAssignments} 条`,
+        action: visibleAssignments > 0 ? '优先检查班次覆盖是否与待复核模板一致。' : '先回到模板页确认是否已生成并发布派案。',
+        variant: visibleAssignments > 0 ? 'success' as const : 'info' as const,
+      },
+      {
+        id: 'live-review-gap',
+        title: '待复核模板',
+        summary: visiblePendingReviewPlans > 0
+          ? `当前仍有 ${visiblePendingReviewPlans} 条模板待复核，建议先清理模板缺口，再继续调整排期。`
+          : '当前没有待复核模板，排班主管可以直接围绕真实派案做覆盖调整。',
+        metric: `${visiblePendingReviewPlans} 条`,
+        action: visiblePendingReviewPlans > 0 ? '返回模板页完成复核，避免派案与模板口径不一致。' : '继续检查重点计划和班次覆盖是否存在空档。',
+        variant: visiblePendingReviewPlans > 0 ? 'warning' as const : 'success' as const,
+      },
+      {
+        id: 'live-attention-plans',
+        title: '重点计划关注',
+        summary: visibleAttentionPlans.length > 0
+          ? `当前场景有 ${visibleAttentionPlans.length} 条重点计划需要优先盯办，建议按责任人和班次逐条确认。`
+          : '当前场景没有重点计划堆积，说明真实派案与模板关注项基本对齐。',
+        metric: `${visibleAttentionPlans.length} 条`,
+        action: visibleAttentionPlans.length > 0 ? '优先核对责任人、班次和抽检加派情况。' : '继续保持当前派案节奏，关注新增计划写入。',
+        variant: visibleAttentionPlans.length > 0 ? 'danger' as const : 'info' as const,
+      },
+    ]),
+    [visibleAssignments, visibleAttentionPlans.length, visiblePendingReviewPlans],
+  )
+  const overviewSignals = useMemo(
+    () => {
+      const baseSignals = [
+        { label: serviceSnapshot.loading ? '派案板同步中' : '派案板已同步', tone: serviceSnapshot.loading ? 'warning' as const : 'success' as const },
+        { label: serviceSnapshot.error || '当前无派案同步异常', tone: serviceSnapshot.error ? 'danger' as const : 'neutral' as const },
+      ]
+
+      if (demoMode) {
+        return [
+          ...baseSignals,
+          ...localAiInsights.slice(0, 2).map(item => ({
+            label: item.title,
+            tone: item.variant === 'warning' ? 'warning' as const : item.variant === 'success' ? 'success' as const : 'info' as const,
+          })),
+        ]
+      }
+
+      return [
+        ...baseSignals,
+        {
+          label: visibleAssignments > 0 ? `当前已同步 ${visibleAssignments} 条真实分派` : '当前真实分派为空',
+          tone: visibleAssignments > 0 ? 'success' as const : 'info' as const,
+        },
+        {
+          label: visiblePendingReviewPlans > 0 ? `仍有 ${visiblePendingReviewPlans} 条模板待复核` : '当前无待复核模板',
+          tone: visiblePendingReviewPlans > 0 ? 'warning' as const : 'neutral' as const,
+        },
+      ]
+    },
+    [demoMode, localAiInsights, serviceSnapshot.error, serviceSnapshot.loading, visibleAssignments, visiblePendingReviewPlans],
+  )
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'staff-schedule',
     entityId: 'schedule-board',
     entityName: schedule.weekLabel,
     focus,
     target,
+    scene: scene ?? undefined,
   })
+  const helpHref = '/staff/help'
 
   async function handleResetDemo() {
     setResetBusy(true)
@@ -74,8 +206,8 @@ export default function SchedulePage() {
   return (
     <div className="page-root animate-fade-up">
       <PageHeader
-        title="派案排期"
-        subtitle={demoMode ? `${schedule.weekLabel} · 直接查看前端 demo 评定派案、班次与复评分派` : `${schedule.weekLabel} · 直接查看后端返回的真实日期、班次与评定派案`}
+        title={sceneMeta.title}
+        subtitle={sceneMeta.subtitle}
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {demoMode ? <button className="btn btn-ghost btn-sm" disabled={resetBusy} onClick={() => void handleResetDemo()}>{resetBusy ? '重置中...' : '重置 Demo 数据'}</button> : null}
@@ -85,228 +217,255 @@ export default function SchedulePage() {
         }
       />
 
-          <WorkflowOverviewCard
+      <InteractionRailLayout
+        main={(
+          <>
+            <WorkflowOverviewCard
               eyebrow="Schedule Operations"
-              title={`${schedule.weekLabel} 派案排期总览`}
-              description="排期页不只是展示班表，而是把待复核模板、待分派案件、AI 班次风险和执行覆盖面放在同一屏里，方便排班主管快速决策。"
+              title={sceneMeta.overviewTitle}
+              description={sceneMeta.overviewDescription}
               badge={<Tag variant={demoMode ? 'info' : 'success'}>{demoMode ? 'Demo Workflow' : 'Live Workflow'}</Tag>}
               metrics={[
-                  { label: '排期评估员', value: schedule.staffRows.length, hint: '当前排期池人数', tone: 'primary' },
-                  { label: '已发布派案', value: schedule.publishedAssignments, hint: `累计 ${totalAssignments} 条班次分派`, tone: 'success' },
-                  { label: '待复核模板', value: schedule.pendingReviewPlans, hint: '需先回到模板页确认', tone: schedule.pendingReviewPlans > 0 ? 'warning' : 'success' },
-                  { label: '待分派案件', value: schedule.unassignedPlans, hint: '尚未落到具体评估员', tone: schedule.unassignedPlans > 0 ? 'danger' : 'success' },
+                { label: '排期评估员', value: visibleStaffRows.length, hint: '当前场景排期池人数', tone: 'primary' },
+                { label: '已发布派案', value: visibleAssignments, hint: `累计 ${visibleAssignments} 条班次分派`, tone: 'success' },
+                { label: '待复核模板', value: visiblePendingReviewPlans, hint: '需先回到模板页确认', tone: visiblePendingReviewPlans > 0 ? 'warning' : 'success' },
+                { label: '重点计划', value: visibleAttentionPlans.length, hint: '当前场景需优先关注', tone: visibleAttentionPlans.length > 0 ? 'danger' : 'success' },
               ]}
-              signals={[
-                  { label: serviceSnapshot.loading ? '派案板同步中' : '派案板已同步', tone: serviceSnapshot.loading ? 'warning' : 'success' },
-                  { label: serviceSnapshot.error || '当前无派案同步异常', tone: serviceSnapshot.error ? 'danger' : 'neutral' },
-                  ...aiInsights.slice(0, 2).map(item => ({ label: item.title, tone: item.variant === 'warning' ? 'warning' as const : item.variant === 'success' ? 'success' as const : 'info' as const })),
-              ]}
+              signals={overviewSignals}
               actions={
-                  <>
-                      <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
-                      <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">查看 AI 调整建议</Link>
-                  </>
+                <>
+                  <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
+                  <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">查看 AI 运营中心</Link>
+                </>
               }
-          />
+            />
 
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <StatCard icon={<Users size={18} />} label="排期评估员" value={schedule.staffRows.length} color="primary" />
-        <StatCard icon={<CalendarDays size={18} />} label="已发布派案" value={schedule.publishedAssignments} color="success" />
-        <StatCard icon={<Sparkles size={18} />} label="模板待复核" value={schedule.pendingReviewPlans} sub="需先回到模板页确认" color="warning" />
-        <StatCard icon={<BriefcaseMedical size={18} />} label="待分派案件" value={schedule.unassignedPlans} sub="当前未落到具体评估员" color="danger" />
-      </div>
+            <div className="kpi-grid" style={{ marginBottom: 16 }}>
+              <StatCard icon={<Users size={18} />} label="排期评估员" value={visibleStaffRows.length} color="primary" />
+              <StatCard icon={<CalendarDays size={18} />} label="已发布派案" value={visibleAssignments} color="success" />
+              <StatCard icon={<Sparkles size={18} />} label="模板待复核" value={visiblePendingReviewPlans} sub="需先回到模板页确认" color="warning" />
+              <StatCard icon={<BriefcaseMedical size={18} />} label="重点计划" value={visibleAttentionPlans.length} sub="当前场景需优先关注" color="danger" />
+            </div>
 
-      {serviceSnapshot.loading ? (
-        <DataCard title="正在同步派案看板" subtitle={demoMode ? '前端 demo 派案板正在刷新本地演示分派，请稍候。' : 'Care service 与 Admin BFF 正在返回本周真实派案，请稍候。'} badge={<Tag variant="warning">Loading</Tag>} />
-      ) : null}
+            {serviceSnapshot.loading ? (
+              <DataCard title="正在同步派案看板" subtitle={demoMode ? '前端 demo 派案板正在刷新本地演示分派，请稍候。' : 'Care service 与 Admin BFF 正在返回本周真实派案，请稍候。'} badge={<Tag variant="warning">Loading</Tag>} />
+            ) : null}
 
-      {serviceSnapshot.error ? (
-        <DataCard title="派案同步异常" subtitle={serviceSnapshot.error} badge={<Tag variant="danger">Workflow Error</Tag>} />
-      ) : null}
+            {serviceSnapshot.error ? (
+              <DataCard title="派案同步异常" subtitle={serviceSnapshot.error} badge={<Tag variant="danger">Workflow Error</Tag>} />
+            ) : null}
 
-      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
-        <DataCard
-          icon={<Bot size={16} />}
-          title="AI 排班摘要"
-          subtitle={demoMode ? '基于 demo 派案板识别班次密度、夜班覆盖和连续上班风险，不自动改排期。' : '基于真实派案板识别班次密度、夜班覆盖和连续上班风险，不自动改排期。'}
-          badge={<Tag variant="warning">排班主管确认</Tag>}
-        >
-          <div style={{ display: 'grid', gap: 10 }}>
-            {aiInsights.map(item => (
-              <div key={item.id} style={{ borderRadius: 12, border: '1px solid var(--color-border)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
-                    <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+            <DataCard title="班次矩阵" subtitle="主区保留真实排期矩阵，先支撑派案、补位和主管判断。" badge={<Tag variant="primary">Schedule Matrix</Tag>}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+                {Object.entries(SHIFTS).map(([name, cfg]) => (
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 4, background: cfg.bg, border: `1.5px solid ${cfg.color}` }} />
+                    <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{cfg.label}</span>
                   </div>
-                  <Tag variant={item.variant}>{item.metric}</Tag>
-                </div>
-                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
-              </div>
-            ))}
-            <div>
-              <Link href={buildAiHref('schedule-density', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-            </div>
-          </div>
-        </DataCard>
-
-        <DataCard
-          icon={<Sparkles size={16} />}
-          title="认定联动总览"
-          subtitle={demoMode ? '模板、任务和派案已统一进同一条前端 demo 链路，优先暴露待复核和待分派缺口。' : '模板、任务和派案已统一进同一条后端链路，优先暴露待复核和待分派缺口。'}
-        >
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-              {schedule.shiftDemand.map(item => (
-                <div key={item.shift} style={{ borderRadius: 12, background: 'var(--color-bg)', padding: 12 }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.shift}</div>
-                  <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{item.count} 条分派</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {schedule.attentionPlans.length > 0 ? schedule.attentionPlans.slice(0, 4).map(plan => (
-                <div key={plan.id} style={{ borderRadius: 12, border: '1px solid var(--color-border)', padding: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{plan.elderlyName} · {formatAssessmentPlanLabel(plan.packageName)}</div>
-                    <Tag variant={plan.status === '待复核' ? 'warning' : 'danger'}>{plan.status}</Tag>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>责任角色 {plan.ownerRole} · 当前责任人 {plan.ownerName} · 执行班次 {plan.shift}</div>
-                </div>
-              )) : (
-                <div style={{ borderRadius: 12, background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                  当前没有待复核或待分派的认定模板，派案与任务负荷处于一致状态。
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
-              <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-            </div>
-          </div>
-        </DataCard>
-      </div>
-
-      <DataCard
-        icon={<CalendarDays size={16} />}
-        title="AI 调整建议"
-          subtitle={demoMode ? '把 demo 派案板转成管理可读摘要，而不是只看格子。' : '把真实派案板转成管理可读摘要，而不是只看格子。'}
-      >
-        <div style={{ display: 'grid', gap: 10 }}>
-          {aiNarratives.map(item => (
-            <div key={item} style={{ borderRadius: 12, background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
-              {item}
-            </div>
-          ))}
-        </div>
-      </DataCard>
-
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
-        {Object.entries(SHIFTS).map(([name, cfg]) => (
-          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 4, background: cfg.bg, border: `1.5px solid ${cfg.color}` }} />
-            <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{cfg.label}</span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <DataCard>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--color-bg)', background: 'var(--color-bg)', position: 'sticky', left: 0, zIndex: 2, minWidth: 240 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Users size={14} />员工
-                    </div>
-                  </th>
-                  {DAYS.map(day => (
-                    <th key={day} style={{ padding: '12px 8px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--color-text)', borderBottom: '1px solid var(--color-bg)', background: 'var(--color-bg)', minWidth: 150 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <CalendarDays size={13} style={{ color: 'var(--color-primary)' }} />{day}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {schedule.staffRows.map((item, rowIndex) => (
-                  <tr key={item.staffId} style={{ background: rowIndex % 2 === 0 ? '#FFFFFF' : 'var(--color-bg)' }}>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--color-bg)', verticalAlign: 'top' }}>
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--color-primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', flexShrink: 0 }}>
-                            {item.staffName.charAt(0)}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>{item.staffName}</div>
-                            <div style={{ marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              <Tag variant="info">{item.staffRole}</Tag>
-                              <Tag variant={item.employmentSource === '第三方合作' ? 'warning' : 'primary'}>{item.employmentSource}</Tag>
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>
-                          已承接 {item.assignedPlans} 条评定任务{item.exceptionPlans > 0 ? ` · 抽检加派 ${item.exceptionPlans} 条` : ''}{item.pendingReviewPlans > 0 ? ` · 待复核 ${item.pendingReviewPlans} 条` : ''}
-                          {item.partnerAgencyName ? ` · ${item.partnerAgencyName}` : ''}
-                        </div>
-                      </div>
-                    </td>
-                    {DAYS.map(day => {
-                      const cell = item.cells.find(entry => entry.dayLabel === day)
-                      return (
-                        <td key={`${item.staffId}-${day}`} style={{ padding: '8px', borderBottom: '1px solid var(--color-bg)', verticalAlign: 'top' }}>
-                          {cell && cell.assignments.length > 0 ? (
-                            <div style={{ display: 'grid', gap: 6 }}>
-                              {cell.assignments.map(assignment => {
-                                const cfg = SHIFTS[assignment.shift] ?? SHIFTS.休息
-                                return (
-                                  <div key={assignment.assignmentId} style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: 8, background: '#fff' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                                      <Tag variant={assignment.status === '异常插单' ? 'danger' : assignment.status === '执行中' ? 'success' : 'neutral'}>{assignment.status}</Tag>
-                                    </div>
-                                    <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{assignment.elderlyName}</div>
-                                    <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>{formatAssessmentPlanLabel(assignment.packageName)} · {assignment.room}</div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ) : (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: SHIFTS.休息.bg, color: SHIFTS.休息.color }}>
-                              休息
-                            </div>
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </DataCard>
-      </div>
+              </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginTop: 16 }}>
-        {schedule.daySummaries.map(day => (
-          <div key={day.dayLabel} className="data-card" style={{ padding: '12px 14px' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>{day.dayLabel}</div>
-            {day.shifts.length > 0 ? day.shifts.map(item => {
-              const cfg = SHIFTS[item.shift] ?? SHIFTS.休息
-              return (
-                <div key={`${day.dayLabel}-${item.shift}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }}>
-                  <span style={{ fontSize: 11, color: cfg.color, fontWeight: 600 }}>{item.shift}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text)' }}>{item.count}条</span>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--color-bg)', background: 'var(--color-bg)', position: 'sticky', left: 0, zIndex: 2, minWidth: 240 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Users size={14} />员工
+                        </div>
+                      </th>
+                      {DAYS.map(day => (
+                        <th key={day} style={{ padding: '12px 8px', textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--color-text)', borderBottom: '1px solid var(--color-bg)', background: 'var(--color-bg)', minWidth: 150 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                            <CalendarDays size={13} style={{ color: 'var(--color-primary)' }} />{day}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleStaffRows.map((item, rowIndex) => (
+                      <tr key={item.staffId} style={{ background: rowIndex % 2 === 0 ? '#FFFFFF' : 'var(--color-bg)' }}>
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--color-bg)', verticalAlign: 'top' }}>
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--color-primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', flexShrink: 0 }}>
+                                {item.staffName.charAt(0)}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>{item.staffName}</div>
+                                <div style={{ marginTop: 3, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <Tag variant="info">{item.staffRole}</Tag>
+                                  <Tag variant={item.employmentSource === '第三方合作' ? 'warning' : 'primary'}>{item.employmentSource}</Tag>
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>
+                              已承接 {item.assignedPlans} 条评定任务{item.exceptionPlans > 0 ? ` · 抽检加派 ${item.exceptionPlans} 条` : ''}{item.pendingReviewPlans > 0 ? ` · 待复核 ${item.pendingReviewPlans} 条` : ''}
+                              {item.partnerAgencyName ? ` · ${item.partnerAgencyName}` : ''}
+                            </div>
+                          </div>
+                        </td>
+                        {DAYS.map(day => {
+                          const cell = item.cells.find(entry => entry.dayLabel === day)
+                          return (
+                            <td key={`${item.staffId}-${day}`} style={{ padding: '8px', borderBottom: '1px solid var(--color-bg)', verticalAlign: 'top' }}>
+                              {cell && cell.assignments.length > 0 ? (
+                                <div style={{ display: 'grid', gap: 6 }}>
+                                  {cell.assignments.map(assignment => {
+                                    const cfg = SHIFTS[assignment.shift] ?? SHIFTS.休息
+                                    return (
+                                      <div key={assignment.assignmentId} style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: 8, background: '#fff' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                                          <Tag variant={assignment.status === '异常插单' ? 'danger' : assignment.status === '执行中' ? 'success' : 'neutral'}>{assignment.status}</Tag>
+                                        </div>
+                                        <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{assignment.elderlyName}</div>
+                                        <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>{formatAssessmentPlanLabel(assignment.packageName)} · {assignment.room}</div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: SHIFTS.休息.bg, color: SHIFTS.休息.color }}>
+                                  休息
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DataCard>
+
+            <DataCard title="每日班次汇总" subtitle="主区保留日汇总，先服务主管快速看覆盖缺口。" badge={<Tag variant="info">Day Summary</Tag>}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+                {schedule.daySummaries.map(day => (
+                  <div key={day.dayLabel} className="data-card" style={{ padding: '12px 14px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)', marginBottom: 6 }}>{day.dayLabel}</div>
+                    {day.shifts.length > 0 ? day.shifts.map(item => {
+                      const cfg = SHIFTS[item.shift] ?? SHIFTS.休息
+                      return (
+                        <div key={`${day.dayLabel}-${item.shift}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }}>
+                          <span style={{ fontSize: 11, color: cfg.color, fontWeight: 600 }}>{item.shift}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text)' }}>{item.count}条</span>
+                        </div>
+                      )
+                    }) : (
+                      <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>暂无分派</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard
+              icon={<Bot size={16} />}
+              title={demoMode ? 'AI 排班摘要' : '真实派案摘要'}
+              subtitle={demoMode ? '基于 demo 派案板识别班次密度、夜班覆盖和连续上班风险，不自动改排期。' : 'live 模式下只展示真实派案与模板缺口摘要，不再直接渲染前端本地 AI 排班建议。'}
+              badge={<Tag variant={demoMode ? 'warning' : 'success'}>{demoMode ? '排班主管确认' : 'Live Read Model'}</Tag>}
+            >
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(demoMode ? localAiInsights : liveScheduleHighlights).map(item => (
+                  <div key={item.id} style={{ borderRadius: 12, border: '1px solid var(--color-border)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                        <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                      </div>
+                      <Tag variant={item.variant}>{item.metric}</Tag>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+                  </div>
+                ))}
+                <div>
+                  <Link href={buildAiHref('schedule-density', 'inference')} className="btn btn-secondary btn-sm">{demoMode ? '进入 AI 运营中心' : '查看 AI 运营中心'}</Link>
                 </div>
-              )
-            }) : (
-              <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>暂无分派</div>
+              </div>
+            </DataCard>
+
+            <DataCard
+              icon={<Sparkles size={16} />}
+              title="认定联动总览"
+              subtitle={demoMode ? '模板、任务和派案已统一进同一条前端 demo 链路，优先暴露待复核和待分派缺口。' : '模板、任务和派案已统一进同一条后端链路，优先暴露待复核和待分派缺口。'}
+            >
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+                  {visibleShiftDemand.map(item => (
+                    <div key={item.shift} style={{ borderRadius: 12, background: 'var(--color-bg)', padding: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.shift}</div>
+                      <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{item.count} 条分派</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {visibleAttentionPlans.length > 0 ? visibleAttentionPlans.slice(0, 4).map(plan => (
+                    <div key={plan.id} style={{ borderRadius: 12, border: '1px solid var(--color-border)', padding: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{plan.elderlyName} · {formatAssessmentPlanLabel(plan.packageName)}</div>
+                        <Tag variant={plan.status === '待复核' ? 'warning' : 'danger'}>{plan.status}</Tag>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>责任角色 {plan.ownerRole} · 当前责任人 {plan.ownerName} · 执行班次 {plan.shift}</div>
+                    </div>
+                  )) : (
+                    <div style={{ borderRadius: 12, background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                      当前场景没有待复核或待分派的认定模板，派案与任务负荷处于一致状态。
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
+                  <Link href={buildAiHref('schedule-adjustment', 'rules')} className="btn btn-secondary btn-sm">查看 AI 运营中心</Link>
+                </div>
+              </div>
+            </DataCard>
+
+            {demoMode ? (
+              <DataCard
+                icon={<CalendarDays size={16} />}
+                title="AI 调整建议"
+                subtitle="把 demo 派案板转成管理可读摘要，而不是只看格子。"
+              >
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {localAiNarratives.map(item => (
+                    <div key={item} className="page-help-card-item">{item}</div>
+                  ))}
+                </div>
+              </DataCard>
+            ) : (
+              <DataCard
+                icon={<CalendarDays size={16} />}
+                title="Live 模式说明"
+                subtitle="当前页在 live 模式下优先展示真实派案和模板缺口，不再直接渲染前端本地 AI 调整建议。"
+                badge={<Tag variant="info">Deterministic Read Model</Tag>}
+              >
+                <div className="page-help-card-item">
+                  当前页已经切到真实派案只读模型：班次矩阵、重点计划、待复核模板和覆盖摘要都直接来自护理工作流快照。若需要 AI 解释，请进入 AI 运营中心查看独立推理或规则页，而不是在排班页继续混用前端本地 AI 摘要。
+                </div>
+              </DataCard>
             )}
-          </div>
-        ))}
-      </div>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整人力协同边界迁移到显式帮助页"
+              summary="员工排班页现在只保留排期总览、班次矩阵和每日汇总，完整协同口径与 AI 说明统一后置。"
+              items={[
+                '先看排期总览和模板缺口，再决定是否调整班次。',
+                '班次矩阵用于核对真实派案覆盖，不替代主管排班确认。',
+                '若需要完整人力协同边界与路径说明，进入帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看员工管理帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

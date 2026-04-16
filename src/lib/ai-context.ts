@@ -1,3 +1,5 @@
+import type { CareScene } from '@/lib/care-scenes'
+
 export type AiContextTarget = 'inference' | 'rules' | 'logs'
 
 export interface AiTrackingContext {
@@ -6,6 +8,7 @@ export interface AiTrackingContext {
   entityName?: string
   focus?: string
   target?: AiContextTarget
+  scene?: CareScene
 }
 
 type SearchParamsLike = Pick<URLSearchParams, 'get'>
@@ -22,6 +25,9 @@ const AI_SOURCE_LABELS: Record<string, string> = {
   'supply-detail': '物资详情',
   'staff-detail': '员工详情',
   'staff-schedule': '排班管理',
+  'nursing-checkin': '服务打卡管理',
+  'analytics-report': 'AI 报表中心',
+  'elderly-checkin': '个案评定中心',
   'equipment-list': '设备列表',
   'equipment-detail': '设备详情',
   'alerts-center': '报警中心',
@@ -53,6 +59,7 @@ export function appendAiTrackingContext(href: string, context: AiTrackingContext
   if (context.entityName) query.set('entityName', context.entityName)
   if (context.focus) query.set('focus', context.focus)
   if (context.target) query.set('target', context.target)
+  if (context.scene) query.set('scene', context.scene)
 
   const separator = href.includes('?') ? '&' : '?'
   const serialized = query.toString()
@@ -71,6 +78,9 @@ export function readAiTrackingContext(searchParams: SearchParamsLike | null | un
     entityName: searchParams?.get('entityName') ?? undefined,
     focus: searchParams?.get('focus') ?? undefined,
     target: target === 'inference' || target === 'rules' || target === 'logs' ? target : undefined,
+    scene: searchParams?.get('scene') === 'institutional' || searchParams?.get('scene') === 'home'
+      ? searchParams.get('scene') as CareScene
+      : undefined,
   }
 }
 
@@ -84,6 +94,12 @@ export function getAiTargetLabel(target?: string) {
   return AI_TARGET_LABELS[target as AiContextTarget] ?? target
 }
 
+export function getAiSceneLabel(scene?: CareScene) {
+  if (scene === 'institutional') return '机构养老'
+  if (scene === 'home') return '居家养老'
+  return '通用视角'
+}
+
 export function getSuggestedAiLogChannel(context: AiTrackingContext | null) {
   if (!context) return null
 
@@ -91,11 +107,11 @@ export function getSuggestedAiLogChannel(context: AiTrackingContext | null) {
     return 'Admin / 健康总览'
   }
 
-  if (['staff-list', 'staff-detail', 'staff-schedule', 'staff-tasks'].includes(context.source)) {
+  if (['staff-list', 'staff-detail', 'staff-schedule', 'staff-tasks', 'nursing-checkin', 'elderly-checkin'].includes(context.source)) {
     return 'Admin / 任务中心'
   }
 
-  if (['organizations-list', 'organization-detail', 'organization-staff', 'rooms-list', 'room-detail', 'supplies-list', 'supply-detail', 'equipment-list', 'equipment-detail', 'equipment-status', 'financial'].includes(context.source)) {
+  if (['organizations-list', 'organization-detail', 'organization-staff', 'rooms-list', 'room-detail', 'supplies-list', 'supply-detail', 'equipment-list', 'equipment-detail', 'equipment-status', 'financial', 'analytics-report'].includes(context.source)) {
     return 'Admin / 报表中心'
   }
 
@@ -117,6 +133,9 @@ export function getSuggestedAiLogKeywords(context: AiTrackingContext | null) {
     'staff-detail': ['任务', '交接', '班次'],
     'staff-schedule': ['任务', '班次', 'SLA'],
     'staff-tasks': ['任务', '优先级', 'SLA'],
+    'nursing-checkin': ['任务', '回执', '留痕'],
+    'elderly-checkin': ['评定', '认定', '解释'],
+    'analytics-report': ['运营', '周报', '监管'],
     financial: ['运营', '周报', '摘要'],
     'organization-detail': ['运营', '摘要', '承接'],
     'organization-staff': ['运营', '摘要', '任务'],
@@ -139,6 +158,9 @@ export function getSuggestedAiLogKeywords(context: AiTrackingContext | null) {
     if (context.focus.includes('coverage') || context.focus.includes('workforce')) keywords.push('排班')
     if (context.focus.includes('equipment') || context.focus.includes('maintenance')) keywords.push('设备')
   }
+
+  if (context.scene === 'institutional') keywords.push('机构养老')
+  if (context.scene === 'home') keywords.push('居家养老')
 
   return [...new Set(keywords)]
 }

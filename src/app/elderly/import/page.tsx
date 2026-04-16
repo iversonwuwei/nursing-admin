@@ -1,6 +1,6 @@
 'use client'
 
-import { DataCard, PageHeader, Tag } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, Tag } from '@/components/nh'
 import {
     addAdmissionApplication,
     validateAdmissionForm,
@@ -42,6 +42,7 @@ export default function ElderlyImportPage() {
   const [extraction, setExtraction] = useState<DocumentAiExtractionResult | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const helpHref = '/elderly/help'
 
   function updateDraft<K extends keyof DocumentImportFormState>(key: K, value: DocumentImportFormState[K]) {
     setDraftForm(current => current ? { ...current, [key]: value } : current)
@@ -94,27 +95,30 @@ export default function ElderlyImportPage() {
         actions={<Tag variant="primary">AI 识别后仍需人工复核</Tag>}
       />
 
-      <DataCard icon={<ShieldCheck size={18} />} title="本次交付边界" subtitle="先落地单人资料包导入，不直接写正式后端服务。">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { title: '1. 上传资料', description: '支持上传扫描件/病历文件，并保留文件名作为来源审计。', icon: <Upload size={16} /> },
-            { title: '2. AI 抽取', description: '从模板、OCR 摘要和文件线索提取身份字段、病史和照护风险。', icon: <ScanSearch size={16} /> },
-            { title: '3. 人工复核', description: '护理主管补齐缺失字段，避免把低置信度内容直接入档。', icon: <ShieldCheck size={16} /> },
-            { title: '4. 写入闭环', description: '确认后进入个案评定页，继续人工认定与结论生成。', icon: <Bot size={16} /> },
-          ].map(item => (
-            <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
-                {item.icon}
-                {item.title}
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard icon={<ShieldCheck size={18} />} title="本次交付边界" subtitle="先落地单人资料包导入，不直接写正式后端服务。">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                {[
+                  { title: '1. 上传资料', description: '支持上传扫描件/病历文件，并保留文件名作为来源审计。', icon: <Upload size={16} /> },
+                  { title: '2. AI 抽取', description: '从模板、OCR 摘要和文件线索提取身份字段、病史和照护风险。', icon: <ScanSearch size={16} /> },
+                  { title: '3. 人工复核', description: '护理主管补齐缺失字段，避免把低置信度内容直接入档。', icon: <ShieldCheck size={16} /> },
+                  { title: '4. 写入闭环', description: '确认后进入个案评定页，继续人工认定与结论生成。', icon: <Bot size={16} /> },
+                ].map(item => (
+                  <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+                      {item.icon}
+                      {item.title}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
+                  </div>
+                ))}
               </div>
-              <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.description}</div>
-            </div>
-          ))}
-        </div>
-      </DataCard>
+            </DataCard>
 
-      <div className="dashboard-grid-2" style={{ marginTop: 16, alignItems: 'start' }}>
-        <DataCard icon={<FileStack size={18} />} title="资料输入" subtitle="选择资料包模板，或直接上传文件并粘贴 OCR/病历摘要。">
+            <div style={{ marginTop: 16 }}>
+              <DataCard icon={<FileStack size={18} />} title="资料输入" subtitle="选择资料包模板，或直接上传文件并粘贴 OCR/病历摘要。">
           <div className="form-section">
             <div className="form-grid">
               <div className="form-grid-full">
@@ -196,11 +200,13 @@ export default function ElderlyImportPage() {
               </button>
             </div>
           </div>
-        </DataCard>
+              </DataCard>
+            </div>
 
-        <DataCard icon={<Bot size={18} />} title="AI 识别结果" subtitle="低置信度和缺失字段不会自动写入，必须先人工确认。" badge={<Tag variant={extraction ? 'success' : 'neutral'}>{extraction ? '已识别' : '待识别'}</Tag>}>
-          {extraction && draftForm ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ marginTop: 16 }}>
+              <DataCard icon={<Bot size={18} />} title="AI 识别结果" subtitle="低置信度和缺失字段不会自动写入，必须先人工确认。" badge={<Tag variant={extraction ? 'success' : 'neutral'}>{extraction ? '已识别' : '待识别'}</Tag>}>
+                {extraction && draftForm ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ border: '1px solid rgba(13,148,136,0.18)', borderRadius: 'var(--radius-md)', background: 'rgba(13,148,136,0.06)', padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
@@ -236,18 +242,18 @@ export default function ElderlyImportPage() {
                   待人工补齐：{extraction.missingFields.join('、')}
                 </div>
               ) : null}
+                  </div>
+                ) : (
+                  <div style={{ padding: 24, textAlign: 'center', fontSize: 13, lineHeight: 1.8, color: 'var(--color-muted)' }}>
+                    先上传资料或粘贴 OCR 摘要，再触发一次 AI 识别。
+                  </div>
+                )}
+              </DataCard>
             </div>
-          ) : (
-            <div style={{ padding: 24, textAlign: 'center', fontSize: 13, lineHeight: 1.8, color: 'var(--color-muted)' }}>
-              先上传资料或粘贴 OCR 摘要，再触发一次 AI 识别。
-            </div>
-          )}
-        </DataCard>
-      </div>
 
-      {draftForm ? (
-        <div style={{ marginTop: 16 }}>
-          <DataCard icon={<ShieldCheck size={18} />} title="人工复核后写入个案评定" subtitle="这里是可编辑草稿，确认后写入共享 workflow store，并跳转到评定受理页。">
+            {draftForm ? (
+              <div style={{ marginTop: 16 }}>
+                <DataCard icon={<ShieldCheck size={18} />} title="人工复核后写入个案评定" subtitle="这里是可编辑草稿，确认后写入共享 workflow store，并跳转到评定受理页。">
             <div className="form-section">
               <div className="form-grid">
                 <div>
@@ -337,9 +343,44 @@ export default function ElderlyImportPage() {
                 </button>
               </div>
             </div>
-          </DataCard>
-        </div>
-      ) : null}
+                </DataCard>
+              </div>
+            ) : null}
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="导入边界" subtitle="主区只保留导入、识别、复核和提交动作。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">AI 识别只生成结构化草稿，不直接写正式主档。</div>
+                <div className="page-help-card-item">缺失字段和低置信度内容必须先人工复核后再提交。</div>
+                <div className="page-help-card-item">完整导入口径与回退路径迁移到帮助页。</div>
+              </div>
+            </DataCard>
+
+            <DataCard title="当前导入摘要" subtitle="后置显示模板、文件数量和识别状态。" badge={<Tag variant="info">Context</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div className="page-help-card-item">资料包模板：{templateId ? TEMPLATE_OPTIONS.find(option => option.id === templateId)?.label ?? '已选择模板' : '未选择模板'}</div>
+                <div className="page-help-card-item">上传文件：{uploadedFiles.length} 份。</div>
+                <div className="page-help-card-item">识别状态：{extraction ? `已识别，置信度 ${extraction.confidence}%` : '待识别。'}</div>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整资料导入说明迁移到显式帮助页"
+              summary="资料导入页现在只保留导入、识别、复核和提交动作，边界说明与使用顺序统一后置。"
+              items={[
+                '先上传资料或粘贴 OCR 摘要，再触发 AI 识别。',
+                '识别结果必须先人工复核后再写入个案评定。',
+                '若需要完整说明，进入老人帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看老人帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

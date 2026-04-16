@@ -59,16 +59,16 @@ function resolvePath(segments: string[], search: string): ResolvedRoute | null {
   return null
 }
 
-async function forwardResolvedRoute(method: 'GET' | 'POST' | 'PATCH', resolved: ResolvedRoute, body?: unknown) {
+async function forwardResolvedRoute(request: Request, method: 'GET' | 'POST' | 'PATCH', resolved: ResolvedRoute, body?: unknown) {
   if (resolved.service === 'admin') {
-    return forwardToAdminBff(method, resolved.path, body)
+    return forwardToAdminBff(request, method, resolved.path, body)
   }
 
   if (resolved.service === 'nani') {
-    return forwardToService(method, NANI_BFF_URL, resolved.path, body)
+    return forwardToService(request, method, NANI_BFF_URL, resolved.path, body)
   }
 
-  return forwardToService(method, FAMILY_BFF_URL, resolved.path, body)
+  return forwardToService(request, method, FAMILY_BFF_URL, resolved.path, body)
 }
 
 async function readJsonBody(request: NextRequest) {
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的 AI 读取路径。' }, { status: 404 })
   }
 
-  return forwardResolvedRoute('GET', resolved)
+  return forwardResolvedRoute(request, 'GET', resolved)
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的 AI 写入路径。' }, { status: 404 })
   }
 
-  return forwardResolvedRoute('POST', resolved, await readJsonBody(request))
+  return forwardResolvedRoute(request, 'POST', resolved, await readJsonBody(request))
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
@@ -110,5 +110,5 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ message: '未知的 AI 更新路径。' }, { status: 404 })
   }
 
-  return forwardResolvedRoute('PATCH', resolved, await readJsonBody(request))
+  return forwardResolvedRoute(request, 'PATCH', resolved, await readJsonBody(request))
 }

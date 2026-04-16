@@ -2,7 +2,7 @@
 
 export type AlertLevel = 'critical' | 'warning' | 'info'
 export type AlertStatus = 'pending' | 'processing' | 'resolved'
-export type AlertType = 'fall' | 'device' | 'health' | 'call'
+export type AlertType = 'fall' | 'device' | 'health' | 'call' | 'bedExit' | 'sos'
 
 export interface AlertRecord {
   id: string
@@ -24,7 +24,9 @@ export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   fall: '跌倒报警',
   device: '设备报警',
   health: '健康异常',
-  call: '呼叫请求',
+  call: '紧急呼叫',
+  bedExit: '离床预警',
+  sos: 'SOS 求助',
 }
 
 export const ALERT_LEVEL_LABELS: Record<AlertLevel, string> = {
@@ -175,6 +177,33 @@ export const alertRecords: AlertRecord[] = [
     deviceName: '智能手环 S2',
     description: '设备低电量告警，电量低于15%',
     occurredAt: '2026-03-29 19:00',
+    resolution: '',
+  },
+  {
+    id: 'A20260011',
+    type: 'bedExit',
+    level: 'warning',
+    status: 'pending',
+    elderlyId: 'E009',
+    elderlyName: '沈月琴',
+    roomNumber: '208-2',
+    deviceName: '智能床垫 M5',
+    description: '夜间连续两次离床超过 6 分钟，存在跌倒与走失风险',
+    occurredAt: '2026-03-29 21:18',
+    resolution: '',
+  },
+  {
+    id: 'A20260012',
+    type: 'sos',
+    level: 'critical',
+    status: 'processing',
+    elderlyId: 'E010',
+    elderlyName: '高秀梅',
+    roomNumber: '106-1',
+    deviceName: '床旁 SOS 按钮 B1',
+    description: '老人主动触发 SOS 求助，已联动护士站和值班医生',
+    occurredAt: '2026-03-29 22:05',
+    handledBy: '夜班护士长',
     resolution: '',
   },
 ]

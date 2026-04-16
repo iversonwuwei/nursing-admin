@@ -1,8 +1,8 @@
 'use client'
 
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
-import { DataCard, PageHeader, StatCard, Tag } from '@/components/nh'
-import { appendAiTrackingContext, getAiSourceLabel, readAiTrackingContext } from '@/lib/ai-context'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag } from '@/components/nh'
+import { appendAiTrackingContext, getAiSceneLabel, getAiSourceLabel, readAiTrackingContext } from '@/lib/ai-context'
 import {
   fetchAdminAiAuditLogs,
   fetchAdminAiHealthRisk,
@@ -102,6 +102,7 @@ export default function AiInferencePage() {
   const relatedLogs = trackingContext
     ? (demoMode ? getAiLogsForContext(trackingContext).slice(0, 3) : liveRelatedLogs)
     : []
+  const helpHref = '/ai-assistant/help'
   const contextNarratives = trackingContext
     ? [
         trackingContext.source === 'health-monitoring' || trackingContext.source === 'elderly-detail' || trackingContext.source === 'incident-detail'
@@ -188,68 +189,6 @@ export default function AiInferencePage() {
 
       <AdminAiNav />
 
-      {trackingContext && (
-        <DataCard icon={<BrainCircuit size={16} />} title="当前推理追踪" subtitle="按来源对象聚焦当前需要解释的 AI 推理信号。" badge={<Tag variant="warning">{getAiSourceLabel(trackingContext.source)}</Tag>}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-              {[
-                { label: '对象', value: trackingContext.entityName ?? '-' },
-                { label: '对象编号', value: trackingContext.entityId ?? '-' },
-                { label: '关注点', value: trackingContext.focus ?? '-' },
-              ].map(item => (
-                <div key={item.label} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
-                  <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 4 }}>{item.label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
-            {focusedHealthInsight ? (
-              <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{focusedHealthInsight.elderlyName}</span>
-                  <Tag variant={focusedHealthInsight.severity === '高风险' ? 'danger' : 'warning'}>{focusedHealthInsight.severity}</Tag>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{focusedHealthInsight.explanation}</div>
-                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{focusedHealthInsight.action}</div>
-              </div>
-            ) : null}
-            {contextNarratives.map(item => (
-              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
-                {item}
-              </div>
-            ))}
-            {contextCards.length > 0 ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                {contextCards.map(item => (
-                  <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
-                      <Tag variant={item.variant}>{item.title}</Tag>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {relatedLogs.length > 0 ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                {relatedLogs.map(item => (
-                  <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 12 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.agent}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.outcome}</div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <div>
-              <Link href={appendAiTrackingContext('/ai-assistant/rules', trackingContext ? { ...trackingContext, target: 'rules' } : null)} className="btn btn-secondary btn-sm">转到规则治理</Link>
-            </div>
-          </div>
-        </DataCard>
-      )}
-
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <StatCard icon={<Cpu size={18} />} label="运行中模型" value={runningModels} sub="当前在线可用" color="success" />
         <StatCard icon={<BrainCircuit size={18} />} label="待恢复模型" value={unreachableModels} sub="需继续观察连通性" color="warning" />
@@ -261,90 +200,179 @@ export default function AiInferencePage() {
         <div style={{ marginBottom: 16, fontSize: 12.5, color: 'var(--color-danger)' }}>{inferenceError}</div>
       ) : null}
 
-      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
-        <DataCard icon={<Cpu size={16} />} title="模型状态" subtitle="只展示版本、责任域和延迟，不暴露训练内部细节。">
-          <div style={{ display: 'grid', gap: 10 }}>
-            {modelStatuses.map(item => (
-              <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.name}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.owner} · {item.version}</div>
+      <InteractionRailLayout
+        main={(
+          <>
+            {trackingContext && (
+              <DataCard icon={<BrainCircuit size={16} />} title="当前推理追踪" subtitle="按来源对象聚焦当前需要解释的 AI 推理信号。" badge={<Tag variant="warning">{getAiSourceLabel(trackingContext.source)}</Tag>}>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                    {[
+                      { label: '场景视角', value: getAiSceneLabel(trackingContext.scene) },
+                      { label: '对象', value: trackingContext.entityName ?? '-' },
+                      { label: '对象编号', value: trackingContext.entityId ?? '-' },
+                      { label: '关注点', value: trackingContext.focus ?? '-' },
+                    ].map(item => (
+                      <div key={item.label} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
+                        <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 4 }}>{item.label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.value}</div>
+                      </div>
+                    ))}
                   </div>
-                  <Tag variant={item.status === '运行中' ? 'success' : item.status === '灰度中' ? 'warning' : 'neutral'}>{item.status}</Tag>
-                </div>
-                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>
-                  {item.configurationSource}
-                  {item.configuredModel ? ` · 显式模型 ${item.configuredModel}` : ' · 当前未写死模型版本'}
-                </div>
-                <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 12.5, color: 'var(--color-muted)' }}>
-                  <span>平均延迟 {item.latencyMs} ms</span>
-                  <span>最近更新 {item.lastUpdated}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </DataCard>
-
-        <DataCard icon={<Bot size={16} />} title="健康解释样本" subtitle="高风险场景继续维持解释与动作建议，不自动作最终判定。">
-          <div style={{ display: 'grid', gap: 10 }}>
-            {healthInsights.slice(0, 4).map(item => (
-              <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  {focusedHealthInsight ? (
+                    <div style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{focusedHealthInsight.elderlyName}</span>
+                        <Tag variant={focusedHealthInsight.severity === '高风险' ? 'danger' : 'warning'}>{focusedHealthInsight.severity}</Tag>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{focusedHealthInsight.explanation}</div>
+                      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{focusedHealthInsight.action}</div>
+                    </div>
+                  ) : null}
+                  {contextCards.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {contextCards.map(item => (
+                        <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                            <Tag variant={item.variant}>{item.title}</Tag>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.action}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {relatedLogs.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {relatedLogs.map(item => (
+                        <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 12 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.agent}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.outcome}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.roomNumber} · {item.title}</div>
+                    <Link href={appendAiTrackingContext('/ai-assistant/rules', trackingContext ? { ...trackingContext, target: 'rules' } : null)} className="btn btn-secondary btn-sm">转到规则治理</Link>
                   </div>
-                  <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.explanation}</div>
-                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{item.action}</div>
-              </div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
+              </DataCard>
+            )}
 
-      <DataCard icon={<ShieldCheck size={16} />} title="入住评估推理记录" subtitle="AI 推荐与人工确认的差异样本可在这里统一查看。">
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>长者</th>
-                <th>AI 推荐</th>
-                <th>人工确认</th>
-                <th>状态</th>
-                <th>置信度</th>
-                <th>模板</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recommendationRecords.map(item => (
-                <tr key={item.id} className="table-hover-row">
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</span>
-                      <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.createdAt}</span>
+            <DataCard icon={<Bot size={16} />} title="健康解释样本" subtitle="高风险场景继续维持解释与动作建议，不自动作最终判定。">
+              <div style={{ display: 'grid', gap: 10 }}>
+                {healthInsights.slice(0, 4).map(item => (
+                  <div key={item.elderlyId} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.roomNumber} · {item.title}</div>
+                      </div>
+                      <Tag variant={item.severity === '高风险' ? 'danger' : 'warning'}>{item.severity}</Tag>
                     </div>
-                  </td>
-                  <td><Tag variant={getLevelVariant(item.recommendedLevel as Parameters<typeof getLevelVariant>[0])}>{item.recommendedLevel}</Tag></td>
-                  <td><Tag variant={item.confirmedLevel === '待确认' ? 'warning' : getLevelVariant(item.confirmedLevel as Parameters<typeof getLevelVariant>[0])}>{item.confirmedLevel}</Tag></td>
-                  <td><Tag variant={getStatusVariant(item.status as Parameters<typeof getStatusVariant>[0])}>{item.status}</Tag></td>
-                  <td>{item.confidence}%</td>
-                  <td>{item.planTemplateCode}</td>
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.6 }}>{item.reasonSummary}</span>
-                      <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>确认人 {item.confirmedBy}</span>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{item.explanation}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{item.action}</div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+
+            <DataCard icon={<ShieldCheck size={16} />} title="入住评估推理记录" subtitle="AI 推荐与人工确认的差异样本可在这里统一查看。">
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>长者</th>
+                      <th>AI 推荐</th>
+                      <th>人工确认</th>
+                      <th>状态</th>
+                      <th>置信度</th>
+                      <th>模板</th>
+                      <th>说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recommendationRecords.map(item => (
+                      <tr key={item.id} className="table-hover-row">
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderlyName}</span>
+                            <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.createdAt}</span>
+                          </div>
+                        </td>
+                        <td><Tag variant={getLevelVariant(item.recommendedLevel as Parameters<typeof getLevelVariant>[0])}>{item.recommendedLevel}</Tag></td>
+                        <td><Tag variant={item.confirmedLevel === '待确认' ? 'warning' : getLevelVariant(item.confirmedLevel as Parameters<typeof getLevelVariant>[0])}>{item.confirmedLevel}</Tag></td>
+                        <td><Tag variant={getStatusVariant(item.status as Parameters<typeof getStatusVariant>[0])}>{item.status}</Tag></td>
+                        <td>{item.confidence}%</td>
+                        <td>{item.planTemplateCode}</td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.6 }}>{item.reasonSummary}</span>
+                            <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>确认人 {item.confirmedBy}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard title="推理边界" subtitle="主区优先保留结果对象，说明型信息统一后置。" badge={<Tag variant="warning">Boundary</Tag>}>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {(trackingContext ? contextNarratives : [
+                  '当前未带来源上下文时，主区只保留样本与推理记录，不额外展示说明型长文。',
+                  'AI 推理页只读展示结果，不直接改写业务状态或人工确认结论。',
+                ]).map(item => (
+                  <div key={item} className="page-help-card-item">{item}</div>
+                ))}
+              </div>
+            </DataCard>
+
+            <DataCard icon={<Cpu size={16} />} title="模型状态" subtitle="只展示版本、责任域和延迟，不暴露训练内部细节。">
+              <div style={{ display: 'grid', gap: 10 }}>
+                {modelStatuses.map(item => (
+                  <div key={item.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.name}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{item.owner} · {item.version}</div>
+                      </div>
+                      <Tag variant={item.status === '运行中' ? 'success' : item.status === '灰度中' ? 'warning' : 'neutral'}>{item.status}</Tag>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </DataCard>
+                    <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-text)' }}>
+                      {item.configurationSource}
+                      {item.configuredModel ? ` · 显式模型 ${item.configuredModel}` : ' · 当前未写死模型版本'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                      <span>平均延迟 {item.latencyMs} ms</span>
+                      <span>最近更新 {item.lastUpdated}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整 AI 推理说明迁移到显式帮助页"
+              summary="AI 推理详情页现在优先展示当前追踪对象、健康解释样本和入住评估记录，模型与治理说明统一后置。"
+              items={[
+                '先看追踪对象和推理结果，再检查模型状态。',
+                '推理页只读展示结果，不替代人工确认。',
+                '若需要完整 AI 使用说明，进入 AI 帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看 AI 帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

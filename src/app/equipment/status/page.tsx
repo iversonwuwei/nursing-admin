@@ -1,5 +1,5 @@
 "use client"
-import { DataCard, Tag, type TagVariant } from "@/components/nh"
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getEquipmentStatusAiInsights, getEquipmentStatusNarratives } from "@/lib/mock/admin-ai"
 import { AlertTriangle, Battery, Bot, CheckCircle2, Monitor, Search, Wifi, XCircle } from "lucide-react"
@@ -27,6 +27,7 @@ export default function EquipmentStatusPage() {
   const aiNarratives = getEquipmentStatusNarratives(DEVICES)
   const filtered = DEVICES.filter(d => (d.name.includes(search) || d.room.includes(search)) && (statusFilter === "全部" || d.status === statusFilter))
   const stats = { total: DEVICES.length, online: DEVICES.filter(d => d.status === "online").length, offline: DEVICES.filter(d => d.status === "offline").length, warning: DEVICES.filter(d => d.status === "warning").length }
+  const helpHref = '/equipment/help'
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'equipment-status',
     entityId: 'equipment-status-board',
@@ -83,100 +84,114 @@ export default function EquipmentStatusPage() {
         ))}
       </div>
 
-      <div className="page-grid-2" style={{ alignItems: "start", marginBottom: 16 }}>
-        <DataCard
-          icon={<Bot size={16} />}
-          title="AI 状态解释"
-          subtitle="把离线、弱信号和低电量翻译成班次可执行动作。"
-          badge={<Tag variant="warning">需人工排查</Tag>}
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {aiInsights.map(item => (
-              <div key={item.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
-                  <Tag variant={item.variant}>{item.variant === "danger" ? "高风险" : "需处理"}</Tag>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
-                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+      <InteractionRailLayout
+        main={(
+          <>
+            <div className="filter-bar">
+              <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
+                <span className="input-icon"><Search size={16} /></span>
+                <input className="input" placeholder="搜索设备名称或位置..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
               </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <Link href={buildAiHref('equipment-risk', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-          </div>
-        </DataCard>
-
-        <DataCard
-          icon={<AlertTriangle size={16} />}
-          title="AI 巡检动作"
-          subtitle="强调处理顺序和班次影响，不只看设备参数。"
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {aiNarratives.map(item => (
-              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
-                {item}
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <Link href={buildAiHref('equipment-patrol', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-          </div>
-        </DataCard>
-      </div>
-
-      <div className="filter-bar">
-        <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
-          <span className="input-icon"><Search size={16} /></span>
-          <input className="input" placeholder="搜索设备名称或位置..." value={search} onChange={e => setSearch(e.target.value)} style={{ height: 38, paddingLeft: 38 }} />
-        </div>
-        {["全部", "online", "warning", "offline"].map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)} className={`btn btn-sm ${statusFilter === s ? "btn-primary" : "btn-ghost"}`}>{s === "全部" ? "全部" : STATUS_LABEL[s]}</button>
-        ))}
-      </div>
-
-      <DataCard>
-        <div style={{ overflowX: "auto" }}>
-          <table className="table">
-            <thead>
-              <tr><th>设备</th><th>类型</th><th>位置</th><th>状态</th><th>信号强度</th><th>电量</th><th>运行时长</th><th>备注</th></tr>
-            </thead>
-            <tbody>
-              {filtered.map(d => (
-                <tr key={d.id}>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: d.status === "offline" ? "rgba(239,68,68,0.1)" : d.status === "warning" ? "rgba(245,158,11,0.1)" : "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <Wifi size={16} style={{ color: d.status === "offline" ? "var(--color-danger)" : d.status === "warning" ? "var(--color-warning)" : "var(--color-primary)" }} />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-sm">{d.name}</div>
-                        <div className="text-[10px]" style={{ color: "var(--color-muted)" }}>{d.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td><Tag variant="neutral">{d.type}</Tag></td>
-                  <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{d.room}</span></td>
-                  <td><Tag variant={STATUS_TAG[d.status]}>{STATUS_LABEL[d.status]}</Tag></td>
-                  <td>{signalBar(d.signal)}</td>
-                  <td>{batteryBar(d.battery)}</td>
-                  <td>
-                    <span className="text-sm" style={{ color: "var(--color-muted)" }}>
-                      {d.uptime > 0 ? `${Math.floor(d.uptime / 60)}h${d.uptime % 60}m` : "——"}
-                    </span>
-                  </td>
-                  <td>
-                    {d.lastAlert
-                      ? <Tag variant={d.status === "offline" ? "danger" : "warning"}>{d.lastAlert}</Tag>
-                      : <span style={{ fontSize: 12, color: "var(--color-muted)" }}>无</span>
-                    }
-                  </td>
-                </tr>
+              {["全部", "online", "warning", "offline"].map(s => (
+                <button key={s} onClick={() => setStatusFilter(s)} className={`btn btn-sm ${statusFilter === s ? "btn-primary" : "btn-ghost"}`}>{s === "全部" ? "全部" : STATUS_LABEL[s]}</button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </DataCard>
+            </div>
+
+            <DataCard>
+              <div style={{ overflowX: "auto" }}>
+                <table className="table">
+                  <thead>
+                    <tr><th>设备</th><th>类型</th><th>位置</th><th>状态</th><th>信号强度</th><th>电量</th><th>运行时长</th><th>备注</th></tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(d => (
+                      <tr key={d.id}>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: 10, background: d.status === "offline" ? "rgba(239,68,68,0.1)" : d.status === "warning" ? "rgba(245,158,11,0.1)" : "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Wifi size={16} style={{ color: d.status === "offline" ? "var(--color-danger)" : d.status === "warning" ? "var(--color-warning)" : "var(--color-primary)" }} />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-sm">{d.name}</div>
+                              <div className="text-[10px]" style={{ color: "var(--color-muted)" }}>{d.id}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td><Tag variant="neutral">{d.type}</Tag></td>
+                        <td><span className="text-sm" style={{ color: "var(--color-muted)" }}>{d.room}</span></td>
+                        <td><Tag variant={STATUS_TAG[d.status]}>{STATUS_LABEL[d.status]}</Tag></td>
+                        <td>{signalBar(d.signal)}</td>
+                        <td>{batteryBar(d.battery)}</td>
+                        <td>
+                          <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+                            {d.uptime > 0 ? `${Math.floor(d.uptime / 60)}h${d.uptime % 60}m` : "——"}
+                          </span>
+                        </td>
+                        <td>
+                          {d.lastAlert
+                            ? <Tag variant={d.status === "offline" ? "danger" : "warning"}>{d.lastAlert}</Tag>
+                            : <span style={{ fontSize: 12, color: "var(--color-muted)" }}>无</span>
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DataCard>
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard
+              icon={<Bot size={16} />}
+              title="AI 状态解释"
+              subtitle="把离线、弱信号和低电量翻译成班次可执行动作。"
+              badge={<Tag variant="warning">需人工排查</Tag>}
+            >
+              <div style={{ display: "grid", gap: 10 }}>
+                {aiInsights.map(item => (
+                  <div key={item.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.title}</span>
+                      <Tag variant={item.variant}>{item.variant === "danger" ? "高风险" : "需处理"}</Tag>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+                    <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Link href={buildAiHref('equipment-risk', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+              </div>
+            </DataCard>
+
+            <DataCard icon={<AlertTriangle size={16} />} title="AI 巡检动作" subtitle="强调处理顺序和班次影响，不只看设备参数。">
+              <div style={{ display: "grid", gap: 10 }}>
+                {aiNarratives.map(item => (
+                  <div key={item} className="page-help-card-item">{item}</div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Link href={buildAiHref('equipment-patrol', 'logs')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整设备状态说明迁移到显式帮助页"
+              summary="设备状态页现在优先展示筛选后的状态表格，AI 解释和巡检建议统一后置。"
+              items={[
+                '先按状态筛选，再看信号、电量和备注。',
+                'AI 建议只辅助排查顺序，不替代现场检查。',
+                '若需要完整说明，进入设备帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看设备帮助"
+            />
+          </>
+        )}
+      />
     </div>
   )
 }

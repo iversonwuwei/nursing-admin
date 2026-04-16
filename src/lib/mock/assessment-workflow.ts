@@ -2,9 +2,12 @@
 
 export const CARE_LEVELS = ['特级护理', '一级护理', '二级护理', '三级护理'] as const
 export const COGNITIVE_LEVELS = ['清晰', '轻度受损', '中度受损', '重度受损'] as const
+export const ENTRUSTMENT_TYPES = ['政府委托', '企业委托'] as const
+export const INSTITUTIONAL_SERVICE_ITEMS = ['生活照料', '基础护理', '健康监测', '康复训练', '营养膳食', '精神慰藉'] as const
 
 export type CareLevel = (typeof CARE_LEVELS)[number]
 export type CognitiveLevel = (typeof COGNITIVE_LEVELS)[number]
+export type EntrustmentType = (typeof ENTRUSTMENT_TYPES)[number]
 export type AdmissionStatus = '待人工确认' | '计划已生成' | '已入住'
 export type AdmissionSourceType = 'manual-form' | 'document-import'
 export type AssessmentStatus = AdmissionStatus
@@ -56,6 +59,11 @@ export interface AdmissionFormState {
   adlScore: string
   cognitiveLevel: '' | CognitiveLevel
   riskNotes: string
+  entrustmentType: '' | EntrustmentType
+  entrustmentOrganization: string
+  monthlySubsidy: string
+  serviceItems: string[]
+  serviceNotes: string
 }
 
 export type AssessmentFormState = AdmissionFormState
@@ -97,6 +105,11 @@ export interface AdmissionApplication {
   adlScore: number
   cognitiveLevel: CognitiveLevel
   riskNotes: string
+  entrustmentType?: EntrustmentType
+  entrustmentOrganization?: string
+  monthlySubsidy?: number
+  serviceItems?: string[]
+  serviceNotes?: string
   aiRecommendation: AiRecommendation
   confirmedCareLevel?: CareLevel
   reviewNote?: string
@@ -116,6 +129,16 @@ export interface CreateAdmissionOptions {
   sourceLabel?: string
   sourceDocumentNames?: string[]
   sourceSummary?: string
+}
+
+export interface UpsertAdmissionOptions extends CreateAdmissionOptions {
+  fallbackId?: string
+  fallbackStatus?: AdmissionStatus
+  fallbackCreatedAt?: string
+  confirmedCareLevel?: CareLevel
+  confirmedAt?: string
+  confirmedBy?: string
+  reviewNote?: string
 }
 
 export type CreateAssessmentOptions = CreateAdmissionOptions
@@ -207,11 +230,33 @@ export const EMPTY_FORM: AdmissionFormState = {
   adlScore: '',
   cognitiveLevel: '',
   riskNotes: '',
+  entrustmentType: '',
+  entrustmentOrganization: '',
+  monthlySubsidy: '',
+  serviceItems: [],
+  serviceNotes: '',
 }
 
 export const EMPTY_ASSESSMENT_FORM = EMPTY_FORM
 
-export function validateAdmissionForm(form: AdmissionFormState) {
+function parseMonthlySubsidy(value: string) {
+  if (!value.trim()) {
+    return null
+  }
+
+  const amount = Number(value)
+  if (Number.isNaN(amount)) {
+    return null
+  }
+
+  return Math.round(amount * 100) / 100
+}
+
+function normalizeServiceItems(items: string[]) {
+  return Array.from(new Set(items.map(item => item.trim()).filter(Boolean)))
+}
+
+export function validateAdmissionForm(form: AdmissionFormState, options: { requireInstitutionalEntrustment?: boolean } = {}) {
   if (
     !form.name.trim()
     || !form.age.trim()
@@ -245,6 +290,25 @@ export function validateAdmissionForm(form: AdmissionFormState) {
 
   if (form.requestedLevel === '特级护理' && !form.riskNotes.trim()) {
     return '特级护理申请请补充风险备注，便于护理主管复核。'
+  }
+
+  if (options.requireInstitutionalEntrustment) {
+    if (!form.entrustmentType) {
+      return '机构入住请先选择委托类型。'
+    }
+
+    if (!form.entrustmentOrganization.trim()) {
+      return '机构入住请补充委托单位名称。'
+    }
+
+    const subsidy = parseMonthlySubsidy(form.monthlySubsidy)
+    if (subsidy === null || subsidy <= 0) {
+      return '月度补贴需填写为大于 0 的有效金额。'
+    }
+
+    if (normalizeServiceItems(form.serviceItems).length === 0) {
+      return '机构入住请至少选择 1 项固定服务项目。'
+    }
   }
 
   return ''
@@ -682,6 +746,8 @@ export function createApplicationFromForm(form: AdmissionFormState, options: Cre
   const adlScore = Number(form.adlScore)
   const identityCard = form.identityCard.trim()
   const birthDate = form.birthDate.trim() || (identityCard ? deriveBirthDateFromIdentityCard(identityCard) : '')
+  const monthlySubsidy = parseMonthlySubsidy(form.monthlySubsidy)
+  const serviceItems = normalizeServiceItems(form.serviceItems)
   const aiRecommendation = generateAiRecommendation({
     age,
     chronicConditions: form.chronicConditions,
@@ -709,6 +775,11 @@ export function createApplicationFromForm(form: AdmissionFormState, options: Cre
     adlScore,
     cognitiveLevel: form.cognitiveLevel || '清晰',
     riskNotes: form.riskNotes,
+    entrustmentType: form.entrustmentType || undefined,
+    entrustmentOrganization: form.entrustmentOrganization.trim() || undefined,
+    monthlySubsidy: monthlySubsidy ?? undefined,
+    serviceItems: serviceItems.length > 0 ? serviceItems : undefined,
+    serviceNotes: form.serviceNotes.trim() || undefined,
     aiRecommendation,
     sourceType: options.sourceType ?? 'manual-form',
     sourceLabel: options.sourceLabel,
@@ -738,6 +809,11 @@ function buildSeededApplication(input: {
   reviewNote?: string
   confirmedAt?: string
   confirmedBy?: string
+  entrustmentType?: EntrustmentType
+  entrustmentOrganization?: string
+  monthlySubsidy?: number
+  serviceItems?: string[]
+  serviceNotes?: string
 }): AdmissionApplication {
   const aiRecommendation = generateAiRecommendation({
     age: input.age,
@@ -749,6 +825,7 @@ function buildSeededApplication(input: {
 
   return {
     ...input,
+    serviceItems: input.serviceItems ? normalizeServiceItems(input.serviceItems) : undefined,
     aiRecommendation,
     carePlan: input.confirmedCareLevel ? buildCarePlan(input.confirmedCareLevel, aiRecommendation.focusTags) : undefined,
   }
@@ -772,6 +849,11 @@ function createInitialAssessmentCases(): AssessmentCase[] {
       adlScore: 38,
       cognitiveLevel: '中度受损',
       riskNotes: '近半年有跌倒史，夜间失眠，吞咽功能下降',
+      entrustmentType: '政府委托',
+      entrustmentOrganization: '静安区民政局长护险中心',
+      monthlySubsidy: 3200,
+      serviceItems: ['生活照料', '基础护理', '健康监测'],
+      serviceNotes: '按政府托底套餐执行，每周复盘一次。',
       status: '待人工确认',
     }),
     buildSeededApplication({
@@ -790,6 +872,11 @@ function createInitialAssessmentCases(): AssessmentCase[] {
       adlScore: 58,
       cognitiveLevel: '轻度受损',
       riskNotes: '夜间偶发气促，需要氧饱和度观察',
+      entrustmentType: '企业委托',
+      entrustmentOrganization: '申城康养企业托管项目',
+      monthlySubsidy: 4600,
+      serviceItems: ['基础护理', '康复训练', '营养膳食'],
+      serviceNotes: '企业团单，康复训练与餐食由驻点团队执行。',
       status: '计划已生成',
       confirmedCareLevel: '一级护理',
       reviewNote: '因夜间气促频次增加，人工上调一级护理。',
@@ -812,6 +899,11 @@ function createInitialAssessmentCases(): AssessmentCase[] {
       adlScore: 72,
       cognitiveLevel: '清晰',
       riskNotes: '步态不稳，需要活动陪同',
+      entrustmentType: '政府委托',
+      entrustmentOrganization: '徐汇区街道综合为老服务中心',
+      monthlySubsidy: 2800,
+      serviceItems: ['生活照料', '健康监测', '精神慰藉'],
+      serviceNotes: '保留活动陪同与情绪支持跟进。',
       status: '已入住',
       confirmedCareLevel: '二级护理',
       reviewNote: '按 AI 建议确认，维持常规活动陪同。',
@@ -931,6 +1023,42 @@ export function addAdmissionApplication(form: AdmissionFormState, options?: Crea
   }
   notifyListeners()
   return application
+}
+
+export function upsertAdmissionApplication(id: string, form: AdmissionFormState, options: UpsertAdmissionOptions = {}) {
+  hydrateState()
+  const existing = assessmentWorkflowState.assessmentCases.find(application => application.id === id)
+  const nextSourceOptions: CreateAdmissionOptions = {
+    sourceType: options.sourceType ?? existing?.sourceType,
+    sourceLabel: options.sourceLabel ?? existing?.sourceLabel,
+    sourceDocumentNames: options.sourceDocumentNames ?? existing?.sourceDocumentNames,
+    sourceSummary: options.sourceSummary ?? existing?.sourceSummary,
+  }
+  const nextBase = createApplicationFromForm(form, nextSourceOptions)
+  const confirmedCareLevel = options.confirmedCareLevel ?? existing?.confirmedCareLevel
+  const nextApplication: AdmissionApplication = {
+    ...existing,
+    ...nextBase,
+    id: options.fallbackId ?? existing?.id ?? id,
+    status: options.fallbackStatus ?? existing?.status ?? '待人工确认',
+    createdAt: options.fallbackCreatedAt ?? existing?.createdAt ?? nextBase.createdAt,
+    confirmedCareLevel,
+    confirmedAt: options.confirmedAt ?? existing?.confirmedAt,
+    confirmedBy: options.confirmedBy ?? existing?.confirmedBy,
+    reviewNote: options.reviewNote ?? existing?.reviewNote,
+    carePlan: confirmedCareLevel
+      ? buildCarePlan(confirmedCareLevel, nextBase.aiRecommendation.focusTags)
+      : existing?.carePlan,
+  }
+
+  assessmentWorkflowState = {
+    ...assessmentWorkflowState,
+    assessmentCases: existing
+      ? assessmentWorkflowState.assessmentCases.map(application => application.id === id ? nextApplication : application)
+      : [nextApplication, ...assessmentWorkflowState.assessmentCases],
+  }
+  notifyListeners()
+  return nextApplication
 }
 
 export const submitAssessmentCase = addAdmissionApplication

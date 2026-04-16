@@ -1,10 +1,79 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
-async function loginAsAdmin(page: Page) {
+async function suppressDevOverlays(page: Page) {
+  await page.evaluate(() => {
+    if (document.getElementById('pw-hide-dev-overlays')) {
+      return
+    }
+
+    const style = document.createElement('style')
+    style.id = 'pw-hide-dev-overlays'
+    style.textContent = `
+      [aria-label="Open Next.js Dev Tools"],
+      nextjs-portal,
+      [data-next-badge-root],
+      [data-next-mark],
+      [data-nextjs-dev-tools-button],
+      [data-nextjs-toast],
+      [data-nextjs-dialog-overlay] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+    `
+
+    document.head.appendChild(style)
+  })
+}
+
+async function expectClippedSnapshot(locator: Locator, snapshotName: string, maxDiffPixels = 160) {
+  await expect(locator).toBeVisible()
+  await suppressDevOverlays(locator.page())
+  const image = await locator.screenshot({
+    animations: 'disabled',
+    caret: 'hide',
+  })
+
+  expect(image).toMatchSnapshot(snapshotName, { maxDiffPixels })
+}
+
+async function expectPageClipSnapshot(page: Page, locator: Locator, snapshotName: string, maxDiffPixels = 160) {
+  await expect(locator).toBeVisible()
+  await suppressDevOverlays(page)
+  const bounds = await locator.boundingBox()
+  expect(bounds).not.toBeNull()
+
+  const image = await page.screenshot({
+    animations: 'disabled',
+    caret: 'hide',
+    clip: {
+      x: Math.floor(bounds!.x),
+      y: Math.floor(bounds!.y),
+      width: Math.ceil(bounds!.width),
+      height: Math.ceil(bounds!.height),
+    },
+  })
+
+  expect(image).toMatchSnapshot(snapshotName, { maxDiffPixels })
+}
+
+async function loginAsAdmin(page: Page, tenantId = 'tenant-demo') {
   await page.goto('/login')
+  await page.getByLabel('租户').selectOption(tenantId)
   await page.getByPlaceholder('请输入用户名').fill('admin')
   await page.getByPlaceholder('请输入密码').fill('admin123')
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.getByRole('button', { name: /登\s*录/ }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
+}
+
+async function loginAsManager(page: Page, tenantId = 'tenant-demo') {
+  await page.goto('/login')
+  await page.getByLabel('租户').selectOption(tenantId)
+  await page.getByPlaceholder('请输入用户名').fill('manager')
+  await page.getByPlaceholder('请输入密码').fill('manager123')
+  await page.getByRole('button', { name: /登\s*录/ }).click()
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 }
@@ -28,18 +97,38 @@ function trackSyncExternalStoreLoopSignals(page: Page) {
   return signals
 }
 
+function trackUnhandledWorkflowSignals(page: Page) {
+  const signals: string[] = []
+  const pattern = /unhandledRejection|workflow request failed|ai request failed/i
+
+  page.on('console', message => {
+    if ((message.type() === 'warning' || message.type() === 'error') && pattern.test(message.text())) {
+      signals.push(`${message.type()}: ${message.text()}`)
+    }
+  })
+
+  page.on('pageerror', error => {
+    if (pattern.test(error.message)) {
+      signals.push(`pageerror: ${error.message}`)
+    }
+  })
+
+  return signals
+}
+
 test('unauthenticated root redirects to login', async ({ page }) => {
   await page.goto('/')
 
   await expect(page).toHaveURL(/\/login\?callbackUrl=%2F/)
-  await expect(page.getByText('养老院管理系统')).toBeVisible()
+  await expect(page.getByText('智慧养老管理系统')).toBeVisible()
 })
 
 test('login shows error on invalid credentials', async ({ page }) => {
   await page.goto('/login')
+  await page.getByLabel('租户').selectOption('tenant-demo')
   await page.getByPlaceholder('请输入用户名').fill('admin')
   await page.getByPlaceholder('请输入密码').fill('wrong-password')
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.getByRole('button', { name: /登\s*录/ }).click()
 
   await expect(page.getByText('用户名或密码错误')).toBeVisible()
 })
@@ -60,12 +149,42 @@ test('desktop navbar hover reveals first-level dropdown', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await loginAsAdmin(page)
 
-  const navButton = page.getByRole('button', { name: '机构管理' })
+  const navButton = page.getByRole('button', { name: '长者照护' })
   await expect(navButton).toBeVisible()
   await navButton.hover()
 
-  await expect(page.getByRole('link', { name: '分院管理' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '机构列表' })).toBeVisible()
+  await expect(page.locator('.navbar-dropdown').getByText('机构养老', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '入住建档' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '健康档案' })).toBeVisible()
+})
+
+test('desktop ltci navbar groups all long-term-care modules under one menu', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const navButton = page.getByRole('button', { name: '评定与长护险' })
+  await expect(navButton).toBeVisible()
+  await navButton.hover()
+
+  await expect(page.getByText('认定受理', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '个案评定中心' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '评定标准配置' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '认定方案模板' })).toBeVisible()
+})
+
+test('desktop first-level dropdown keeps visual grouping stable', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const navButton = page.getByRole('button', { name: '长者照护' })
+  await expect(navButton).toBeVisible()
+  await navButton.hover()
+
+  const dropdown = page.locator('.navbar-dropdown').first()
+  await expect(dropdown.getByText('机构养老', { exact: true })).toBeVisible()
+  await expect(dropdown.getByText('居家养老', { exact: true })).toBeVisible()
+
+  await expectPageClipSnapshot(page, dropdown, 'navbar-first-level-dropdown-desktop.png', 120)
 })
 
 test('mid-width navbar moves items into more dropdown and hover reveals overflow links', async ({ page }) => {
@@ -76,8 +195,90 @@ test('mid-width navbar moves items into more dropdown and hover reveals overflow
   await expect(moreButton).toBeVisible()
   await moreButton.hover()
 
-  await expect(page.getByRole('link', { name: '评定机构总览' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'AI助手' })).toBeVisible()
+  const overflowDropdown = page.locator('.navbar-overflow-dropdown')
+  await expect(overflowDropdown.getByText('通知服务', { exact: true })).toBeVisible()
+  await expect(overflowDropdown.getByRole('link', { name: '通知中心' })).toBeVisible()
+  await expect(overflowDropdown.getByText('AI运营', { exact: true })).toBeVisible()
+})
+
+test('mid-width more dropdown scrolls and auto-reveals the active overflow item', async ({ page }) => {
+  await page.setViewportSize({ width: 920, height: 700 })
+  await loginAsAdmin(page)
+
+  await page.goto('/notifications')
+  const moreButton = page.getByRole('button', { name: '更多' })
+  await expect(moreButton).toBeVisible()
+  await moreButton.hover()
+
+  const overflowDropdown = page.locator('.navbar-overflow-dropdown')
+  await expect(overflowDropdown).toBeVisible()
+  await expect(overflowDropdown).toHaveClass(/show-bottom-fade/)
+
+  const activeOverflowItem = overflowDropdown.locator('.navbar-dropdown-item.is-active').first()
+  await expect(activeOverflowItem).toContainText('通知中心')
+
+  const scrollState = await overflowDropdown.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+
+  expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.clientHeight)
+  expect(scrollState.scrollTop).toBeGreaterThan(0)
+})
+
+test('mid-width more dropdown supports keyboard navigation keys', async ({ page }) => {
+  await page.setViewportSize({ width: 920, height: 700 })
+  await loginAsAdmin(page)
+
+  const moreButton = page.getByRole('button', { name: '更多' })
+  await expect(moreButton).toBeVisible()
+  await moreButton.focus()
+
+  await page.keyboard.press('ArrowDown')
+  const overflowDropdown = page.locator('.navbar-overflow-dropdown')
+  await expect(overflowDropdown).toBeVisible()
+
+  await expect(page.locator('.navbar-overflow-dropdown .navbar-dropdown-item:focus')).toContainText('设备监控')
+
+  await page.keyboard.press('End')
+  await expect(page.locator('.navbar-overflow-dropdown .navbar-dropdown-item:focus')).toContainText('AI助手')
+
+  await page.keyboard.press('Home')
+  await expect(page.locator('.navbar-overflow-dropdown .navbar-dropdown-item:focus')).toContainText('设备监控')
+
+  await page.keyboard.press('PageDown')
+  await expect(page.locator('.navbar-overflow-dropdown .navbar-dropdown-item:focus')).not.toContainText('设备监控')
+
+  await page.keyboard.press('Escape')
+  await expect(overflowDropdown).not.toBeVisible()
+  await expect(moreButton).toBeFocused()
+
+  await moreButton.hover()
+  const overflowDropdownForSnapshot = page.locator('.navbar-overflow-dropdown')
+  await expect(overflowDropdownForSnapshot).toBeVisible()
+
+  await page.addStyleTag({
+    content: `
+      #navbar-overflow-dropdown {
+        scrollbar-width: none !important;
+        max-height: none !important;
+        overflow: hidden !important;
+      }
+      #navbar-overflow-dropdown::-webkit-scrollbar {
+        display: none !important;
+      }
+      #navbar-overflow-dropdown .navbar-overflow-fade {
+        display: none !important;
+      }
+      #navbar-overflow-dropdown .navbar-dropdown-item:focus {
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    `,
+  })
+
+  await expectClippedSnapshot(overflowDropdownForSnapshot, 'navbar-overflow-dropdown-mid-width.png', 320)
 })
 
 test('mobile navbar uses drawer navigation at phone width', async ({ page }) => {
@@ -89,11 +290,250 @@ test('mobile navbar uses drawer navigation at phone width', async ({ page }) => 
   await hamburger.click()
 
   await expect(page.getByRole('dialog', { name: '主导航菜单' })).toBeVisible()
-  await page.getByRole('button', { name: '长护险运营' }).click()
-  await page.getByRole('link', { name: '评定机构总览' }).click()
+  await page.getByRole('button', { name: '长者照护' }).click()
+  await page.getByRole('link', { name: '健康档案' }).click()
 
-  await expect(page).toHaveURL(/\/nursing\/services/)
+  await expect(page).toHaveURL(/\/elderly\/health/)
+  await expect(page.getByRole('heading', { name: '健康档案' })).toBeVisible()
+})
+
+test('mobile drawer keeps visual layout stable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await loginAsAdmin(page)
+
+  const hamburger = page.getByRole('button', { name: '打开菜单' })
+  await expect(hamburger).toBeVisible()
+  await hamburger.click()
+
+  const drawer = page.locator('.mobile-drawer-panel')
+  await expect(drawer).toBeVisible()
+  await page.getByRole('button', { name: '长者照护' }).click()
+  await expect(drawer.getByRole('link', { name: '健康档案' })).toBeVisible()
+
+  await expectClippedSnapshot(drawer, 'navbar-mobile-drawer-panel.png', 180)
+})
+
+test('desktop navbar right actions keep full layout stable', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const navbarRight = page.locator('.navbar-right')
+  await expect(navbarRight).toBeVisible()
+  await expect(page.getByTitle('消息通知')).toBeVisible()
+  await expect(page.getByTitle('系统设置')).toBeVisible()
+  await expect(page.locator('.notif-dot')).toBeVisible()
+
+  await expectClippedSnapshot(navbarRight, 'navbar-right-actions-full.png', 140)
+})
+
+test('desktop navbar right actions degrade cleanly without notifications', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page, 'tenant-lite')
+
+  const navbarRight = page.locator('.navbar-right')
+  await expect(navbarRight).toBeVisible()
+  await expect(page.getByTitle('消息通知')).toHaveCount(0)
+  await expect(page.getByTitle('系统设置')).toBeVisible()
+  await expect(page.locator('.notif-dot')).toHaveCount(0)
+
+  await expectClippedSnapshot(navbarRight, 'navbar-right-actions-no-notifications.png', 120)
+})
+
+test('desktop navbar identity summary keeps default admin layout stable', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const navbarUser = page.locator('.navbar-user')
+  await expect(navbarUser).toBeVisible()
+  await expect(page.locator('.navbar-user-name')).toContainText('管理员')
+  await expect(page.locator('.navbar-user-role')).toContainText(/演示养老集团\s*·\s*10 模块\s*·\s*系统管理员/)
+
+  await expectClippedSnapshot(navbarUser, 'navbar-identity-default-admin.png', 120)
+})
+
+test('desktop navbar identity summary reflects org admin role cleanly', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsManager(page)
+
+  const navbarUser = page.locator('.navbar-user')
+  await expect(navbarUser).toBeVisible()
+  await expect(page.locator('.navbar-user-name')).toContainText('机构管理员')
+  await expect(page.locator('.navbar-user-role')).toContainText(/演示养老集团\s*·\s*10 模块\s*·\s*机构管理员/)
+
+  await expectClippedSnapshot(navbarUser, 'navbar-identity-org-admin.png', 120)
+})
+
+test('desktop navbar identity summary reflects tenant module count changes', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page, 'tenant-lite')
+
+  const navbarUser = page.locator('.navbar-user')
+  await expect(navbarUser).toBeVisible()
+  await expect(page.locator('.navbar-user-name')).toContainText('管理员')
+  await expect(page.locator('.navbar-user-role')).toContainText(/轻量试用机构\s*·\s*3 模块\s*·\s*系统管理员/)
+
+  await expectClippedSnapshot(navbarUser, 'navbar-identity-tenant-lite.png', 120)
+})
+
+test('desktop navbar avatar logs the user out to login page', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page)
+
+  const logoutButton = page.getByRole('button', { name: '退出登录' })
+  await expect(logoutButton).toBeVisible()
+  await logoutButton.click()
+
+  await expect(page).toHaveURL(/\/login(?:\?|$)/)
+  await expect(page.getByText('智慧养老管理系统')).toBeVisible()
+})
+
+test('org admin sees role-specific navbar priority', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsManager(page)
+
+  await expect(page.locator('.navbar-user-role')).toContainText('机构管理员')
+
+  const navText = (await page.locator('.navbar-nav').textContent()) ?? ''
+  expect(navText).toMatch(/日班工作台[\s\S]*长者照护[\s\S]*报警服务[\s\S]*评定与长护险/)
+})
+
+test('tenant-private hides ai navigation and blocks ai hub entry', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page, 'tenant-private')
+
+  await expect(page.locator('.navbar-user-role')).toContainText('私有化试点机构')
+
+  const navText = (await page.locator('.navbar-nav').textContent()) ?? ''
+  expect(navText).not.toContain('AI运营')
+
+  await page.goto('/ai-assistant')
+  await expect(page.getByText('当前租户未启用 AI 模块')).toBeVisible()
+  await expect(page.getByText('Entitlement Off')).toBeVisible()
+})
+
+test('tenant-lite blocks unsubscribed module entry routes', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await loginAsAdmin(page, 'tenant-lite')
+
+  await expect(page.locator('.navbar-user-role')).toContainText('轻量试用机构')
+
+  const navText = (await page.locator('.navbar-nav').textContent()) ?? ''
+  expect(navText).not.toContain('报警服务')
+  expect(navText).not.toContain('财务服务')
+  expect(navText).not.toContain('通知服务')
+  expect(navText).not.toContain('评定与长护险')
+
+  await page.goto('/notifications')
+  await expect(page.getByText('当前租户未启用通知服务')).toBeVisible()
+  await expect(page.getByText('Entitlement Off')).toBeVisible()
+
+  await page.goto('/financial')
+  await expect(page.getByText('当前租户未启用财务服务')).toBeVisible()
+  await expect(page.getByText('Entitlement Off')).toBeVisible()
+
+  await page.goto('/alerts')
+  await expect(page.getByText('当前租户未启用报警服务')).toBeVisible()
+  await expect(page.getByText('Entitlement Off')).toBeVisible()
+
+  await page.goto('/elderly/checkin')
+  await expect(page.getByText('当前租户未启用评定与长护险')).toBeVisible()
+  await expect(page.getByText('Entitlement Off')).toBeVisible()
+})
+
+test('nursing services overview shows navbar ownership matrix', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  await page.goto('/nursing/services')
+
   await expect(page.getByRole('heading', { name: '长护险评定机构总览' })).toBeVisible()
+  await expect(page.getByText('一级导航归属矩阵')).toBeVisible()
+  await expect(page.getByText('这些路由不再重复挂到机构养老、居家养老和机构管理。')).toBeVisible()
+  await expect(page.getByRole('link', { name: '协同人员入职' })).toBeVisible()
+  await expect(page.getByText('设备与健康、机构管理、运营分析只保留未被长护险、机构养老、居家养老接管的通用能力。')).toBeVisible()
+})
+
+test('scene-aware shared pages expose institutional and home-care contexts', async ({ page }) => {
+  await loginAsAdmin(page)
+
+  await page.goto('/elderly?scene=institutional')
+  await expect(page.getByRole('heading', { name: '机构老人档案' })).toBeVisible()
+  await expect(page.getByText('当前按机构养老视角聚焦院内在住老人、床位承载和照护档案。')).toBeVisible()
+  await expect(page.locator('.navbar-item.is-active').filter({ hasText: '长者照护' }).first()).toBeVisible()
+
+  await page.goto('/staff?scene=home')
+  await expect(page.getByRole('heading', { name: '协同人员池' })).toBeVisible()
+  await expect(page.getByText('当前聚焦居家养老协同视角，默认前置第三方合作人员与护理服务机构绑定关系。')).toBeVisible()
+  await expect(page.locator('.navbar-item.is-active').filter({ hasText: '长者照护' }).first()).toBeVisible()
+
+  await page.goto('/staff/new?scene=home')
+  await expect(page.getByRole('heading', { name: '添加协同人员' })).toBeVisible()
+  await expect(page.getByLabel('人员来源')).toHaveValue('第三方合作')
+
+  await page.goto('/elderly/health?scene=home')
+  await expect(page.getByRole('heading', { name: '居家健康档案' })).toBeVisible()
+
+  await page.goto('/elderly/face?scene=home')
+  await expect(page.getByRole('heading', { name: '居家人脸录入' })).toBeVisible()
+
+  await page.goto('/elderly/checkin?scene=home')
+  await expect(page.getByRole('heading', { name: '居家个案评定中心' })).toBeVisible()
+  await expect(page.getByText('资料受理 -> 上门评定 -> 认定结论与回执跟进')).toBeVisible()
+
+  await page.goto('/staff/tasks?scene=home')
+  await expect(page.getByRole('heading', { name: '上门评定回执任务' })).toBeVisible()
+  await expect(page.getByText('聚焦资料导入个案、第三方协同与上门回执补录')).toBeVisible()
+
+  await page.goto('/staff/schedule?scene=home')
+  await expect(page.getByRole('heading', { name: '居家派案排期' })).toBeVisible()
+  await expect(page.getByText('聚焦第三方协同、上门窗口与路线分派')).toBeVisible()
+
+  await page.goto('/organizations/partners?scene=home')
+  await expect(page.getByRole('heading', { name: '居家定点机构协同' })).toBeVisible()
+  await expect(page.getByText('当前优先聚焦居家上门评定与护理服务承接')).toBeVisible()
+
+  await page.goto('/nursing/checkin?scene=home')
+  await expect(page.getByRole('heading', { name: '居家服务回执台' })).toBeVisible()
+  await expect(page.getByText('聚焦第三方协同到场、回执补录与主管复核')).toBeVisible()
+
+  await page.goto('/financial?scene=home')
+  await expect(page.getByRole('heading', { name: '居家评定结算与质控' })).toBeVisible()
+  await expect(page.getByText('资料导入个案 -> 上门评定 -> 质控抽检 -> 评估费结算')).toBeVisible()
+
+  await page.goto('/analytics/report?scene=home')
+  await expect(page.getByRole('heading', { name: '居家监管报表中心' })).toBeVisible()
+  await expect(page.getByText('面向评定主管与运营经理的居家周报 / 月报摘要草稿。')).toBeVisible()
+  await page.getByRole('link', { name: '进入 AI 运营中心' }).first().click()
+  await expect(page).toHaveURL(/\/ai-assistant\?.*source=analytics-report.*scene=home/)
+  await expect(page.getByText('场景：居家养老')).toBeVisible()
+})
+
+test('scene-aware entry pages preserve context through home, daily workbench, and elderly detail', async ({ page }) => {
+  const workflowSignals = trackUnhandledWorkflowSignals(page)
+  await loginAsAdmin(page)
+
+  await page.goto('/?scene=home')
+  await expect(page.getByText('当前按居家养老视角组织入口，优先聚焦评定、派案、回执与监管链路。')).toBeVisible()
+  await expect(page.getByText('场景快捷入口')).toBeVisible()
+
+  await page.getByRole('link', { name: '进入居家工作台' }).click()
+  await expect(page).toHaveURL(/\/operations\/daily\?scene=home/)
+  await expect(page.getByRole('heading', { name: '居家日班工作台' })).toBeVisible()
+
+  await page.getByRole('link', { name: '进入评定任务' }).click()
+  await expect(page).toHaveURL(/\/staff\/tasks\?scene=home/)
+  await expect(page.getByRole('heading', { name: '上门评定回执任务' })).toBeVisible()
+
+  await page.goto('/elderly/E001?scene=home')
+  await expect(page.locator('.page-header .tag').filter({ hasText: '居家养老' })).toBeVisible()
+  await page.getByRole('link', { name: '人脸录入' }).click()
+  await expect(page).toHaveURL(/\/elderly\/face\?.*scene=home.*entry=elderly-detail/)
+  await expect(page.getByRole('heading', { name: '居家人脸录入' })).toBeVisible()
+
+  await page.goto('/elderly/E001?scene=home')
+  await page.locator('.page-header a').first().click()
+  await expect(page).toHaveURL(/\/elderly\?scene=home/)
+  await expect(page.getByRole('heading', { name: '居家个案池' })).toBeVisible()
+  expect(workflowSignals).toEqual([])
 })
 
 test('authenticated user can open health compatibility routes and metric pages', async ({ page }) => {

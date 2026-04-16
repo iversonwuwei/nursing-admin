@@ -1,6 +1,7 @@
 import { StandardModulePage } from '@/components/nh'
 import { NursingCheckinManagementPage } from '@/components/nursing/NursingCheckinManagementPage'
 import { NursingExecutionOverviewPage, ServicePackagesPage, ServicePlansPage } from '@/components/nursing/NursingWorkflowPages'
+import { ModuleEntitlementGate } from '@/components/platform/ModuleEntitlementGate'
 import { nursingPages } from '@/lib/data/standard-pages'
 import { notFound, redirect } from 'next/navigation'
 
@@ -17,15 +18,27 @@ export default async function NursingModulePage({
   }
 
   if (module === 'packages') {
-    return <ServicePackagesPage />
+    return (
+      <ModuleEntitlementGate module="ltci-service" pageTitle="评定标准配置" moduleLabel="评定与长护险">
+        <ServicePackagesPage />
+      </ModuleEntitlementGate>
+    )
   }
 
   if (module === 'plans') {
-    return <ServicePlansPage />
+    return (
+      <ModuleEntitlementGate module="ltci-service" pageTitle="认定方案模板" moduleLabel="评定与长护险">
+        <ServicePlansPage />
+      </ModuleEntitlementGate>
+    )
   }
 
   if (module === 'services') {
-    return <NursingExecutionOverviewPage />
+    return (
+      <ModuleEntitlementGate module="ltci-service" pageTitle="长护险业务总览" moduleLabel="评定与长护险">
+        <NursingExecutionOverviewPage />
+      </ModuleEntitlementGate>
+    )
   }
 
   if (module === 'schedule') {
@@ -36,5 +49,5 @@ export default async function NursingModulePage({
     return <NursingCheckinManagementPage />
   }
 
-  return <StandardModulePage config={config} />
+  return <StandardModulePage config={config} routePath={`/nursing/${module}`} />
 }

@@ -602,3 +602,43 @@ export const settingsRolesPage: StandardModulePageConfig = {
     ],
   },
 }
+
+export function resolveStandardPageByHelpSlug(slug: string[]) {
+  const path = `/${slug.join('/')}`
+
+  if (path.startsWith('/nursing/')) {
+    const moduleKey = slug[1]
+    const config = moduleKey ? nursingPages[moduleKey] : undefined
+
+    if (config) {
+      return { pagePath: `/nursing/${moduleKey}`, config }
+    }
+  }
+
+  if (path.startsWith('/health/')) {
+    const metric = slug[1]
+    const config = metric ? healthMetricPages[metric] : undefined
+
+    if (config) {
+      return { pagePath: `/health/${metric}`, config }
+    }
+  }
+
+  if (path === '/devices/assets') {
+    return { pagePath: path, config: devicesAssetsPage }
+  }
+
+  if (path === '/alerts/history') {
+    return { pagePath: path, config: alertsHistoryPage }
+  }
+
+  if (path === '/settings') {
+    return { pagePath: path, config: settingsPage }
+  }
+
+  if (path === '/settings/roles') {
+    return { pagePath: path, config: settingsRolesPage }
+  }
+
+  return null
+}

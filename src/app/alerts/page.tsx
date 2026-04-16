@@ -1,6 +1,7 @@
 'use client'
 
-import { DataCard, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
+import { ModuleEntitlementGate } from '@/components/platform/ModuleEntitlementGate'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import {
   ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS,
@@ -12,6 +13,12 @@ import {
 } from '@/lib/data/alerts-data'
 import { getAlertAiSuggestion, getOpenAlertAiSummary } from '@/lib/mock/admin-ai'
 import { sortAlertsByPriority } from '@/lib/operations-priority'
+import {
+  fetchAlertCenterSnapshot,
+  submitAlertAction,
+  type AdminAlertQueueItemResponse,
+  type AdminAlertSummaryResponse,
+} from '@/lib/services/admin-module-services'
 import {
   Activity,
   AlertTriangle, Bell,
@@ -26,7 +33,7 @@ import {
   User,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const LEVEL_ICON: Record<AlertLevel, React.ReactNode> = {
   critical: <AlertTriangle size={14} />,
@@ -39,6 +46,8 @@ const TYPE_ICON: Record<AlertType, React.ReactNode> = {
   device: <Monitor size={14} />,
   health: <Bell size={14} />,
   call: <PhoneIncoming size={14} />,
+  bedExit: <Shield size={14} />,
+  sos: <AlertTriangle size={14} />,
 }
 
 const LEVEL_TAG: Record<AlertLevel, string> = {
@@ -69,6 +78,67 @@ const LEVEL_COLOR: Record<AlertLevel, string> = {
   critical: 'var(--color-danger)',
   warning: 'var(--color-warning)',
   info: 'var(--color-info)',
+}
+
+const ALERT_MODULES = [
+  {
+    id: 'emergency-call',
+    label: '紧急呼叫',
+    description: '承接床旁呼叫、人工求助和需要快速到场的服务响应。',
+    focus: '先响应，再补回执',
+    matches: (alert: AlertRecord) => alert.type === 'call',
+  },
+  {
+    id: 'bed-exit',
+    label: '离床预警',
+    description: '聚焦夜间离床、长时间未回床与疑似走失前状态。',
+    focus: '夜间巡视与回床确认',
+    matches: (alert: AlertRecord) => alert.type === 'bedExit',
+  },
+  {
+    id: 'anomaly',
+    label: '异常预警',
+    description: '承接健康异常、设备异常和跌倒类高风险事件。',
+    focus: '先确认风险，再决定升级链路',
+    matches: (alert: AlertRecord) => ['fall', 'health', 'device'].includes(alert.type),
+  },
+  {
+    id: 'sos',
+    label: 'SOS 处置',
+    description: '承接一键求助与需要联动护士站、医生、安保的高优先事件。',
+    focus: '到场记录与多角色联动',
+    matches: (alert: AlertRecord) => alert.type === 'sos',
+  },
+] as const
+
+const ALERT_WORKFLOW_STEPS = [
+  { id: 'trigger', title: '事件触发', detail: '呼叫器、床位传感器、健康指标或 SOS 按钮产生事件。', tone: 'info' as const },
+  { id: 'dispatch', title: '分派接单', detail: '系统进入优先队列，并要求值班人员确认责任人。', tone: 'warning' as const },
+  { id: 'onsite', title: '现场处置', detail: '完成到场、复测、协助或医生联动等动作。', tone: 'primary' as const },
+  { id: 'notify', title: '升级通知', detail: '必要时同步家属、医生、安保或设备部门。', tone: 'warning' as const },
+  { id: 'closure', title: '结案复盘', detail: '保留处理结果、升级原因和复盘建议。', tone: 'success' as const },
+] as const
+
+function mapRemoteAlert(remote: AdminAlertQueueItemResponse): AlertRecord {
+  const level = ['critical', 'warning', 'info'].includes(remote.level) ? remote.level as AlertLevel : 'warning'
+  const status = ['pending', 'processing', 'resolved'].includes(remote.status) ? remote.status as AlertStatus : 'pending'
+  const type = ['fall', 'device', 'health', 'call', 'bedExit', 'sos'].includes(remote.type) ? remote.type as AlertType : 'device'
+
+  return {
+    id: remote.alertId,
+    type,
+    level,
+    status,
+    elderlyId: remote.elderId,
+    elderlyName: remote.elderlyName,
+    roomNumber: remote.roomNumber,
+    description: remote.description,
+    deviceName: remote.deviceName ?? undefined,
+    occurredAt: new Date(remote.occurredAt).toLocaleString('zh-CN'),
+    handledBy: remote.handledBy ?? undefined,
+    handledAt: remote.handledAt ? new Date(remote.handledAt).toLocaleString('zh-CN') : undefined,
+    resolution: remote.resolution ?? undefined,
+  }
 }
 
 /* ── Alert Card ── */
@@ -223,13 +293,67 @@ export default function AlertsPage() {
   const [levelFilter, setLevelFilter] = useState<AlertLevel | 'all'>('all')
   const [typeFilter, setTypeFilter] = useState<AlertType | 'all'>('all')
   const [alerts, setAlerts] = useState(alertRecords)
+  const [remoteSummary, setRemoteSummary] = useState<AdminAlertSummaryResponse | null>(null)
+  const [dataSource, setDataSource] = useState<'live' | 'demo'>('demo')
+  const [integrationNote, setIntegrationNote] = useState('正在同步报警服务数据...')
 
-  const handleTransition = (id: string, next: AlertStatus) => {
+  useEffect(() => {
+    let disposed = false
+
+    async function loadAlerts() {
+      try {
+        const snapshot = await fetchAlertCenterSnapshot()
+
+        if (disposed) {
+          return
+        }
+
+        setAlerts(snapshot.queue.map(mapRemoteAlert))
+        setRemoteSummary(snapshot.summary)
+        setDataSource('live')
+        setIntegrationNote(
+          snapshot.queue.length > 0
+            ? '当前页面已接入真实报警摘要与优先队列；动作提交会同步写回后端。'
+            : '当前页面已接入真实报警摘要，但当前优先队列为空；页面保持 live 空态而不是回退演示数据。',
+        )
+      } catch (error) {
+        if (disposed) {
+          return
+        }
+
+        setAlerts(alertRecords)
+        setRemoteSummary(null)
+        setDataSource('demo')
+        setIntegrationNote(error instanceof Error ? error.message : '报警服务不可用，已回退为演示数据。')
+      }
+    }
+
+    void loadAlerts()
+
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  const handleTransition = async (id: string, next: AlertStatus) => {
     setAlerts(prev => prev.map(a =>
       a.id === id
         ? { ...a, status: next, handledAt: next === 'resolved' ? new Date().toLocaleString('zh-CN') : a.handledAt, handledBy: next === 'processing' ? '当前用户' : a.handledBy }
         : a
     ))
+
+    if (dataSource !== 'live') {
+      return
+    }
+
+    const action = next === 'processing' ? 'acknowledge' : 'resolve'
+
+    try {
+      const updatedAlert = await submitAlertAction(id, action)
+      setAlerts(prev => prev.map(item => item.id === id ? mapRemoteAlert(updatedAlert) : item))
+    } catch (error) {
+      setIntegrationNote(error instanceof Error ? `${error.message} 当前先保留页面上的本地状态。` : '报警动作提交失败，当前先保留页面上的本地状态。')
+    }
   }
 
   const filtered = alerts.filter(a => {
@@ -249,6 +373,29 @@ export default function AlertsPage() {
   const sortedAlerts = useMemo(() => sortAlertsByPriority(filtered), [filtered])
   const topAlert = prioritizedAlerts[0] ?? null
   const openAlertAiSummary = getOpenAlertAiSummary()
+  const moduleSummary = useMemo(() => ALERT_MODULES.map(module => {
+    const remoteModule = remoteSummary?.modules.find(item => item.module === module.id)
+
+    if (remoteModule) {
+      return {
+        ...module,
+        total: remoteModule.pending + remoteModule.processing + remoteModule.resolved,
+        unresolved: remoteModule.pending + remoteModule.processing,
+        criticalItems: remoteModule.critical,
+      }
+    }
+
+    const items = alerts.filter(module.matches)
+    const unresolved = items.filter(item => item.status !== 'resolved').length
+    const criticalItems = items.filter(item => item.level === 'critical' && item.status !== 'resolved').length
+
+    return {
+      ...module,
+      total: items.length,
+      unresolved,
+      criticalItems,
+    }
+  }), [alerts, remoteSummary])
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
     source: 'alerts-center',
     entityId: entityId ?? 'alerts-board',
@@ -258,205 +405,206 @@ export default function AlertsPage() {
   })
 
   return (
-    <div className="animate-fade-up">
+    <ModuleEntitlementGate
+      module="alert-service"
+      pageTitle="报警中心"
+      moduleLabel="报警服务"
+      disabledSummary="当前租户未开通报警服务。页面保留为只读禁用态，避免事件看板、处置动作和套餐口径不一致。"
+      fallbackLinks={[
+        { href: '/', label: '返回首页' },
+        { href: '/operations/daily', label: '进入日班工作台' },
+      ]}
+    >
+      <div className="page-root animate-fade-up">
       <PageHeader
         title="报警中心"
-        subtitle={`共 ${alerts.length} 条记录 · ${critical} 例紧急待处理`}
+          subtitle={`共 ${alerts.length} 条记录 · ${critical} 例紧急待处理 · 已覆盖紧急呼叫 / 离床预警 / 异常预警 / SOS 处置`}
       />
-
-      <WorkflowOverviewCard
-        eyebrow="Alert Operations"
-        title="实时告警总览"
-        description="先处理待处理紧急告警，再跟进处理中事件，最后回看已解决记录的复盘质量，避免值班视角只看到数量看不到处置顺序。"
-        badge={<Tag variant="warning">Response First</Tag>}
-        metrics={[
-          { label: '待处理告警', value: pending, hint: '需要值班人员立即接单', tone: pending > 0 ? 'danger' : 'success' },
-          { label: '处理中告警', value: processing, hint: '需要跟踪处置进度', tone: processing > 0 ? 'warning' : 'neutral' },
-          { label: '未闭环紧急', value: critical, hint: '跌倒与健康异常优先', tone: critical > 0 ? 'danger' : 'success' },
-          { label: '解决率', value: `${resolutionRate}%`, hint: `设备类未闭环 ${activeDeviceAlerts} 条`, tone: resolutionRate >= 70 ? 'success' : 'warning' },
-        ]}
-        signals={[
-          { label: topAlert ? `当前最高优先：${topAlert.elderlyName} · ${ALERT_TYPE_LABELS[topAlert.type]}` : '当前无告警需要优先处理', tone: topAlert?.level === 'critical' ? 'danger' : 'info' },
-          { label: openAlertAiSummary.summary, tone: 'info' },
-          { label: `筛选结果 ${filtered.length} 条`, tone: 'neutral' },
-        ]}
-        actions={
-          <>
-            <Link href="/alerts/history" className="btn btn-secondary btn-sm">查看历史记录</Link>
-            <Link href={buildAiHref('alert-escalation', 'inference')} className="btn btn-secondary btn-sm">查看 AI 解释</Link>
-          </>
-        }
-      />
-
-      {/* KPI stats */}
-      <div className="kpi-grid">
-        <StatCard icon={<AlertTriangle size={18} />} label="待处理" value={pending} sub="需立即处理" color="danger" />
-        <StatCard icon={<Clock size={18} />} label="处理中" value={processing} sub="正在处理" color="warning" />
-        <StatCard icon={<CheckCircle2 size={18} />} label="已解决" value={resolved} sub="本月累计" color="success" />
-        <StatCard icon={<AlertTriangle size={18} />} label="紧急告警" value={critical} sub="需关注" color="danger" />
-      </div>
-
-      {/* Status distribution summary */}
-      <div className="alerts-summary-bar">
-        <div className="alerts-summary-left">
-          <DonutChart value={Math.round((resolved / alerts.length) * 100)} color="var(--color-success)" label="解决率" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[
-              { label: '待处理', value: pending, color: 'var(--color-danger)' },
-              { label: '处理中', value: processing, color: 'var(--color-warning)' },
-              { label: '已解决', value: resolved, color: 'var(--color-success)' },
-            ].map(item => (
-              <div key={item.label} className="donut-legend-row">
-                <span className="donut-legend-dot" style={{ background: item.color }} />
-                <span className="donut-legend-text">{item.label}</span>
-                <span className="donut-legend-num">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="alerts-summary-right">
-          <div className="alerts-summary-title">今日趋势</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 48 }}>
-            {[3, 5, 4, 7, 6, 4, 10].map((h, i) => (
-              <div key={i}
-                className="alerts-trend-bar"
-                style={{
-                  height: `${(h / 10) * 100}%`,
-                  background: i === 6 ? 'var(--color-danger)' : 'var(--color-primary)',
-                  opacity: i === 6 ? 1 : 0.5,
-                }}
-                title={`${h}条`}
+        <InteractionRailLayout
+          main={(
+            <>
+              <WorkflowOverviewCard
+                eyebrow="Alert Operations"
+                title="实时告警总览"
+                description="先处理待处理紧急告警，再跟进处理中事件，最后回看已解决记录的复盘质量，避免值班视角只看到数量看不到处置顺序。"
+                badge={<Tag variant="warning">Response First</Tag>}
+                metrics={[
+                  { label: '待处理告警', value: pending, hint: '需要值班人员立即接单', tone: pending > 0 ? 'danger' : 'success' },
+                  { label: '处理中告警', value: processing, hint: '需要跟踪处置进度', tone: processing > 0 ? 'warning' : 'neutral' },
+                  { label: '未闭环紧急', value: critical, hint: '跌倒与健康异常优先', tone: critical > 0 ? 'danger' : 'success' },
+                  { label: '解决率', value: `${resolutionRate}%`, hint: `设备类未闭环 ${activeDeviceAlerts} 条`, tone: resolutionRate >= 70 ? 'success' : 'warning' },
+                ]}
+                signals={[
+                  { label: topAlert ? `当前最高优先：${topAlert.elderlyName} · ${ALERT_TYPE_LABELS[topAlert.type]}` : '当前无告警需要优先处理', tone: topAlert?.level === 'critical' ? 'danger' : 'info' },
+                  { label: openAlertAiSummary.summary, tone: 'info' },
+                  { label: `筛选结果 ${filtered.length} 条`, tone: 'neutral' },
+                ]}
+                actions={
+                  <>
+                    <Link href="/alerts/history" className="btn btn-secondary btn-sm">查看历史记录</Link>
+                    <Link href={buildAiHref('alert-escalation', 'inference')} className="btn btn-secondary btn-sm">查看 AI 解释</Link>
+                  </>
+                }
               />
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {['一', '二', '三', '四', '五', '六', '日'].map((d, i) => (
-              <span key={i} className="alerts-trend-label">{d}</span>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      <DataCard
-        icon={<Bot size={16} />}
-        title="AI 事件解释面板"
-        subtitle="报警中心当前优先承接解释与升级建议，不允许 AI 直接关闭高等级事件。"
-        badge={<Tag variant="warning">人工兜底</Tag>}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-          <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>待解释事件</div>
-            <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800, color: 'var(--color-text)' }}>{openAlertAiSummary.total}</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{openAlertAiSummary.summary}</div>
-          </div>
-          <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>紧急升级提醒</div>
-            <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800, color: 'var(--color-danger)' }}>{openAlertAiSummary.critical}</div>
-            <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{openAlertAiSummary.deviceSummary}</div>
-          </div>
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <Link href={buildAiHref('alert-escalation', 'inference')} className="btn btn-secondary btn-sm">进入 AI 运营中心</Link>
-        </div>
-      </DataCard>
+              <div className="kpi-grid">
+                <StatCard icon={<AlertTriangle size={18} />} label="待处理" value={pending} sub="需立即处理" color="danger" />
+                <StatCard icon={<Clock size={18} />} label="处理中" value={processing} sub="正在处理" color="warning" />
+                <StatCard icon={<CheckCircle2 size={18} />} label="已解决" value={resolved} sub="本月累计" color="success" />
+                <StatCard icon={<AlertTriangle size={18} />} label="紧急告警" value={critical} sub="需关注" color="danger" />
+              </div>
 
-      <div className="dashboard-grid-2" style={{ marginBottom: 16 }}>
-        <DataCard
-          icon={<AlertTriangle size={16} />}
-          title="处置优先队列"
-          subtitle="按待处理、等级、类型和发生时间统一排序，先暴露真正要先处理的告警。"
-          badge={<Tag variant="warning">Priority Queue</Tag>}
-        >
-          <div style={{ display: 'grid', gap: 10 }}>
-            {prioritizedAlerts.map(alert => {
-              const actionLabel = alert.status === 'pending'
-                ? '立即接单并确认现场响应人'
-                : alert.status === 'processing'
-                  ? '继续跟进处置与结果回填'
-                  : '已解决，建议进入复盘归档'
-
-              return (
-                <div key={alert.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{alert.elderlyName} · {ALERT_TYPE_LABELS[alert.type]}</div>
-                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{alert.roomNumber}{alert.deviceName ? ` · ${alert.deviceName}` : ''} · {alert.occurredAt}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <Tag variant={LEVEL_TAG[alert.level] as 'danger' | 'warning' | 'info'}>{ALERT_LEVEL_LABELS[alert.level]}</Tag>
-                      <Tag variant={STATUS_TAG[alert.status] as 'danger' | 'warning' | 'success'}>{ALERT_STATUS_LABELS[alert.status]}</Tag>
-                    </div>
+              <div className="alerts-summary-bar">
+                <div className="alerts-summary-left">
+                  <DonutChart value={resolutionRate} color="var(--color-success)" label="解决率" />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      { label: '待处理', value: pending, color: 'var(--color-danger)' },
+                      { label: '处理中', value: processing, color: 'var(--color-warning)' },
+                      { label: '已解决', value: resolved, color: 'var(--color-success)' },
+                    ].map(item => (
+                      <div key={item.label} className="donut-legend-row">
+                        <span className="donut-legend-dot" style={{ background: item.color }} />
+                        <span className="donut-legend-text">{item.label}</span>
+                        <span className="donut-legend-num">{item.value}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
                 </div>
-              )
-            })}
-          </div>
-        </DataCard>
+                <div className="alerts-summary-right">
+                  <div className="alerts-summary-title">今日趋势</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 48 }}>
+                    {[3, 5, 4, 7, 6, 4, 10].map((h, i) => (
+                    <div
+                      key={i}
+                      className="alerts-trend-bar"
+                      style={{
+                        height: `${(h / 10) * 100}%`,
+                        background: i === 6 ? 'var(--color-danger)' : 'var(--color-primary)',
+                        opacity: i === 6 ? 1 : 0.5,
+                      }}
+                      title={`${h}条`}
+                    />
+                  ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {['一', '二', '三', '四', '五', '六', '日'].map((d, i) => (
+                      <span key={i} className="alerts-trend-label">{d}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-        <DataCard
-          icon={<ChevronRight size={16} />}
-          title="推荐处理路径"
-          subtitle="让报警中心从看板页面直接进入值班动作链路。"
-        >
-          <div style={{ display: 'grid', gap: 10 }}>
-            {[
-              '先接单待处理的紧急事件，优先确认跌倒和健康异常。',
-              '再跟踪处理中事件，补齐处理结果与责任人信息。',
-              '最后进入历史页回看已解决记录，做班次复盘。',
-            ].map(item => (
-              <div key={item} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>{item}</div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
+              <DataCard
+                icon={<AlertTriangle size={16} />}
+                title="处置优先队列"
+                subtitle="按待处理、等级、类型和发生时间统一排序，先暴露真正要先处理的告警。"
+                badge={<Tag variant="warning">Priority Queue</Tag>}
+              >
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {prioritizedAlerts.map(alert => {
+                    const actionLabel = alert.status === 'pending'
+                      ? '立即接单并确认现场响应人'
+                      : alert.status === 'processing'
+                        ? '继续跟进处置与结果回填'
+                        : '已解决，建议进入复盘归档'
 
-      {/* Filters */}
-      <div className="filter-bar">
-        <span className="filter-bar-label">状态</span>
-        {(['all', 'pending', 'processing', 'resolved'] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'}`}
-          >
-            {s === 'all' ? '全部' : ALERT_STATUS_LABELS[s]}
-          </button>
-        ))}
+                  return (
+                    <div key={alert.id} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{alert.elderlyName} · {ALERT_TYPE_LABELS[alert.type]}</div>
+                          <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{alert.roomNumber}{alert.deviceName ? ` · ${alert.deviceName}` : ''} · {alert.occurredAt}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <Tag variant={LEVEL_TAG[alert.level] as 'danger' | 'warning' | 'info'}>{ALERT_LEVEL_LABELS[alert.level]}</Tag>
+                          <Tag variant={STATUS_TAG[alert.status] as 'danger' | 'warning' | 'success'}>{ALERT_STATUS_LABELS[alert.status]}</Tag>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{actionLabel}</div>
+                    </div>
+                  )
+                })}
+                </div>
+              </DataCard>
 
-        <span className="filter-bar-label" style={{ marginLeft: 8 }}>等级</span>
-        {(['all', 'critical', 'warning', 'info'] as const).map(l => (
-          <button
-            key={l}
-            onClick={() => setLevelFilter(l)}
-            className={`btn btn-sm ${levelFilter === l ? 'btn-primary' : 'btn-ghost'}`}
-          >
-            {l === 'all' ? '全部' : ALERT_LEVEL_LABELS[l]}
-          </button>
-        ))}
+              <div className="filter-bar">
+                <span className="filter-bar-label">状态</span>
+                {(['all', 'pending', 'processing', 'resolved'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-ghost'}`}
+                  >
+                    {s === 'all' ? '全部' : ALERT_STATUS_LABELS[s]}
+                  </button>
+                ))}
 
-        <span className="filter-bar-label" style={{ marginLeft: 8 }}>类型</span>
-        {(['all', 'fall', 'device', 'health', 'call'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTypeFilter(t)}
-            className={`btn btn-sm ${typeFilter === t ? 'btn-primary' : 'btn-ghost'}`}
-          >
-            {t === 'all' ? '全部' : ALERT_TYPE_LABELS[t]}
-          </button>
-        ))}
+                <span className="filter-bar-label" style={{ marginLeft: 8 }}>等级</span>
+                {(['all', 'critical', 'warning', 'info'] as const).map(l => (
+                  <button
+                    key={l}
+                    onClick={() => setLevelFilter(l)}
+                    className={`btn btn-sm ${levelFilter === l ? 'btn-primary' : 'btn-ghost'}`}
+                  >
+                    {l === 'all' ? '全部' : ALERT_LEVEL_LABELS[l]}
+                  </button>
+                ))}
 
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--color-muted)' }}>
-          共 {filtered.length} 条
-        </span>
-      </div>
+                <span className="filter-bar-label" style={{ marginLeft: 8 }}>类型</span>
+                {(['all', 'fall', 'device', 'health', 'call', 'bedExit', 'sos'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTypeFilter(t)}
+                    className={`btn btn-sm ${typeFilter === t ? 'btn-primary' : 'btn-ghost'}`}
+                  >
+                    {t === 'all' ? '全部' : ALERT_TYPE_LABELS[t]}
+                  </button>
+                ))}
 
-      {/* Alert cards grid */}
-      <div className="alert-grid">
-        {sortedAlerts.map(alert => (
-          <AlertCard key={alert.id} alert={alert} onTransition={handleTransition} />
-        ))}
-      </div>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--color-muted)' }}>
+                  共 {filtered.length} 条
+                </span>
+              </div>
+
+              <div className="alert-grid">
+                {sortedAlerts.length > 0 ? sortedAlerts.map(alert => (
+                  <AlertCard key={alert.id} alert={alert} onTransition={handleTransition} />
+              )) : (
+                  <div style={{ gridColumn: '1 / -1', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)', background: 'var(--color-bg)', padding: 24, fontSize: 13, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                    当前筛选条件下没有待展示的报警记录。若本地 backend 已连通，这表示真实优先队列当前为空，而不是页面已经回退到 demo。
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          rail={(
+            <>
+              <DataCard
+                title="API 对接状态"
+                subtitle={integrationNote}
+                badge={<Tag variant={dataSource === 'live' ? 'success' : 'warning'}>{dataSource === 'live' ? 'Live API' : 'Demo Fallback'}</Tag>}
+              >
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                  当前范围：报警摘要、优先队列、状态动作。回滚方式：移除本页 API 读写接入后恢复到本地 alertRecords。
+                </div>
+              </DataCard>
+
+              <PageHelpCard
+                title="报警中心帮助"
+                subtitle="完整说明已迁到帮助页，首屏只保留必要摘要。"
+                summary="右侧不再默认展开模块长说明、完整 workflow 和推荐路径；需要查看完整规则时再进入帮助页。"
+                items={[
+                  ...moduleSummary.slice(0, 2).map(item => `${item.label}：${item.focus}`),
+                  `流程：${ALERT_WORKFLOW_STEPS.map(step => step.title).join(' -> ')}`,
+                  `AI 边界：当前待解释 ${openAlertAiSummary.total} 条，仅做解释与升级建议。`,
+                ]}
+                href="/alerts/help"
+              />
+            </>
+          )}
+        />
     </div>
+    </ModuleEntitlementGate>
   )
 }

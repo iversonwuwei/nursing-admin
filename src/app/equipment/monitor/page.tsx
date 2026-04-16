@@ -1,6 +1,6 @@
 "use client";
 
-import { DataCard, Tag, WorkflowOverviewCard } from "@/components/nh";
+import { DataCard, InteractionRailLayout, PageHelpCard, Tag, WorkflowOverviewCard } from "@/components/nh";
 import { getDeviceAiInsights, getDeviceAiOverview } from "@/lib/mock/admin-ai";
 import { sortMonitorPointsByPriority } from "@/lib/resource-operations-priority";
 import {
@@ -75,6 +75,7 @@ export default function MonitorPage() {
   const sortedMonitorPoints = sortMonitorPointsByPriority(MONITOR_POINTS as readonly MonitorPoint[])
   const attentionDevices = sortedMonitorPoints.slice(0, 4)
   const displayMonitorPoints = sortedMonitorPoints
+  const helpHref = '/equipment/help'
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -183,202 +184,186 @@ export default function MonitorPage() {
         ))}
       </div>
 
-      <div className="page-grid-2" style={{ marginBottom: 16, alignItems: "start" }}>
-        <DataCard
-          icon={<AlertTriangle size={18} />}
-          title="巡检优先队列"
-          subtitle="把需要立刻到场或补电的设备直接排到最前。"
-          badge={<Tag variant="warning">Priority Queue</Tag>}
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {attentionDevices.map((device) => {
-              const isCriticalDevice = device.status === "offline"
-              const actionLabel = isCriticalDevice
-                ? `立即到场排查${device.alert?.msg ? `：${device.alert.msg}` : '网络、电源与设备本体状态'}`
-                : device.alert?.level === "warning"
-                  ? `本班次内完成处理：${device.alert.msg}`
-                  : "安排常规巡检并关注续航"
+      <InteractionRailLayout
+        main={(
+          <>
+            <DataCard
+              icon={<AlertTriangle size={18} />}
+              title="巡检优先队列"
+              subtitle="把需要立刻到场或补电的设备直接排到最前。"
+              badge={<Tag variant="warning">Priority Queue</Tag>}
+            >
+              <div style={{ display: "grid", gap: 10 }}>
+                {attentionDevices.map((device) => {
+                  const isCriticalDevice = device.status === "offline"
+                  const actionLabel = isCriticalDevice
+                    ? `立即到场排查${device.alert?.msg ? `：${device.alert.msg}` : '网络、电源与设备本体状态'}`
+                    : device.alert?.level === "warning"
+                      ? `本班次内完成处理：${device.alert.msg}`
+                      : "安排常规巡检并关注续航"
 
-              return (
-                <div key={device.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{device.name}</div>
-                      <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{device.room} · 电量 {device.metrics.battery}%</div>
+                  return (
+                    <div key={device.id} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{device.name}</div>
+                          <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{device.room} · 电量 {device.metrics.battery}%</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <Tag variant={device.status === "offline" ? "danger" : "success"}>{device.status === "online" ? "在线" : "离线"}</Tag>
+                          {device.alert ? <Tag variant={device.alert.level === "danger" ? "danger" : "warning"}>{device.alert.msg}</Tag> : null}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{actionLabel}</div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <Tag variant={device.status === "offline" ? "danger" : "success"}>{device.status === "online" ? "在线" : "离线"}</Tag>
-                      {device.alert ? <Tag variant={device.alert.level === "danger" ? "danger" : "warning"}>{device.alert.msg}</Tag> : null}
+                  )
+                })}
+              </div>
+            </DataCard>
+
+            <div className="page-grid-2">
+              <DataCard
+                icon={<Activity size={18} />}
+                title="实时监控"
+                subtitle="设备状态实时更新"
+                action={
+                  <div className="live-badge">
+                    <span className="live-dot" />
+                    <span style={{ fontSize: 12, color: "var(--color-muted)" }}>LIVE</span>
+                  </div>
+                }
+              >
+                <div style={{ padding: 12 }} className="monitor-eq-grid">
+                  {displayMonitorPoints.map((eq) => (
+                    <div key={eq.id} className={getEqCardClass(eq)}>
+                      <div className="eq-card-header">
+                        <div className="flex-center" style={{ gap: 10 }}>
+                          <div className={getIconBoxClass(eq.status)}>
+                            {eq.status === "offline"
+                              ? <XCircle size={18} style={{ color: "var(--color-danger)" }} />
+                              : <Wifi size={18} style={{ color: "var(--color-primary)" }} />
+                            }
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>{eq.name}</div>
+                            <div style={{ fontSize: 12, color: "var(--color-muted)" }}>{eq.room}</div>
+                          </div>
+                        </div>
+                        <div className="flex-center" style={{ gap: 6 }}>
+                          {eq.alert && <AlertBadge level={eq.alert.level} />}
+                          <span className={getStatusBadgeClass(eq.status)}>
+                            {eq.status === "online" ? "在线" : "离线"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {eq.status === "offline" ? (
+                        <div style={{ fontSize: 13, color: "var(--color-danger)", fontWeight: 500, padding: "8px 0" }}>
+                          设备已离线，请检查网络或电源
+                        </div>
+                      ) : (
+                        <div className="metric-grid">
+                          {eq.metrics.hr !== null && <MetricCard icon={Activity} label="心率" value={eq.metrics.hr} unit="bpm" color="var(--color-primary)" />}
+                          {eq.metrics.bp !== null && <MetricCard icon={TrendingUp} label="血压" value={eq.metrics.bp} unit="mmHg" color="var(--color-info)" />}
+                          {eq.metrics.temp !== null && <MetricCard icon={Thermometer} label="体温" value={eq.metrics.temp} unit="℃" color="var(--color-warning)" />}
+                          {eq.metrics.spo2 !== null && <MetricCard icon={Wifi} label="血氧" value={eq.metrics.spo2} unit="%" color="var(--color-success)" />}
+                          <MetricCard icon={Battery} label="电量" value={eq.metrics.battery} unit="%" color={eq.metrics.battery < 30 ? "var(--color-danger)" : "var(--color-success)"} />
+                          <MetricCard icon={Clock} label="运行时长" value={eq.runtimeHours} unit="h" color="var(--color-muted)" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{actionLabel}</div>
+                  ))}
                 </div>
-              )
-            })}
-          </div>
-        </DataCard>
+              </DataCard>
 
-        <DataCard
-          icon={<Bot size={18} />}
-          title="推荐处理路径"
-          subtitle="先恢复监测连续性，再回看告警趋势与设备分布。"
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {[
-              "先排查离线设备，恢复基础监测连续性。",
-              "再处理高风险告警和低电量设备，避免班次内新增盲区。",
-              "最后结合 AI 建议回看重复告警与设备部署位置。",
-            ].map((item) => (
-              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
-                {item}
-              </div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
-
-      <div className="page-grid-2" style={{ marginBottom: 16, alignItems: "start" }}>
-        <DataCard
-          icon={<Bot size={16} />}
-          title="AI 设备解释"
-          subtitle="优先解释监测盲区与重复告警来源，避免只看到设备状态不看到护理影响。"
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {aiInsights.map(item => (
-              <div key={item.deviceId} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.deviceName}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-muted)" }}>{item.room}</div>
-                  </div>
-                  <span className={`tag ${item.severity === "高风险" ? "danger" : "warning"}`}>{item.severity}</span>
+              <DataCard icon={<AlertTriangle size={18} />} title="告警记录" subtitle={`最近${ALERT_HISTORY.length}条`}>
+                <div style={{ padding: "8px 12px" }}>
+                  {ALERT_HISTORY.map((alert, i) => (
+                    <div key={i} className="alert-history-item">
+                      <div className={getAlertIconClass(alert.type)}>
+                        {alert.type === "danger"
+                          ? <XCircle size={14} style={{ color: "var(--color-danger)" }} />
+                          : alert.type === "warning"
+                            ? <AlertTriangle size={14} style={{ color: "var(--color-warning)" }} />
+                            : <Activity size={14} style={{ color: "var(--color-info)" }} />
+                        }
+                      </div>
+                      <div className="alert-history-content">
+                        <div className="alert-history-meta">
+                          <span className="alert-history-name">{alert.device}</span>
+                          <span className="alert-history-time">{alert.time}</span>
+                        </div>
+                        <div className="alert-history-room">{alert.room}</div>
+                        <div className={getAlertMsgClass(alert.type)}>{alert.msg}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
-                <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
-                <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {item.confidence}%</div>
-              </div>
-            ))}
-          </div>
-        </DataCard>
-
-        <DataCard
-          icon={<AlertTriangle size={16} />}
-          title="AI 巡检建议"
-          subtitle="把设备告警翻译成班次动作建议，不直接替代工程或护理判断。"
-        >
-          <div style={{ display: "grid", gap: 10 }}>
-            {aiOverview.map(item => (
-              <div key={item} style={{ borderRadius: 12, background: "var(--color-bg)", padding: 14, fontSize: 12.5, lineHeight: 1.7, color: "var(--color-text)" }}>
-                {item}
-              </div>
-            ))}
-          </div>
-        </DataCard>
-      </div>
-
-      {/* Main grid */}
-      <div className="page-grid-2">
-
-        {/* 监控设备列表 */}
-        <DataCard
-          icon={<Activity size={18} />}
-          title="实时监控"
-          subtitle="设备状态实时更新"
-          action={
-            <div className="live-badge">
-              <span className="live-dot" />
-              <span style={{ fontSize: 12, color: "var(--color-muted)" }}>LIVE</span>
+                <div style={{ padding: "8px 12px 12px" }}>
+                  <Link href="/devices/status" className="btn btn-ghost btn-sm flex-center" style={{ width: "100%", justifyContent: "center" }}>
+                    查看全部 <ChevronRight size={13} />
+                  </Link>
+                </div>
+              </DataCard>
             </div>
-          }
-        >
-          <div style={{ padding: 12 }} className="monitor-eq-grid">
-            {displayMonitorPoints.map((eq) => (
-              <div key={eq.id} className={getEqCardClass(eq)}>
-                {/* Header */}
-                <div className="eq-card-header">
-                  <div className="flex-center" style={{ gap: 10 }}>
-                    <div className={getIconBoxClass(eq.status)}>
-                      {eq.status === "offline"
-                        ? <XCircle size={18} style={{ color: "var(--color-danger)" }} />
-                        : <Wifi size={18} style={{ color: "var(--color-primary)" }} />
-                      }
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>{eq.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--color-muted)" }}>{eq.room}</div>
-                    </div>
-                  </div>
-                  <div className="flex-center" style={{ gap: 6 }}>
-                    {eq.alert && <AlertBadge level={eq.alert.level} />}
-                    <span className={getStatusBadgeClass(eq.status)}>
-                      {eq.status === "online" ? "在线" : "离线"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Metrics */}
-                {eq.status === "offline" ? (
-                  <div style={{ fontSize: 13, color: "var(--color-danger)", fontWeight: 500, padding: "8px 0" }}>
-                    设备已离线，请检查网络或电源
-                  </div>
-                ) : (
-                  <div className="metric-grid">
-                    {eq.metrics.hr !== null && (
-                      <MetricCard icon={Activity} label="心率" value={eq.metrics.hr} unit="bpm" color="var(--color-primary)" />
-                    )}
-                    {eq.metrics.bp !== null && (
-                      <MetricCard icon={TrendingUp} label="血压" value={eq.metrics.bp} unit="mmHg" color="var(--color-info)" />
-                    )}
-                    {eq.metrics.temp !== null && (
-                      <MetricCard icon={Thermometer} label="体温" value={eq.metrics.temp} unit="℃" color="var(--color-warning)" />
-                    )}
-                    {eq.metrics.spo2 !== null && (
-                      <MetricCard icon={Wifi} label="血氧" value={eq.metrics.spo2} unit="%" color="var(--color-success)" />
-                    )}
-                    <MetricCard icon={Battery} label="电量" value={eq.metrics.battery} unit="%" color={eq.metrics.battery < 30 ? "var(--color-danger)" : "var(--color-success)"} />
-                    <MetricCard icon={Clock} label="运行时长" value={eq.runtimeHours} unit="h" color="var(--color-muted)" />
-                  </div>
-                )}
+          </>
+        )}
+        rail={(
+          <>
+            <DataCard icon={<Bot size={18} />} title="推荐处理路径" subtitle="先恢复监测连续性，再回看告警趋势与设备分布。">
+              <div style={{ display: "grid", gap: 10 }}>
+                {[
+                  "先排查离线设备，恢复基础监测连续性。",
+                  "再处理高风险告警和低电量设备，避免班次内新增盲区。",
+                  "最后结合 AI 建议回看重复告警与设备部署位置。",
+                ].map((item) => (
+                  <div key={item} className="page-help-card-item">{item}</div>
+                ))}
               </div>
-            ))}
-          </div>
-        </DataCard>
+            </DataCard>
 
-        {/* 告警记录 */}
-        <DataCard
-          icon={<AlertTriangle size={18} />}
-          title="告警记录"
-          subtitle={`最近${ALERT_HISTORY.length}条`}
-        >
-          <div style={{ padding: "8px 12px" }}>
-            {ALERT_HISTORY.map((alert, i) => (
-              <div key={i} className="alert-history-item">
-                <div className={getAlertIconClass(alert.type)}>
-                  {alert.type === "danger"
-                    ? <XCircle size={14} style={{ color: "var(--color-danger)" }} />
-                    : alert.type === "warning"
-                    ? <AlertTriangle size={14} style={{ color: "var(--color-warning)" }} />
-                    : <Activity size={14} style={{ color: "var(--color-info)" }} />
-                  }
-                </div>
-                <div className="alert-history-content">
-                  <div className="alert-history-meta">
-                    <span className="alert-history-name">{alert.device}</span>
-                    <span className="alert-history-time">{alert.time}</span>
+            <DataCard icon={<Bot size={16} />} title="AI 设备解释" subtitle="优先解释监测盲区与重复告警来源，避免只看到设备状态不看到护理影响。">
+              <div style={{ display: "grid", gap: 10 }}>
+                {aiInsights.map(item => (
+                  <div key={item.deviceId} style={{ borderRadius: 12, border: "1px solid var(--color-border)", padding: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--color-text)" }}>{item.deviceName}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "var(--color-muted)" }}>{item.room}</div>
+                      </div>
+                      <span className={`tag ${item.severity === "高风险" ? "danger" : "warning"}`}>{item.severity}</span>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-text)" }}>{item.summary}</div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: "var(--color-muted)" }}>{item.action}</div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-primary)", fontWeight: 600 }}>置信度 {item.confidence}%</div>
                   </div>
-                  <div className="alert-history-room">{alert.room}</div>
-                  <div className={getAlertMsgClass(alert.type)}>{alert.msg}</div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div style={{ padding: "8px 12px 12px" }}>
-            <Link href="/devices/status" className="btn btn-ghost btn-sm flex-center" style={{ width: "100%", justifyContent: "center" }}>
-              查看全部 <ChevronRight size={13} />
-            </Link>
-          </div>
-        </DataCard>
-      </div>
+            </DataCard>
+
+            <DataCard icon={<AlertTriangle size={16} />} title="AI 巡检建议" subtitle="把设备告警翻译成班次动作建议，不直接替代工程或护理判断。">
+              <div style={{ display: "grid", gap: 10 }}>
+                {aiOverview.map(item => (
+                  <div key={item} className="page-help-card-item">{item}</div>
+                ))}
+              </div>
+            </DataCard>
+
+            <PageHelpCard
+              title="页面帮助"
+              subtitle="完整设备监控说明迁移到显式帮助页"
+              summary="设备监控页现在优先展示巡检优先队列、实时监控和告警记录，解释型内容统一后置。"
+              items={[
+                '先看优先队列，再处理实时监控与告警记录。',
+                'AI 建议只用于辅助巡检排序，不替代现场排查。',
+                '若需要完整说明，进入设备帮助页查看。',
+              ]}
+              href={helpHref}
+              actionLabel="查看设备帮助"
+            />
+          </>
+        )}
+      />
 
     </div>
   )
