@@ -1,13 +1,13 @@
 "use client"
 
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from '@/components/nh'
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getIncidentAiInsight, getIncidentFollowupInsight } from '@/lib/mock/admin-ai'
-import { closeIncident, findLiveIncidentById, getOperationsSnapshot, startIncidentHandling, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { closeAdminIncident, fetchAdminIncidentDetail, startAdminIncidentHandling, type AdminIncidentRecord } from '@/lib/services/admin-operations-services'
 import { ArrowLeft, Bot, Edit } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const LEVEL_TAG: Record<string, TagVariant> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
 const STATUS_TAG: Record<string, TagVariant> = { '待分派': 'info', '处理中': 'warning', '已结案': 'success' }
@@ -21,32 +21,118 @@ const TABS = [
 export default function IncidentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const incidents = useSyncExternalStore(
-    subscribeOperationsWorkflow,
-    () => getOperationsSnapshot().incidents,
-    () => getOperationsSnapshot().incidents,
-  )
-  const data = useMemo(
-    () => findLiveIncidentById(id, getOperationsSnapshot()) ?? incidents[0],
-    [id, incidents],
-  )
-  const incidentAiInput = {
-    ...data,
-    status: data.status === '待分派' ? '处理中' : data.status,
-    handling: [...data.handling],
-    attachments: [...data.attachments],
-  }
+  const [data, setData] = useState<AdminIncidentRecord | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState("info")
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminIncidentDetail(id)
+      .then(response => {
+        if (!active) {
+          return
+        }
+
+        setData(response)
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        if (!active) {
+          return
+        }
+
+        setError(reason instanceof Error ? reason.message : '事故详情查询失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  const notFound = !loading && !data && error.includes('不存在')
+
+  if (loading) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="事故详情加载中" subtitle="正在从 Operations Service 拉取处置对象。">
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>详情页已切换到真实后端读取，不再回退第一条事故样例。</div>
+        </DataCard>
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="page-root animate-fade-up">
+        <EmptyState
+          variant="search"
+          title="事故不存在"
+          description={`未找到编号 ${id} 对应的事故对象。`}
+          action={<Link href="/incidents" className="btn btn-primary btn-sm">返回事故报告</Link>}
+        />
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="Live Unavailable" subtitle="事故详情实时链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error || '事故详情查询失败。'}</div>
+        </DataCard>
+      </div>
+    )
+  }
+
+  const incident = data
+  const incidentAiInput = {
+    ...incident,
+    status: incident.status === '待分派' ? '处理中' : incident.status,
+    handling: [...incident.handling],
+    attachments: [...incident.attachments],
+  }
   const aiInsight = getIncidentAiInsight(incidentAiInput)
   const followupInsight = getIncidentFollowupInsight(incidentAiInput)
   const helpHref = '/incidents/help'
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'incident-detail',
-    entityId: data.id,
-    entityName: data.title,
+    entityId: incident.id,
+    entityName: incident.title,
     focus,
     target,
   })
+
+  async function handleStart() {
+    setSubmitting(true)
+    try {
+      setData(await startAdminIncidentHandling(incident.id))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '事故处置启动失败。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleClose() {
+    setSubmitting(true)
+    try {
+      setData(await closeAdminIncident(incident.id))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '事故结案提交失败。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="page-root animate-fade-up">
@@ -68,12 +154,12 @@ export default function IncidentDetailPage() {
           <Tag variant={LEVEL_TAG[data.level]}>{data.level}</Tag>
           <Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>
           {data.status === '待分派' ? (
-            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => startIncidentHandling(data.id)}>
-              <Edit size={14} />开始处置
+            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handleStart} disabled={submitting}>
+              <Edit size={14} />{submitting ? '处理中...' : '开始处置'}
             </button>
           ) : data.status === '处理中' ? (
-            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => closeIncident(data.id)}>
-              <Edit size={14} />申请结案
+              <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handleClose} disabled={submitting}>
+                <Edit size={14} />{submitting ? '提交中...' : '申请结案'}
             </button>
           ) : (
                 <button className="btn btn-primary btn-sm flex items-center gap-2">
@@ -82,6 +168,12 @@ export default function IncidentDetailPage() {
           )}
         </div>
       </div>
+
+      {error ? (
+        <DataCard title="Live Unavailable" subtitle="事故动作已切换到真实后端，失败时不会回退本地状态。" badge={<Tag variant="danger">Operations API</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+        </DataCard>
+      ) : null}
 
       <DataCard title="事件状态" subtitle="新增事件先进入待分派，再由值班主管推进处置与结案。" badge={<Tag variant={STATUS_TAG[data.status]}>{data.status}</Tag>}>
         <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
@@ -174,9 +266,9 @@ export default function IncidentDetailPage() {
                     </div>
                     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
                       {data.status === '待分派' ? (
-                        <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={() => startIncidentHandling(data.id)}>开始处置</button>
+                        <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={handleStart} disabled={submitting}>开始处置</button>
                       ) : data.status === '处理中' ? (
-                        <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={() => closeIncident(data.id)}>申请结案</button>
+                          <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }} onClick={handleClose} disabled={submitting}>申请结案</button>
                       ) : (
                         <button className="btn btn-primary btn-sm" style={{ width: "fit-content" }}>查看结案记录</button>
                       )}

@@ -2,21 +2,138 @@
 
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { getStaffAiInsights, getStaffAiNarratives } from '@/lib/mock/admin-ai'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import { confirmStaffOnboarding, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { sortStaffByPriority } from '@/lib/resource-operations-priority'
+import { activateAdminStaff, fetchAdminStaffList, type AdminStaffRecord } from '@/lib/staff/admin-staff-api'
 import { Bot, Building2, Plus, Search, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const ROLE_TAG: Record<string, TagVariant> = {
-  '护理主管': 'primary', '护士': 'info', '后勤主管': 'warning',
-  '心理咨询师': 'purple', '厨师长': 'neutral', '护工': 'success', '康复师': 'info',
+    '护理主管': 'primary',
+    '护士': 'info',
+    '后勤主管': 'warning',
+    '心理咨询师': 'purple',
+    '厨师长': 'neutral',
+    '护工': 'success',
+    '康复师': 'info',
 }
-const STATUS_TAG: Record<string, TagVariant> = { '在职': 'success', '休假': 'warning', '离职': 'danger', '待入职': 'info' }
-const SOURCE_TAG: Record<string, TagVariant> = { '自营': 'primary', '第三方合作': 'warning' }
+
+const STATUS_TAG: Record<string, TagVariant> = {
+    '在职': 'success',
+    '休假': 'warning',
+    '离职': 'danger',
+    '待入职': 'info',
+}
+
+const SOURCE_TAG: Record<string, TagVariant> = {
+    '自营': 'primary',
+    '第三方合作': 'warning',
+}
+
+type StaffInsight = {
+    id: string
+    title: string
+    summary: string
+    action: string
+    metric: string
+    variant: TagVariant
+}
+
+type StaffPartnerOption = {
+    id: string
+    name: string
+}
+
+function buildPartnerOptions(staff: AdminStaffRecord[]): StaffPartnerOption[] {
+    const partnerMap = new Map<string, StaffPartnerOption>()
+
+    staff.forEach(item => {
+        if (item.employmentSource !== '第三方合作' || !item.partnerAgencyName) {
+            return
+        }
+
+        const key = item.partnerAgencyId ?? item.partnerAgencyName
+        if (!partnerMap.has(key)) {
+            partnerMap.set(key, { id: key, name: item.partnerAgencyName })
+        }
+    })
+
+    return Array.from(partnerMap.values()).sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function buildStaffInsights(staff: AdminStaffRecord[]): StaffInsight[] {
+    const pending = staff.filter(item => item.lifecycleStatus === '待入职')
+    const leave = staff.filter(item => item.status === '休假')
+    const partner = staff.filter(item => item.employmentSource === '第三方合作')
+    const weakestDepartment = Array.from(new Set(staff.map(item => item.department)))
+        .map(department => ({
+            department,
+            activeCount: staff.filter(item => item.department === department && item.status === '在职').length,
+        }))
+        .sort((left, right) => left.activeCount - right.activeCount)[0]
+
+    return [
+        {
+            id: 'pending-onboarding',
+            title: '待入职闭环',
+            summary: pending.length > 0 ? `当前有 ${pending.length} 名员工待确认入职，确认前不应进入排班与任务口径。` : '当前没有待确认入职员工。',
+            action: pending.length > 0 ? '优先完成资料复核并确认入职。' : '继续保持员工主档与排班口径一致。',
+            metric: `${pending.length} 待确认`,
+            variant: pending.length > 0 ? 'warning' : 'success',
+        },
+        {
+            id: 'leave-gap',
+            title: '休假补位',
+            summary: leave.length > 0 ? `${leave.length} 名员工处于休假状态，需要核对当前班次补位。` : '当前没有休假补位压力。',
+            action: leave.length > 0 ? '检查休假部门与当前任务分配是否已同步。' : '保持现有排班节奏。',
+            metric: `${leave.length} 休假`,
+            variant: leave.length > 0 ? 'warning' : 'info',
+        },
+        {
+            id: 'partner-collaboration',
+            title: '第三方协同',
+            summary: partner.length > 0 ? `当前有 ${partner.length} 名第三方合作人员，需维持机构边界和驻场角色一致。` : '当前没有第三方合作人员。',
+            action: partner.length > 0 ? '复核合作机构名称和协同角色是否完整。' : '新增第三方人员时补齐合作机构信息。',
+            metric: `${partner.length} 协同`,
+            variant: partner.length > 0 ? 'info' : 'neutral',
+        },
+        {
+            id: 'department-coverage',
+            title: '部门覆盖',
+            summary: weakestDepartment ? `${weakestDepartment.department} 当前在岗 ${weakestDepartment.activeCount} 人，为最薄弱部门。` : '当前没有可分析的部门覆盖数据。',
+            action: weakestDepartment && weakestDepartment.activeCount < 2 ? '优先关注该部门的补位和交接。' : '继续观察部门结构变化。',
+            metric: weakestDepartment ? `${weakestDepartment.department} ${weakestDepartment.activeCount} 人` : '暂无数据',
+            variant: weakestDepartment && weakestDepartment.activeCount < 2 ? 'warning' : 'success',
+        },
+    ]
+}
+
+function buildStaffNarratives(staff: AdminStaffRecord[]) {
+    const departments = Array.from(new Set(staff.map(item => item.department)))
+    const activeDepartments = departments
+        .map(department => ({
+            department,
+            activeCount: staff.filter(item => item.department === department && item.status === '在职').length,
+        }))
+        .sort((left, right) => left.activeCount - right.activeCount)
+
+    const weakestDepartment = activeDepartments[0]
+    const partnerCount = staff.filter(item => item.employmentSource === '第三方合作').length
+    const pendingCount = staff.filter(item => item.lifecycleStatus === '待入职').length
+
+    return [
+        weakestDepartment
+            ? `${weakestDepartment.department} 当前在岗 ${weakestDepartment.activeCount} 人，应与排班和任务压力一起看，不要单独阅读人数。`
+            : '当前还没有足够的部门覆盖数据。',
+        partnerCount > 0
+            ? `第三方合作人员共 ${partnerCount} 人，页面只负责主档与协同边界，不直接替代机构管理口径。`
+            : '当前员工池以内部团队为主，第三方协同边界暂时没有新增压力。',
+        pendingCount > 0
+            ? `待入职员工 ${pendingCount} 人，需先完成人工确认，再纳入排班与任务闭环。`
+            : '当前没有待入职 backlog，可把注意力放到休假补位和部门覆盖。',
+    ]
+}
 
 export default function StaffPage() {
   const searchParams = useSearchParams()
@@ -24,32 +141,26 @@ export default function StaffPage() {
   const fromNew = searchParams.get('entry') === 'staff-new'
   const preselectedPartnerId = searchParams.get('partner') ?? ''
   const scene = searchParams.get('scene')
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const masterSnapshot = useSyncExternalStore(
-    subscribeMasterDataWorkflow,
-    getMasterDataSnapshot,
-    getMasterDataSnapshot,
-  )
-  const staff = snapshot.staff
+
+    const [staff, setStaff] = useState<AdminStaffRecord[]>([])
+    const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState('')
+    const [actionError, setActionError] = useState('')
+    const [activatingStaffId, setActivatingStaffId] = useState('')
   const [search, setSearch] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState(scene === 'home' ? '第三方合作' : '')
   const [partnerFilter, setPartnerFilter] = useState(preselectedPartnerId)
   const [page, setPage] = useState(1)
+
   const pageSize = 10
-  const departments = [...new Set(staff.map(item => item.department))]
-  const activePartners = masterSnapshot.partners.filter(item => item.lifecycleStatus === '已启用' && item.institutionType === '护理服务机构')
-  const selectedStaff = useMemo(
-    () => staff.find(item => item.id === preselectedId) ?? null,
-    [preselectedId, staff],
-  )
-  const selectedPartner = activePartners.find(item => item.id === partnerFilter) ?? null
-  const aiInsights = getStaffAiInsights(staff)
-  const aiNarratives = getStaffAiNarratives(staff)
+    const activePartners = useMemo(() => buildPartnerOptions(staff), [staff])
+    const departments = useMemo(() => [...new Set(staff.map(item => item.department))], [staff])
+    const selectedStaff = useMemo(() => staff.find(item => item.id === preselectedId) ?? null, [preselectedId, staff])
+    const selectedPartner = activePartners.find(item => item.id === partnerFilter || item.name === partnerFilter) ?? null
+    const aiInsights = useMemo(() => buildStaffInsights(staff), [staff])
+    const aiNarratives = useMemo(() => buildStaffNarratives(staff), [staff])
+
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'staff-list',
     entityId: 'staff-board',
@@ -58,13 +169,58 @@ export default function StaffPage() {
     target,
   })
 
+    useEffect(() => {
+        let disposed = false
+
+        async function loadStaff() {
+            setLoading(true)
+            setLoadError('')
+
+            try {
+                const response = await fetchAdminStaffList({ page: 1, pageSize: 200 })
+                if (!disposed) {
+                    setStaff(response.items)
+                }
+            } catch (error) {
+                if (!disposed) {
+                    setLoadError(error instanceof Error ? error.message : '员工列表查询失败。')
+                    setStaff([])
+                }
+            } finally {
+                if (!disposed) {
+                    setLoading(false)
+                }
+            }
+        }
+
+        void loadStaff()
+        return () => {
+            disposed = true
+        }
+    }, [])
+
+    async function handleConfirmOnboarding(staffId: string) {
+        setActivatingStaffId(staffId)
+        setActionError('')
+
+        try {
+            const updated = await activateAdminStaff(staffId)
+            setStaff(current => current.map(item => item.id === staffId ? updated : item))
+        } catch (error) {
+            setActionError(error instanceof Error ? error.message : '员工确认入职失败。')
+        } finally {
+            setActivatingStaffId('')
+        }
+    }
+
   const filtered = staff.filter(item => {
     if (search && !item.name.includes(search) && !item.id.includes(search)) return false
     if (deptFilter && item.department !== deptFilter) return false
     if (sourceFilter && item.employmentSource !== sourceFilter) return false
-    if (partnerFilter && item.partnerAgencyId !== partnerFilter) return false
+      if (partnerFilter && (item.partnerAgencyId ?? item.partnerAgencyName) !== partnerFilter) return false
     return true
   })
+
   const activeStaffCount = staff.filter(item => item.status === '在职').length
   const pendingOnboardingCount = staff.filter(item => item.lifecycleStatus === '待入职').length
   const partnerStaffCount = staff.filter(item => item.employmentSource === '第三方合作').length
@@ -79,6 +235,7 @@ export default function StaffPage() {
   const sortedStaff = useMemo(() => sortStaffByPriority(filtered), [filtered])
   const prioritizedStaff = sortedStaff.slice(0, 4)
   const paged = sortedStaff.slice((page - 1) * pageSize, page * pageSize)
+
   const sceneMeta = scene === 'home'
     ? {
       title: '协同人员池',
@@ -149,6 +306,30 @@ export default function StaffPage() {
               <StatCard icon={<UserCheck size={18} />} label="待入职" value={pendingOnboardingCount} color="warning" />
             </div>
 
+                      {loading ? (
+                          <DataCard title="员工列表加载中" subtitle="正在从 staff live API 加载员工主档。" badge={<Tag variant="info">Live Loading</Tag>}>
+                              <div style={{ fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.7 }}>
+                                  当前正在同步员工主档、待入职状态和第三方协同信息。
+                              </div>
+                          </DataCard>
+                      ) : null}
+
+                      {loadError ? (
+                          <DataCard title="员工列表加载失败" subtitle={loadError} badge={<Tag variant="danger">Live Error</Tag>}>
+                              <div style={{ fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.7 }}>
+                                  页面不会再回退前端 mock staff 数据，请先恢复 Admin BFF 或 Staffing Service。
+                              </div>
+                          </DataCard>
+                      ) : null}
+
+                      {actionError ? (
+                          <DataCard title="入职确认失败" subtitle={actionError} badge={<Tag variant="danger">Action Error</Tag>}>
+                              <div style={{ fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.7 }}>
+                                  请重试当前员工的确认入职动作，或检查 staff live API 是否可用。
+                              </div>
+                          </DataCard>
+                      ) : null}
+
             {selectedStaff && fromNew ? (
               <DataCard
                 title="来自新增员工页"
@@ -160,8 +341,8 @@ export default function StaffPage() {
                     当前角色 {selectedStaff.role}，部门 {selectedStaff.department}，来源 {selectedStaff.employmentSource}{selectedStaff.partnerAgencyName ? `，护理服务机构 ${selectedStaff.partnerAgencyName}` : ''}，联系电话 {selectedStaff.phone}。
                   </div>
                   {selectedStaff.lifecycleStatus === '待入职' ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => confirmStaffOnboarding(selectedStaff.id)}>
-                      确认入职
+                                      <button className="btn btn-primary btn-sm" disabled={activatingStaffId === selectedStaff.id} onClick={() => void handleConfirmOnboarding(selectedStaff.id)}>
+                                          {activatingStaffId === selectedStaff.id ? '确认中...' : '确认入职'}
                     </button>
                   ) : (
                     <Link href={`/staff/${selectedStaff.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
@@ -191,7 +372,7 @@ export default function StaffPage() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          <Tag variant={STATUS_TAG[item.status]}>{item.status}</Tag>
+                                  <Tag variant={STATUS_TAG[item.status] ?? 'neutral'}>{item.status}</Tag>
                           <Tag variant={item.lifecycleStatus === '待入职' ? 'warning' : 'success'}>{item.lifecycleStatus}</Tag>
                         </div>
                       </div>
@@ -258,16 +439,16 @@ export default function StaffPage() {
                           </div>
                         </td>
                         <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{item.id}</span></td>
-                        <td><Tag variant={ROLE_TAG[item.role]}>{item.role}</Tag></td>
+                            <td><Tag variant={ROLE_TAG[item.role] ?? 'neutral'}>{item.role}</Tag></td>
                         <td><span className="text-sm">{item.department}</span></td>
-                        <td><Tag variant={SOURCE_TAG[item.employmentSource]}>{item.employmentSource}</Tag></td>
+                            <td><Tag variant={SOURCE_TAG[item.employmentSource] ?? 'neutral'}>{item.employmentSource}</Tag></td>
                         <td>
                           <div style={{ display: 'grid', gap: 3 }}>
                             <span className="text-sm" style={{ color: 'var(--color-text)' }}>{item.partnerAgencyName ?? '内部团队'}</span>
                             {item.partnerAffiliationRole ? <span className="text-xs" style={{ color: 'var(--color-muted)' }}>{item.partnerAffiliationRole}</span> : null}
                           </div>
                         </td>
-                        <td><Tag variant={STATUS_TAG[item.status]}>{item.status}</Tag></td>
+                            <td><Tag variant={STATUS_TAG[item.status] ?? 'neutral'}>{item.status}</Tag></td>
                         <td><span className="text-sm" style={{ color: 'var(--color-muted)' }}>{item.phone}</span></td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>

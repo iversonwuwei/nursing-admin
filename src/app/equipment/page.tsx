@@ -2,13 +2,13 @@
 
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { equipmentAlarms } from '@/lib/data'
+import { buildEquipmentAlerts } from '@/lib/equipment/equipment-live-derivations'
 import { getEquipmentListAiInsights, getEquipmentListAiNarratives } from '@/lib/mock/admin-ai'
-import { confirmEquipmentAcceptance, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
+import { activateAdminEquipment, fetchAdminEquipment, type AdminEquipmentRecord } from '@/lib/services/admin-operations-services'
 import { AlertTriangle, Bot, CheckCircle2, Plus, Search, Wifi } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const CATEGORY_TAG: Record<string, TagVariant> = {
   '医疗设备': 'info', '康复设备': 'warning', '生活设备': 'primary', '智能设备': 'purple',
@@ -21,19 +21,49 @@ export default function EquipmentPage() {
   const searchParams = useSearchParams()
   const preselectedId = searchParams.get('selected')
   const fromNew = searchParams.get('entry') === 'equipment-new'
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const equipment = snapshot.equipment
+  const [equipment, setEquipment] = useState<AdminEquipmentRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminEquipment({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (!active) {
+          return
+        }
+
+        setEquipment(response.items)
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        if (!active) {
+          return
+        }
+
+        setError(reason instanceof Error ? reason.message : '设备列表查询失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const equipmentAlarms = useMemo(() => buildEquipmentAlerts(equipment), [equipment])
   const pendingAlarmIds = useMemo(
     () => new Set(equipmentAlarms.filter(item => item.status === '待处理').map(item => item.equipmentId)),
-    [],
+    [equipmentAlarms],
   )
 
   const selectedEquipment = useMemo(
@@ -73,6 +103,19 @@ export default function EquipmentPage() {
     target,
   })
 
+  async function handleActivate(equipmentId: string) {
+    setSubmittingId(equipmentId)
+    try {
+      const updated = await activateAdminEquipment(equipmentId)
+      setEquipment(current => current.map(item => item.id === updated.id ? updated : item))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '设备验收失败。')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
   return (
     <div className="animate-fade-up">
 
@@ -89,6 +132,12 @@ export default function EquipmentPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="设备实时链路当前不可用，页面不会回退本地资源台账。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
             <WorkflowOverviewCard
               eyebrow="Device Operations"
               title={selectedEquipment ? `${selectedEquipment.name} 巡检摘要` : '设备与巡检总览'}
@@ -126,8 +175,8 @@ export default function EquipmentPage() {
                     当前分类 {selectedEquipment.category}，位置 {selectedEquipment.location}，序列号 {selectedEquipment.serialNumber}。
                   </div>
                   {selectedEquipment.lifecycleStatus === '待验收' ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => confirmEquipmentAcceptance(selectedEquipment.id)}>
-                      完成验收
+                    <button className="btn btn-primary btn-sm" onClick={() => handleActivate(selectedEquipment.id)} disabled={submittingId === selectedEquipment.id}>
+                      {submittingId === selectedEquipment.id ? '验收中...' : '完成验收'}
                     </button>
                   ) : (
                     <Link href={`/equipment/${selectedEquipment.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
@@ -259,7 +308,14 @@ export default function EquipmentPage() {
                   </tbody>
                 </table>
               </div>
-              {paged.length === 0 && <EmptyState variant="search" title="暂无数据" description="调整筛选条件试试" />}
+              {loading ? (
+                <div style={{ padding: 16 }}>
+                  <DataCard title="设备加载中" subtitle="正在从 Operations Service 获取设备台账。">
+                    <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>列表、优先队列和 `/devices` 兼容入口都已切换到真实后端数据。</div>
+                  </DataCard>
+                </div>
+              ) : null}
+              {!loading && paged.length === 0 && <EmptyState variant="search" title="暂无数据" description="调整筛选条件试试" />}
               <Pagination current={page} total={filtered.length} pageSize={pageSize} onChange={setPage} />
             </div>
           </>

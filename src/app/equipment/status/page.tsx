@@ -1,32 +1,53 @@
 "use client"
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from "@/components/nh"
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
+import { buildEquipmentStatusRows } from "@/lib/equipment/equipment-live-derivations"
 import { getEquipmentStatusAiInsights, getEquipmentStatusNarratives } from "@/lib/mock/admin-ai"
+import { fetchAdminEquipment } from "@/lib/services/admin-operations-services"
 import { AlertTriangle, Battery, Bot, CheckCircle2, Monitor, Search, Wifi, XCircle } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
-
-const DEVICES = [
-  { id: "EQ001", name: "心电监护仪 #1", room: "201-1床", type: "医疗设备", status: "online", signal: 92, battery: 85, uptime: 720, lastAlert: null },
-  { id: "EQ002", name: "心电监护仪 #2", room: "201-2床", type: "医疗设备", status: "online", signal: 88, battery: 62, uptime: 480, lastAlert: "电量偏低" },
-  { id: "EQ003", name: "血压监测仪", room: "202-1床", type: "监测设备", status: "warning", signal: 45, battery: 38, uptime: 120, lastAlert: "电量不足" },
-  { id: "EQ004", name: "智能床垫传感器", room: "203-1床", type: "传感设备", status: "offline", signal: 0, battery: 0, uptime: 0, lastAlert: "设备离线" },
-  { id: "EQ005", name: "血糖监测仪", room: "204-1床", type: "监测设备", status: "online", signal: 95, battery: 92, uptime: 360, lastAlert: null },
-  { id: "EQ006", name: "呼吸监测仪", room: "205-1床", type: "医疗设备", status: "online", signal: 90, battery: 78, uptime: 600, lastAlert: null },
-  { id: "EQ007", name: "体温贴片", room: "206-1床", type: "传感设备", status: "warning", signal: 30, battery: 15, uptime: 48, lastAlert: "电量严重不足" },
-  { id: "EQ008", name: "呼叫对讲系统", room: "二楼走廊", type: "通信设备", status: "online", signal: 100, battery: 100, uptime: 2160, lastAlert: null },
-]
+import { useEffect, useMemo, useState } from "react"
 
 const STATUS_TAG: Record<string, TagVariant> = { online: "success", offline: "danger", warning: "warning" }
 const STATUS_LABEL: Record<string, string> = { online: "正常", offline: "离线", warning: "异常" }
 
 export default function EquipmentStatusPage() {
+  const [devices, setDevices] = useState<ReturnType<typeof buildEquipmentStatusRows>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("全部")
-  const aiInsights = getEquipmentStatusAiInsights(DEVICES)
-  const aiNarratives = getEquipmentStatusNarratives(DEVICES)
-  const filtered = DEVICES.filter(d => (d.name.includes(search) || d.room.includes(search)) && (statusFilter === "全部" || d.status === statusFilter))
-  const stats = { total: DEVICES.length, online: DEVICES.filter(d => d.status === "online").length, offline: DEVICES.filter(d => d.status === "offline").length, warning: DEVICES.filter(d => d.status === "warning").length }
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminEquipment({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setDevices(buildEquipmentStatusRows(response.items))
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '设备状态查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const aiInsights = getEquipmentStatusAiInsights(devices)
+  const aiNarratives = getEquipmentStatusNarratives(devices)
+  const filtered = useMemo(() => devices.filter(d => (d.name.includes(search) || d.room.includes(search)) && (statusFilter === "全部" || d.status === statusFilter)), [devices, search, statusFilter])
+  const stats = { total: devices.length, online: devices.filter(d => d.status === "online").length, offline: devices.filter(d => d.status === "offline").length, warning: devices.filter(d => d.status === "warning").length }
   const helpHref = '/equipment/help'
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'equipment-status',
@@ -87,6 +108,11 @@ export default function EquipmentStatusPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="设备状态链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
             <div className="filter-bar">
               <div className="input-wrap-icon" style={{ flex: 1, minWidth: 200 }}>
                 <span className="input-icon"><Search size={16} /></span>
@@ -98,6 +124,10 @@ export default function EquipmentStatusPage() {
             </div>
 
             <DataCard>
+              {loading && devices.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>正在从真实设备台账派生状态总览。</div>
+              ) : null}
+              {!loading && filtered.length === 0 ? <EmptyState variant="search" title="暂无设备状态数据" description="调整筛选条件试试。" /> : null}
               <div style={{ overflowX: "auto" }}>
                 <table className="table">
                   <thead>

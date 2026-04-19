@@ -3,12 +3,13 @@
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getIncidentListAiInsights, getIncidentListNarratives } from '@/lib/mock/admin-ai'
-import { getIncidentStats, getOperationsSnapshot, startIncidentHandling, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { getIncidentStats } from '@/lib/mock/operations-workflow'
 import { sortIncidentsByPriority } from '@/lib/operations-priority'
+import { fetchAdminIncidents, startAdminIncidentHandling, type AdminIncidentRecord } from '@/lib/services/admin-operations-services'
 import { AlertTriangle, Bot, ChevronRight, Plus, Search, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const LEVEL_TAG: Record<string, TagVariant> = { '严重': 'danger', '一般': 'warning', '轻微': 'info' }
 const STATUS_TAG: Record<string, TagVariant> = { '待分派': 'info', '处理中': 'warning', '已结案': 'success' }
@@ -17,15 +18,45 @@ export default function IncidentsPage() {
   const searchParams = useSearchParams()
   const preselectedId = searchParams.get('selected')
   const fromNew = searchParams.get('entry') === 'incidents-new'
-  const incidents = useSyncExternalStore(
-    subscribeOperationsWorkflow,
-    () => getOperationsSnapshot().incidents,
-    () => getOperationsSnapshot().incidents,
-  )
+  const [incidents, setIncidents] = useState<AdminIncidentRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminIncidents({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (!active) {
+          return
+        }
+
+        setIncidents(response.items)
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        if (!active) {
+          return
+        }
+
+        setError(reason instanceof Error ? reason.message : '事故列表查询失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   const selectedIncident = useMemo(
     () => incidents.find(item => item.id === preselectedId) ?? null,
     [incidents, preselectedId],
@@ -44,6 +75,19 @@ export default function IncidentsPage() {
     focus,
     target,
   })
+
+  async function handleStart(incidentId: string) {
+    setSubmittingId(incidentId)
+    try {
+      const updated = await startAdminIncidentHandling(incidentId)
+      setIncidents(current => current.map(item => item.id === updated.id ? updated : item))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '事故处置启动失败。')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
 
   const filtered = incidents.filter(incident => {
     if (search && ![incident.title, incident.id, incident.room, incident.reporter, incident.elder ?? ''].some(field => field.includes(search))) return false
@@ -71,6 +115,12 @@ export default function IncidentsPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="事故实时链路当前不可用，页面不会回退本地事故流。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
             <WorkflowOverviewCard
               eyebrow="Incident Operations"
               title="事故处置总览"
@@ -113,8 +163,8 @@ export default function IncidentsPage() {
                     当前级别 {selectedIncident.level}，地点 {selectedIncident.room}，报告人 {selectedIncident.reporter}（{selectedIncident.reporterRole}）。
                   </div>
                   {selectedIncident.status === '待分派' ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => startIncidentHandling(selectedIncident.id)}>
-                      开始处置
+                    <button className="btn btn-primary btn-sm" onClick={() => handleStart(selectedIncident.id)} disabled={submittingId === selectedIncident.id}>
+                      {submittingId === selectedIncident.id ? '启动中...' : '开始处置'}
                     </button>
                   ) : (
                     <Link href={`/incidents/${selectedIncident.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
@@ -184,7 +234,11 @@ export default function IncidentsPage() {
               </FilterItem>
             </FilterBar>
 
-            {paged.length === 0 ? (
+            {loading ? (
+              <DataCard title="事故加载中" subtitle="正在从 Operations Service 获取事故台账。">
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>首屏已切换到真实后端数据，不再从前端 workflow 读取事故记录。</div>
+              </DataCard>
+            ) : paged.length === 0 ? (
               <EmptyState variant="search" title="暂无数据" description="调整筛选条件试试" />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

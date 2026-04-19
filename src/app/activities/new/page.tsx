@@ -2,11 +2,11 @@
 
 import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import {
-    addActivityDraft,
     EMPTY_ACTIVITY_FORM,
     validateActivityForm,
     type ActivityCreateFormState,
 } from '@/lib/mock/operations-workflow'
+import { createAdminActivity } from '@/lib/services/admin-operations-services'
 import { AlertCircle, ArrowLeft, CalendarHeart, ClipboardCheck, Save, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -26,7 +26,7 @@ export default function NewActivityPage() {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validationError = validateActivityForm(form)
     if (validationError) {
@@ -36,8 +36,23 @@ export default function NewActivityPage() {
 
     setLoading(true)
     setError('')
-    const draft = addActivityDraft(form)
-    router.push(`/activities?selected=${draft.id}&entry=activities-new`)
+    try {
+      const draft = await createAdminActivity({
+        name: form.name,
+        category: form.category,
+        date: form.date,
+        time: form.time,
+        duration: Number(form.duration),
+        capacity: Number(form.capacity),
+        location: form.location,
+        teacher: form.teacher,
+        description: form.desc,
+      })
+      router.push(`/activities?selected=${draft.id}&entry=activities-new`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '活动建档失败。')
+      setLoading(false)
+    }
   }
 
   return (

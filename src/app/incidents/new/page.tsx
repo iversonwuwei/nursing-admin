@@ -2,11 +2,11 @@
 
 import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
 import {
-    addIncidentDraft,
     EMPTY_INCIDENT_FORM,
     validateIncidentForm,
     type IncidentCreateFormState,
 } from '@/lib/mock/operations-workflow'
+import { createAdminIncident } from '@/lib/services/admin-operations-services'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Save, ShieldAlert, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -26,7 +26,7 @@ export default function NewIncidentPage() {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validationError = validateIncidentForm(form)
     if (validationError) {
@@ -36,8 +36,24 @@ export default function NewIncidentPage() {
 
     setLoading(true)
     setError('')
-    const draft = addIncidentDraft(form)
-    router.push(`/incidents?selected=${draft.id}&entry=incidents-new`)
+    try {
+      const draft = await createAdminIncident({
+        title: form.title,
+        level: form.level,
+        elderName: form.elder || null,
+        room: form.room,
+        reporter: form.reporter,
+        reporterRole: form.reporterRole,
+        time: form.time,
+        description: form.desc,
+        attachments: form.attachments.split(/[\n,]/).map(item => item.trim()).filter(Boolean),
+        nextStep: form.nextStep || null,
+      })
+      router.push(`/incidents?selected=${draft.id}&entry=incidents-new`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '事故初报提交失败。')
+      setLoading(false)
+    }
   }
 
   return (

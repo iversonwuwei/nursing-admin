@@ -3,21 +3,19 @@
 import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { ModuleEntitlementGate } from '@/components/platform/ModuleEntitlementGate'
 import { buildAiAssistantHref } from '@/lib/ai-context'
+import { fetchAdminAiAlertSuggestion, type AdminAiAlertSuggestionRequest } from '@/lib/ai/admin-ai-api'
 import {
   ALERT_LEVEL_LABELS, ALERT_STATUS_LABELS,
   ALERT_TYPE_LABELS,
-  alertRecords,
   type AlertLevel,
   type AlertRecord,
   type AlertStatus, type AlertType,
 } from '@/lib/data/alerts-data'
-import { getAlertAiSuggestion, getOpenAlertAiSummary } from '@/lib/mock/admin-ai'
 import { sortAlertsByPriority } from '@/lib/operations-priority'
 import {
   fetchAlertCenterSnapshot,
   submitAlertAction,
   type AdminAlertQueueItemResponse,
-  type AdminAlertSummaryResponse,
 } from '@/lib/services/admin-module-services'
 import {
   Activity,
@@ -119,6 +117,58 @@ const ALERT_WORKFLOW_STEPS = [
   { id: 'closure', title: '结案复盘', detail: '保留处理结果、升级原因和复盘建议。', tone: 'success' as const },
 ] as const
 
+type AlertAiSuggestionState = {
+  loading: boolean
+  error?: string
+  result?: {
+    title: string
+    explanation: string
+    steps: string[]
+    priority: string
+  }
+}
+
+function mapAlertSeverity(level: AlertLevel) {
+  if (level === 'critical') {
+    return '高'
+  }
+
+  if (level === 'warning') {
+    return '中'
+  }
+
+  return '常规'
+}
+
+function buildAlertAiRequest(alert: AlertRecord): AdminAiAlertSuggestionRequest {
+  return {
+    alertType: ALERT_TYPE_LABELS[alert.type],
+    alertDescription: alert.description,
+    severity: mapAlertSeverity(alert.level),
+    elderContext: `${alert.elderlyName} · ${alert.roomNumber}${alert.deviceName ? ` · ${alert.deviceName}` : ''}`,
+    recentHistory: alert.resolution ?? `${ALERT_STATUS_LABELS[alert.status]} · ${alert.occurredAt}`,
+  }
+}
+
+function buildOpenAlertSummary(alerts: AlertRecord[], loadError: string) {
+  if (loadError) {
+    return '当前未能同步真实报警队列，请先恢复链路后再判断升级优先级。'
+  }
+
+  const unresolved = alerts.filter(item => item.status !== 'resolved')
+  if (unresolved.length === 0) {
+    return '当前没有未闭环告警，AI 升级建议维持空态。'
+  }
+
+  const criticalCount = unresolved.filter(item => item.level === 'critical').length
+  const topType = unresolved[0]?.type ? ALERT_TYPE_LABELS[unresolved[0].type] : '告警'
+  if (criticalCount > 0) {
+    return `当前有 ${criticalCount} 条紧急未闭环告警，优先处理 ${topType} 相关事件。`
+  }
+
+  return `当前有 ${unresolved.length} 条未闭环告警，建议先从 ${topType} 队列开始收口。`
+}
+
 function mapRemoteAlert(remote: AdminAlertQueueItemResponse): AlertRecord {
   const level = ['critical', 'warning', 'info'].includes(remote.level) ? remote.level as AlertLevel : 'warning'
   const status = ['pending', 'processing', 'resolved'].includes(remote.status) ? remote.status as AlertStatus : 'pending'
@@ -142,12 +192,30 @@ function mapRemoteAlert(remote: AdminAlertQueueItemResponse): AlertRecord {
 }
 
 /* ── Alert Card ── */
-function AlertCard({ alert, onTransition }: {
+function AlertCard({ alert, aiState, onTransition }: {
   alert: AlertRecord
+  aiState?: AlertAiSuggestionState
   onTransition: (id: string, next: AlertStatus) => void
 }) {
   const next = NEXT_STATUS[alert.status]
-  const aiSuggestion = getAlertAiSuggestion(alert)
+  const suggestionState = aiState ?? { loading: true }
+  const aiTitle = suggestionState.loading
+    ? 'AI 建议同步中'
+    : suggestionState.error
+      ? 'AI 建议当前不可用'
+      : suggestionState.result?.title ?? 'AI 建议'
+  const aiExplanation = suggestionState.loading
+    ? '正在同步当前告警的真实 AI 建议，请稍候。'
+    : suggestionState.error
+      ? suggestionState.error
+      : suggestionState.result?.explanation ?? '当前没有可展示的 AI 建议。'
+  const aiSteps = suggestionState.loading || suggestionState.error ? [] : suggestionState.result?.steps ?? []
+  const aiTagLabel = suggestionState.loading
+    ? '分析中'
+    : suggestionState.error
+      ? 'AI 不可用'
+      : suggestionState.result?.priority ?? '已生成'
+  const aiTagVariant = suggestionState.loading ? 'info' : suggestionState.error ? 'warning' : 'success'
 
   return (
     <div className="alert-card"
@@ -230,17 +298,19 @@ function AlertCard({ alert, onTransition }: {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>
               <Bot size={12} />
-              {aiSuggestion.title}
+              {aiTitle}
             </div>
-            <Tag variant="info">{aiSuggestion.confidence}%</Tag>
+            <Tag variant={aiTagVariant}>{aiTagLabel}</Tag>
           </div>
-          <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{aiSuggestion.explanation}</div>
+          <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>{aiExplanation}</div>
           <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-            {aiSuggestion.actions.map(item => (
+            {aiSteps.map(item => (
               <div key={item} style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--color-muted)' }}>• {item}</div>
             ))}
           </div>
-          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-primary)', fontWeight: 600 }}>{aiSuggestion.escalation}</div>
+          {!suggestionState.loading && !suggestionState.error ? (
+            <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6, color: 'var(--color-primary)', fontWeight: 600 }}>优先级：{suggestionState.result?.priority ?? '待确认'}</div>
+          ) : null}
         </div>
 
         {/* Actions */}
@@ -292,10 +362,11 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter] = useState<AlertStatus | 'all'>('all')
   const [levelFilter, setLevelFilter] = useState<AlertLevel | 'all'>('all')
   const [typeFilter, setTypeFilter] = useState<AlertType | 'all'>('all')
-  const [alerts, setAlerts] = useState(alertRecords)
-  const [remoteSummary, setRemoteSummary] = useState<AdminAlertSummaryResponse | null>(null)
-  const [dataSource, setDataSource] = useState<'live' | 'demo'>('demo')
+  const [alerts, setAlerts] = useState<AlertRecord[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(true)
   const [integrationNote, setIntegrationNote] = useState('正在同步报警服务数据...')
+  const [alertAiStates, setAlertAiStates] = useState<Record<string, AlertAiSuggestionState>>({})
 
   useEffect(() => {
     let disposed = false
@@ -309,8 +380,7 @@ export default function AlertsPage() {
         }
 
         setAlerts(snapshot.queue.map(mapRemoteAlert))
-        setRemoteSummary(snapshot.summary)
-        setDataSource('live')
+        setLoadError('')
         setIntegrationNote(
           snapshot.queue.length > 0
             ? '当前页面已接入真实报警摘要与优先队列；动作提交会同步写回后端。'
@@ -321,10 +391,14 @@ export default function AlertsPage() {
           return
         }
 
-        setAlerts(alertRecords)
-        setRemoteSummary(null)
-        setDataSource('demo')
-        setIntegrationNote(error instanceof Error ? error.message : '报警服务不可用，已回退为演示数据。')
+        setAlerts([])
+        setAlertAiStates({})
+        setLoadError(error instanceof Error ? error.message : '报警服务不可用。')
+        setIntegrationNote('报警服务当前不可用；页面保留 live 错误态与局部 AI 错误态，不再回退为演示数据。')
+      } finally {
+        if (!disposed) {
+          setLoading(false)
+        }
       }
     }
 
@@ -335,24 +409,83 @@ export default function AlertsPage() {
     }
   }, [])
 
+  const alertAiKey = useMemo(
+    () => alerts.map(item => `${item.id}:${item.status}:${item.level}`).join('|'),
+    [alerts],
+  )
+
+  useEffect(() => {
+    let disposed = false
+
+    if (alerts.length === 0) {
+      setAlertAiStates({})
+      return () => {
+        disposed = true
+      }
+    }
+
+    setAlertAiStates(current => Object.fromEntries(alerts.map(alert => [
+      alert.id,
+      current[alert.id] ?? { loading: true },
+    ])))
+
+    void Promise.allSettled(alerts.map(async alert => {
+      try {
+        const result = await fetchAdminAiAlertSuggestion(buildAlertAiRequest(alert))
+        if (disposed) {
+          return
+        }
+
+        setAlertAiStates(current => ({
+          ...current,
+          [alert.id]: {
+            loading: false,
+            result: {
+              title: result.suggestedAction,
+              explanation: result.rationale,
+              steps: result.steps,
+              priority: result.priority,
+            },
+          },
+        }))
+      } catch (error) {
+        if (disposed) {
+          return
+        }
+
+        setAlertAiStates(current => ({
+          ...current,
+          [alert.id]: {
+            loading: false,
+            error: error instanceof Error ? error.message : '报警建议 AI 当前不可用。',
+          },
+        }))
+      }
+    }))
+
+    return () => {
+      disposed = true
+    }
+  }, [alertAiKey, alerts])
+
   const handleTransition = async (id: string, next: AlertStatus) => {
+    const previousAlerts = alerts
+
     setAlerts(prev => prev.map(a =>
       a.id === id
         ? { ...a, status: next, handledAt: next === 'resolved' ? new Date().toLocaleString('zh-CN') : a.handledAt, handledBy: next === 'processing' ? '当前用户' : a.handledBy }
         : a
     ))
 
-    if (dataSource !== 'live') {
-      return
-    }
-
     const action = next === 'processing' ? 'acknowledge' : 'resolve'
 
     try {
       const updatedAlert = await submitAlertAction(id, action)
       setAlerts(prev => prev.map(item => item.id === id ? mapRemoteAlert(updatedAlert) : item))
+      setIntegrationNote('报警动作已写回后端，当前队列和 AI 建议会继续按真实状态同步。')
     } catch (error) {
-      setIntegrationNote(error instanceof Error ? `${error.message} 当前先保留页面上的本地状态。` : '报警动作提交失败，当前先保留页面上的本地状态。')
+      setAlerts(previousAlerts)
+      setIntegrationNote(error instanceof Error ? `${error.message} 当前已回滚页面上的乐观状态。` : '报警动作提交失败，当前已回滚页面上的乐观状态。')
     }
   }
 
@@ -372,19 +505,8 @@ export default function AlertsPage() {
   const prioritizedAlerts = useMemo(() => sortAlertsByPriority(filtered).slice(0, 4), [filtered])
   const sortedAlerts = useMemo(() => sortAlertsByPriority(filtered), [filtered])
   const topAlert = prioritizedAlerts[0] ?? null
-  const openAlertAiSummary = getOpenAlertAiSummary()
+  const openAlertSummary = useMemo(() => buildOpenAlertSummary(alerts, loadError), [alerts, loadError])
   const moduleSummary = useMemo(() => ALERT_MODULES.map(module => {
-    const remoteModule = remoteSummary?.modules.find(item => item.module === module.id)
-
-    if (remoteModule) {
-      return {
-        ...module,
-        total: remoteModule.pending + remoteModule.processing + remoteModule.resolved,
-        unresolved: remoteModule.pending + remoteModule.processing,
-        criticalItems: remoteModule.critical,
-      }
-    }
-
     const items = alerts.filter(module.matches)
     const unresolved = items.filter(item => item.status !== 'resolved').length
     const criticalItems = items.filter(item => item.level === 'critical' && item.status !== 'resolved').length
@@ -395,7 +517,7 @@ export default function AlertsPage() {
       unresolved,
       criticalItems,
     }
-  }), [alerts, remoteSummary])
+  }), [alerts])
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference', entityId?: string, entityName?: string) => buildAiAssistantHref({
     source: 'alerts-center',
     entityId: entityId ?? 'alerts-board',
@@ -418,7 +540,9 @@ export default function AlertsPage() {
       <div className="page-root animate-fade-up">
       <PageHeader
         title="报警中心"
-          subtitle={`共 ${alerts.length} 条记录 · ${critical} 例紧急待处理 · 已覆盖紧急呼叫 / 离床预警 / 异常预警 / SOS 处置`}
+          subtitle={loadError
+            ? `真实报警链路当前不可用 · ${loadError}`
+            : `共 ${alerts.length} 条真实记录 · ${critical} 例紧急待处理 · 已覆盖紧急呼叫 / 离床预警 / 异常预警 / SOS 处置`}
       />
         <InteractionRailLayout
           main={(
@@ -427,7 +551,7 @@ export default function AlertsPage() {
                 eyebrow="Alert Operations"
                 title="实时告警总览"
                 description="先处理待处理紧急告警，再跟进处理中事件，最后回看已解决记录的复盘质量，避免值班视角只看到数量看不到处置顺序。"
-                badge={<Tag variant="warning">Response First</Tag>}
+                badge={<Tag variant={loadError ? 'danger' : 'warning'}>{loadError ? 'Live Unavailable' : 'Response First'}</Tag>}
                 metrics={[
                   { label: '待处理告警', value: pending, hint: '需要值班人员立即接单', tone: pending > 0 ? 'danger' : 'success' },
                   { label: '处理中告警', value: processing, hint: '需要跟踪处置进度', tone: processing > 0 ? 'warning' : 'neutral' },
@@ -436,7 +560,7 @@ export default function AlertsPage() {
                 ]}
                 signals={[
                   { label: topAlert ? `当前最高优先：${topAlert.elderlyName} · ${ALERT_TYPE_LABELS[topAlert.type]}` : '当前无告警需要优先处理', tone: topAlert?.level === 'critical' ? 'danger' : 'info' },
-                  { label: openAlertAiSummary.summary, tone: 'info' },
+                  { label: openAlertSummary, tone: loadError ? 'warning' : 'info' },
                   { label: `筛选结果 ${filtered.length} 条`, tone: 'neutral' },
                 ]}
                 actions={
@@ -453,6 +577,18 @@ export default function AlertsPage() {
                 <StatCard icon={<CheckCircle2 size={18} />} label="已解决" value={resolved} sub="本月累计" color="success" />
                 <StatCard icon={<AlertTriangle size={18} />} label="紧急告警" value={critical} sub="需关注" color="danger" />
               </div>
+
+              {loading ? (
+                <DataCard title="正在同步报警中心" subtitle="真实报警摘要、优先队列和 AI 建议正在返回，请稍候。" badge={<Tag variant="warning">Loading</Tag>} />
+              ) : null}
+
+              {loadError ? (
+                <DataCard title="报警链路当前不可用" subtitle={loadError} badge={<Tag variant="danger">Live Unavailable</Tag>}>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                    当前页面只展示真实报警链路状态。链路恢复前不会继续回退到本地 `alertRecords` 或 mock AI 文案。
+                  </div>
+                </DataCard>
+              ) : null}
 
               <div className="alerts-summary-bar">
                 <div className="alerts-summary-left">
@@ -569,10 +705,12 @@ export default function AlertsPage() {
 
               <div className="alert-grid">
                 {sortedAlerts.length > 0 ? sortedAlerts.map(alert => (
-                  <AlertCard key={alert.id} alert={alert} onTransition={handleTransition} />
+                  <AlertCard key={alert.id} alert={alert} aiState={alertAiStates[alert.id]} onTransition={handleTransition} />
               )) : (
                   <div style={{ gridColumn: '1 / -1', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)', background: 'var(--color-bg)', padding: 24, fontSize: 13, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                    当前筛选条件下没有待展示的报警记录。若本地 backend 已连通，这表示真实优先队列当前为空，而不是页面已经回退到 demo。
+                      {loadError
+                        ? '当前真实报警链路不可用，请在服务恢复后重新查看优先队列。'
+                        : '当前筛选条件下没有待展示的报警记录。这表示真实优先队列当前为空，而不是页面已经回退到 demo。'}
                   </div>
                 )}
               </div>
@@ -583,10 +721,12 @@ export default function AlertsPage() {
               <DataCard
                 title="API 对接状态"
                 subtitle={integrationNote}
-                badge={<Tag variant={dataSource === 'live' ? 'success' : 'warning'}>{dataSource === 'live' ? 'Live API' : 'Demo Fallback'}</Tag>}
+                badge={<Tag variant={loadError ? 'danger' : 'success'}>{loadError ? 'Live Unavailable' : 'Live API'}</Tag>}
               >
                 <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                  当前范围：报警摘要、优先队列、状态动作。回滚方式：移除本页 API 读写接入后恢复到本地 alertRecords。
+                  {loadError
+                    ? '当前范围仍是报警摘要、优先队列、状态动作和 AI 建议；链路恢复前页面保持 live 错误态，不回退本地 alertRecords。'
+                    : '当前范围：报警摘要、优先队列、状态动作和 AI 建议。页面不再混用本地 alertRecords 或 mock AI helper。'}
                 </div>
               </DataCard>
 
@@ -597,7 +737,7 @@ export default function AlertsPage() {
                 items={[
                   ...moduleSummary.slice(0, 2).map(item => `${item.label}：${item.focus}`),
                   `流程：${ALERT_WORKFLOW_STEPS.map(step => step.title).join(' -> ')}`,
-                  `AI 边界：当前待解释 ${openAlertAiSummary.total} 条，仅做解释与升级建议。`,
+                  `AI 边界：当前待解释 ${alerts.filter(item => item.status !== 'resolved').length} 条，仅做解释与升级建议。`,
                 ]}
                 href="/alerts/help"
               />

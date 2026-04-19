@@ -2,31 +2,24 @@
 
 import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { getCareScene, matchesAdmissionScene } from '@/lib/care-scenes'
-import { getAiDashboardInsights, getAiOpsReport } from '@/lib/mock/admin-ai'
-import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from '@/lib/mock/admission-workflow'
+import { fetchAdminAiDashboardInsights, fetchAdminAiOpsReport, type AdminAiOpsReportResult } from '@/lib/ai/admin-ai-api'
+import { getCareScene } from '@/lib/care-scenes'
+import { fetchAdminDashboardOverview, type AdminDashboardOverviewResponse } from '@/lib/dashboard/admin-dashboard-api'
 import { BarChart3, Download, Mail, RefreshCcw, ScrollText, Send, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function AnalyticsReportPage() {
   const searchParams = useSearchParams()
   const scene = getCareScene(searchParams.get('scene'))
-  const applications = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
-  )
   const [period, setPeriod] = useState<'周报' | '月报'>('周报')
-  const scopedApplications = useMemo(
-    () => applications.filter(item => matchesAdmissionScene(item.sourceType, scene)),
-    [applications, scene],
-  )
-  const report = getAiOpsReport(period, scopedApplications)
-  const dashboardInsights = getAiDashboardInsights(scopedApplications)
-  const generatedPlans = scopedApplications.filter(item => item.status !== '待人工确认').length
-  const pendingConfirmations = scopedApplications.filter(item => item.status === '待人工确认').length
+  const [report, setReport] = useState<AdminAiOpsReportResult | null>(null)
+  const [dashboardOverview, setDashboardOverview] = useState<AdminDashboardOverviewResponse | null>(null)
+  const [dashboardInsights, setDashboardInsights] = useState<Awaited<ReturnType<typeof fetchAdminAiDashboardInsights>>>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [generatedAtLabel, setGeneratedAtLabel] = useState('')
   const sceneMeta = scene === 'home'
     ? {
       title: '居家监管报表中心',
@@ -44,15 +37,96 @@ export default function AnalyticsReportPage() {
         subtitle: '面向院长与运营主管的 AI 周报 / 月报摘要草稿，不替代正式财务与经营报表。',
         suggestionTitle: '下一步接入建议',
       }
+  const reportTitle = report?.title ?? `${sceneMeta.title} ${period}`
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = 'inference') => buildAiAssistantHref({
     source: 'analytics-report',
     entityId: `${scene ?? 'general'}-${period}`,
-    entityName: report.title,
+    entityName: reportTitle,
     focus,
     target,
     scene: scene ?? undefined,
   })
   const helpHref = '/analytics/help'
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+
+    async function loadReport() {
+      try {
+        const overview = await fetchAdminDashboardOverview()
+
+        if (cancelled) {
+          return
+        }
+
+        setDashboardOverview(overview)
+
+        const metricsJson = JSON.stringify({
+          scene: scene ?? 'general',
+          elderCount: overview.kpis.elderCount,
+          tenantCount: overview.kpis.tenantCount,
+          pendingAlerts: overview.kpis.pendingAlerts,
+          workflowPendingCount: overview.kpis.workflowPendingCount,
+          notificationBreakdown: overview.notificationBreakdown,
+          financeBreakdown: overview.financeBreakdown,
+          workflowBreakdown: overview.workflowBreakdown,
+        })
+
+        const [nextReport, nextInsights] = await Promise.all([
+          fetchAdminAiOpsReport({
+            reportType: scene === 'home' ? 'home-care-ops' : scene === 'institutional' ? 'institutional-ops' : 'admin-ops',
+            period,
+            metricsJson,
+          }),
+          fetchAdminAiDashboardInsights({
+            totalElders: overview.kpis.elderCount,
+            activeCarePlans: Math.max(overview.kpis.elderCount - overview.kpis.workflowPendingCount, 0),
+            openAlerts: overview.kpis.pendingAlerts,
+            pendingTasks: overview.kpis.workflowPendingCount,
+            occupancyPercent: overview.kpis.elderCount > 0 ? 100 : 0,
+            additionalContext: `analytics-report:${scene ?? 'general'}:${period}`,
+          }),
+        ])
+
+        if (cancelled) {
+          return
+        }
+
+        setReport(nextReport)
+        setDashboardInsights(nextInsights)
+        setGeneratedAtLabel(new Date().toLocaleString('zh-CN', {
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }))
+        setLoadError('')
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        setReport(null)
+        setDashboardOverview(null)
+        setDashboardInsights([])
+        setLoadError(error instanceof Error ? error.message : 'AI 报表加载失败。')
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadReport()
+
+    return () => {
+      cancelled = true
+    }
+  }, [period, scene])
+
+  const generatedPlans = dashboardOverview?.staffLeaderboard.reduce((sum, item) => sum + item.completed, 0) ?? 0
+  const pendingConfirmations = dashboardOverview?.kpis.workflowPendingCount ?? 0
 
   return (
     <div className="page-root animate-fade-up">
@@ -72,31 +146,45 @@ export default function AnalyticsReportPage() {
         main={(
           <>
             <div className="kpi-grid" style={{ marginBottom: 16 }}>
-              <StatCard icon={<ScrollText size={18} />} label="当前摘要周期" value={report.periodLabel} sub={`生成于 ${report.generatedAt}`} color="primary" />
-              <StatCard icon={<ShieldCheck size={18} />} label="AI 闭环入住" value={generatedPlans} sub="已进入计划或已入住" color="success" />
-              <StatCard icon={<RefreshCcw size={18} />} label="待确认建议" value={pendingConfirmations} sub="仍需人工定级" color="warning" />
+              <StatCard icon={<ScrollText size={18} />} label="当前摘要周期" value={period} sub={generatedAtLabel ? `生成于 ${generatedAtLabel}` : '等待生成'} color="primary" />
+              <StatCard icon={<ShieldCheck size={18} />} label="已完成任务" value={generatedPlans} sub="来自 Dashboard 员工排行聚合" color="success" />
+              <StatCard icon={<RefreshCcw size={18} />} label="流程待办" value={pendingConfirmations} sub="仍需人工复核或派发" color="warning" />
               <StatCard icon={<BarChart3 size={18} />} label="AI 风险信号" value={dashboardInsights.filter(item => item.variant === 'danger' || item.variant === 'warning').length} sub="已汇总到本次摘要" color="info" />
             </div>
 
-            <DataCard icon={<ScrollText size={16} />} title={report.title} subtitle="AI 先给摘要草稿，再由管理者确认是否导出。" badge={<Tag variant="primary">Draft</Tag>}>
+            {loading ? (
+              <div style={{ marginBottom: 16, fontSize: 12.5, color: 'var(--color-muted)' }}>AI 报表生成中...</div>
+            ) : null}
+
+            {loadError ? (
+              <DataCard icon={<ScrollText size={16} />} title="AI 报表当前不可用" subtitle={loadError} badge={<Tag variant="danger">Live Unavailable</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                  当前页面只展示真实 AI 报表结果。链路恢复前不会继续回退本地周报或月报草稿。
+                </div>
+              </DataCard>
+            ) : null}
+
+            <DataCard icon={<ScrollText size={16} />} title={reportTitle} subtitle="AI 先给摘要草稿，再由管理者确认是否导出。" badge={<Tag variant="primary">Draft</Tag>}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14, fontSize: 13, lineHeight: 1.7, color: 'var(--color-text)' }}>
-                  {report.overview}
+                  {report?.summary ?? '当前没有可展示的真实报表摘要。'}
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 }}>核心亮点</div>
                   <div style={{ display: 'grid', gap: 8 }}>
-                    {report.highlights.map(item => (
+                    {(report?.highlights ?? []).map(item => (
                       <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>• {item}</div>
                     ))}
+                    {!loading && (report?.highlights.length ?? 0) === 0 ? <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>当前没有亮点摘要。</div> : null}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 }}>推荐动作</div>
                   <div style={{ display: 'grid', gap: 8 }}>
-                    {report.recommendedActions.map(item => (
+                    {(report?.recommendations ?? []).map(item => (
                       <div key={item} style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-text)' }}>• {item}</div>
                     ))}
+                    {!loading && (report?.recommendations.length ?? 0) === 0 ? <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>当前没有推荐动作。</div> : null}
                   </div>
                 </div>
               </div>
@@ -104,11 +192,16 @@ export default function AnalyticsReportPage() {
 
             <DataCard icon={<ShieldCheck size={16} />} title="异常与风险解释" subtitle={scene === 'home' ? '当前居家监管摘要里需要被管理层看见的非正常信号。' : scene === 'institutional' ? '当前机构运营摘要里需要被管理层看见的非正常信号。' : '当前摘要里需要被管理层看见的非正常信号。'}>
               <div style={{ display: 'grid', gap: 10 }}>
-                {report.anomalies.map(item => (
+                {(report?.concerns ?? []).map(item => (
                   <div key={item} style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', padding: 14 }}>
                     <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>{item}</div>
                   </div>
                 ))}
+                {!loading && (report?.concerns.length ?? 0) === 0 ? (
+                  <div style={{ padding: 16, fontSize: 12.5, color: 'var(--color-muted)', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }}>
+                    当前没有需要额外提示的异常解释。
+                  </div>
+                ) : null}
                 <div style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 }}>纳入本次摘要的页面入口</div>
                   <div style={{ display: 'grid', gap: 8 }}>
@@ -151,7 +244,7 @@ export default function AnalyticsReportPage() {
             <DataCard title="报表上下文" subtitle="后置展示当前视角、周期和边界。" badge={<Tag variant="info">Context</Tag>}>
               <div style={{ display: 'grid', gap: 10 }}>
                 <div className="page-help-card-item">当前视角：{scene === 'home' ? '居家监管' : scene === 'institutional' ? '机构运营' : '通用运营'}。</div>
-                <div className="page-help-card-item">当前周期：{period}，摘要标题为 {report.title}。</div>
+                <div className="page-help-card-item">当前周期：{period}，摘要标题为 {reportTitle}。</div>
                 <div className="page-help-card-item">页面只产出草稿与送达动作，不直接自动发布正式经营报表。</div>
               </div>
             </DataCard>
@@ -177,7 +270,7 @@ export default function AnalyticsReportPage() {
               summary="报表中心现在只保留摘要草稿、异常解释和送达动作，导出边界与治理说明统一后置。"
               items={[
                 '先看当前周期摘要，再看异常信号，最后决定是否导出。',
-                '周报与月报切换只影响本地草稿视图，不改变底层 admission 数据。',
+                '周报与月报切换会重新请求真实 AI 报表，不再读取本地草稿。',
                 '若需要完整页面定位和导出边界说明，进入帮助页查看。',
               ]}
               href={helpHref}

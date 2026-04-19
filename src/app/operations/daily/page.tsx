@@ -1,52 +1,16 @@
 'use client'
 
 import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
-import { getCareScene, matchesAdmissionScene, matchesEmploymentScene, withSceneQuery } from '@/lib/care-scenes'
+import { getCareScene, withSceneQuery } from '@/lib/care-scenes'
 import { fetchAdminDashboardOverview, type AdminDashboardMetricItem, type AdminDashboardOverviewResponse } from '@/lib/dashboard/admin-dashboard-api'
-import { alertRecords } from '@/lib/data/alerts-data'
-import { getAdmissionApplicationsSnapshot, getStaffTaskItems, subscribeAdmissionWorkflow } from '@/lib/mock/assessment-workflow'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import { getNursingServiceSnapshot, isNursingWorkflowDemoMode, subscribeNursingServiceWorkflow } from '@/lib/mock/nursing-service-workflow'
-import { getOperationsSnapshot, OPERATIONS_TODAY, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
-import { getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
-import { sortActivitiesByPriority, sortAlertsByPriority, sortIncidentsByPriority } from '@/lib/operations-priority'
-import { sortRoomsByPriority, sortStaffByPriority, sortSuppliesByPriority } from '@/lib/resource-operations-priority'
-import { AlertTriangle, CalendarHeart, ChevronRight, ClipboardList, DoorOpen, Monitor, Package, ShieldAlert, UserCheck } from 'lucide-react'
+import { AlertTriangle, BellRing, ChevronRight, ClipboardList, ReceiptText, ShieldAlert, UserCheck, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-
-type DailyTaskItem = {
-  id: string
-  title: string
-  elderlyName: string
-  room: string
-  status: string
-  priority: '高' | '中' | '常规'
-  scheduledTime: string
-  href: string
-  hint: string
-  origin: '评定任务' | '服务计划'
-}
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 type QueueVariant = 'danger' | 'warning' | 'info' | 'neutral'
 
 type ContextVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
-
-function getDailyTaskScore(task: DailyTaskItem) {
-  if (task.status === '执行中') return 0
-  if (task.priority === '高') return 1
-  if (task.status === '待执行' || task.status === '已生成') return 2
-  return 3
-}
-
-function sortDailyTasks(tasks: DailyTaskItem[]) {
-  return [...tasks].sort((left, right) => {
-    const scoreDiff = getDailyTaskScore(left) - getDailyTaskScore(right)
-    if (scoreDiff !== 0) return scoreDiff
-    return left.scheduledTime.localeCompare(right.scheduledTime)
-  })
-}
 
 function getBreakdownValue(items: AdminDashboardMetricItem[] | undefined, label: string) {
   return items?.find(item => item.label === label)?.value ?? 0
@@ -55,22 +19,37 @@ function getBreakdownValue(items: AdminDashboardMetricItem[] | undefined, label:
 interface OperationsEntryCardProps {
   title: string
   subtitle: string
-  href: string
+  href?: string
   icon: ReactNode
   tag: string
+  disabled?: boolean
 }
 
-function OperationsEntryCard({ title, subtitle, href, icon, tag }: OperationsEntryCardProps) {
-  return (
-    <Link href={href} className="ops-entry-card">
+function OperationsEntryCard({ title, subtitle, href, icon, tag, disabled = false }: OperationsEntryCardProps) {
+  const content = (
+    <>
       <div className="ops-entry-head">
         <div className="ops-entry-title-wrap">
           <div className="ops-entry-icon">{icon}</div>
           <div className="ops-entry-title">{title}</div>
         </div>
-        <Tag variant="neutral">{tag}</Tag>
+        <Tag variant={disabled ? 'warning' : 'neutral'}>{tag}</Tag>
       </div>
       <div className="ops-entry-subtitle">{subtitle}</div>
+    </>
+  )
+
+  if (!href || disabled) {
+    return (
+      <div className="ops-entry-card" aria-disabled="true">
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <Link href={href} className="ops-entry-card">
+      {content}
     </Link>
   )
 }
@@ -123,32 +102,6 @@ export default function DailyOperationsPage() {
   const [dashboardError, setDashboardError] = useState('')
   const [dashboardLoading, setDashboardLoading] = useState(true)
 
-  const applications = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
-  )
-  const nursingSnapshot = useSyncExternalStore(
-    subscribeNursingServiceWorkflow,
-    getNursingServiceSnapshot,
-    getNursingServiceSnapshot,
-  )
-  const operationsSnapshot = useSyncExternalStore(
-    subscribeOperationsWorkflow,
-    getOperationsSnapshot,
-    getOperationsSnapshot,
-  )
-  const resourceSnapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const masterSnapshot = useSyncExternalStore(
-    subscribeMasterDataWorkflow,
-    getMasterDataSnapshot,
-    getMasterDataSnapshot,
-  )
-
   useEffect(() => {
     let cancelled = false
 
@@ -182,86 +135,36 @@ export default function DailyOperationsPage() {
     }
   }, [])
 
-  const prioritizedAlerts = useMemo(() => sortAlertsByPriority(alertRecords), [])
-  const prioritizedIncidents = useMemo(() => sortIncidentsByPriority(operationsSnapshot.incidents), [operationsSnapshot.incidents])
-  const prioritizedActivities = useMemo(() => sortActivitiesByPriority(operationsSnapshot.activities), [operationsSnapshot.activities])
-  const prioritizedStaff = useMemo(() => sortStaffByPriority(resourceSnapshot.staff), [resourceSnapshot.staff])
-  const prioritizedRooms = useMemo(() => sortRoomsByPriority(masterSnapshot.rooms), [masterSnapshot.rooms])
-  const prioritizedSupplies = useMemo(() => sortSuppliesByPriority(resourceSnapshot.supplies), [resourceSnapshot.supplies])
-  const applicationSourceMap = useMemo(
-    () => Object.fromEntries(applications.map(item => [item.id, item.sourceType ?? 'manual-form'])),
-    [applications],
-  )
-  const staffEmploymentMap = useMemo(
-    () => new Map(nursingSnapshot.schedule.staffRows.map(item => [item.staffName, item.employmentSource])),
-    [nursingSnapshot.schedule.staffRows],
-  )
-
-  const assessmentTasks = useMemo<DailyTaskItem[]>(() => getStaffTaskItems(applications)
-    .filter(task => matchesAdmissionScene(applicationSourceMap[task.sourceId], scene))
-    .map(task => ({
-      id: task.id,
-      title: task.title,
-      elderlyName: task.elderlyName,
-      room: task.room,
-      status: task.status,
-      priority: task.priority,
-      scheduledTime: task.scheduledTime,
-      href: '/staff/tasks',
-      hint: `评定来源 ${task.sourceStatus}`,
-      origin: '评定任务',
-    })), [applicationSourceMap, applications, scene])
-  const serviceTasks = useMemo<DailyTaskItem[]>(() => nursingSnapshot.tasks
-    .filter(task => matchesEmploymentScene(staffEmploymentMap.get(task.ownerName), scene))
-    .map(task => ({
-      id: task.id,
-      title: task.title,
-      elderlyName: task.elderlyName,
-      room: task.room,
-      status: task.status,
-      priority: task.priority,
-      scheduledTime: task.scheduledTime,
-      href: '/staff/tasks',
-      hint: `${task.packageName} · ${task.shift}`,
-      origin: '服务计划',
-    })), [nursingSnapshot.tasks, scene, staffEmploymentMap])
-  const prioritizedTasks = useMemo(
-    () => sortDailyTasks([...assessmentTasks, ...serviceTasks]),
-    [assessmentTasks, serviceTasks],
-  )
-
   const sceneMeta = scene === 'home'
     ? {
       title: '居家日班工作台',
-      subtitle: '把上门评定、第三方协同、回执补录与监管报表收敛到同一入口。',
-      description: '班次入口当前按居家养老视角组织，先判断评定、派案和监管压力，再进入共享页处理。',
+      subtitle: '把居家风险、待办闭环和真实运营入口收敛到同一入口。',
+      description: '班次入口当前按居家养老视角组织，先判断告警、待办和协同压力，再进入真实处理页。',
     }
     : scene === 'institutional'
       ? {
         title: '机构日班工作台',
-        subtitle: '把院内告警、认定任务、执行留痕与资源补位收敛到同一入口。',
-        description: '班次入口当前按机构养老视角组织，先判断院内认定、执行和承接压力，再进入共享页处理。',
+        subtitle: '把院内风险、待办闭环和真实运营入口收敛到同一入口。',
+        description: '班次入口当前按机构养老视角组织，先判断院内告警、待办和协同压力，再进入真实处理页。',
       }
       : {
         title: '日班运营工作台',
-        subtitle: '把告警、事故、评定任务、活动执行与资源补位收敛到同一入口，先定优先级再下钻。',
-        description: '日班工作台只保留当班收口总览、优先队列和统一入口，不再把来源说明拆成多张并行说明卡。',
+        subtitle: '把告警、待办闭环和真实运营入口收敛到同一入口，先定优先级再下钻。',
+        description: '日班工作台只保留 live aggregate、优先队列和真实入口，不再把本地事故、活动与资源假数混进首屏。',
       }
 
-  const pendingCriticalAlerts = prioritizedAlerts.filter(item => item.level === 'critical' && item.status !== 'resolved').length
-  const openIncidents = prioritizedIncidents.filter(item => item.status !== '已结案').length
-  const todayActivities = prioritizedActivities.filter(item => item.date === OPERATIONS_TODAY).length
-  const runningActivities = prioritizedActivities.filter(item => item.status === '进行中').length
-  const openTasks = prioritizedTasks.filter(item => item.status !== '已完成').length
-  const pendingOnboarding = resourceSnapshot.staff.filter(item => item.lifecycleStatus === '待入职').length
-  const maintenanceRooms = masterSnapshot.rooms.filter(item => item.status === '维护中' || item.cleanStatus !== '已清洁').length
-  const shortageSupplies = resourceSnapshot.supplies.filter(item => item.status === '库存不足' || item.lifecycleStatus === '待上架').length
-  const isWorkflowDemoMode = isNursingWorkflowDemoMode()
   const hasDashboardSnapshot = dashboardOverview !== null && !dashboardError
   const livePendingAlerts = dashboardOverview?.kpis.pendingAlerts ?? 0
   const liveWorkflowPendingCount = dashboardOverview?.kpis.workflowPendingCount ?? 0
   const liveQueuedNotifications = getBreakdownValue(dashboardOverview?.notificationBreakdown, '待发送')
   const liveFinanceActionRequired = getBreakdownValue(dashboardOverview?.financeBreakdown, '动作必做')
+  const livePendingReviewPlans = getBreakdownValue(dashboardOverview?.workflowBreakdown, '待复核计划')
+  const liveUnassignedPlans = getBreakdownValue(dashboardOverview?.workflowBreakdown, '未分配计划')
+  const liveCompletedTasks = getBreakdownValue(dashboardOverview?.workflowBreakdown, '已完成任务')
+  const liveTopAlertModule = dashboardOverview?.alertModules[0] ?? null
+  const liveSecondAlertModule = dashboardOverview?.alertModules[1] ?? null
+  const topStaff = dashboardOverview?.staffLeaderboard[0] ?? null
+  const secondStaff = dashboardOverview?.staffLeaderboard[1] ?? null
   const dashboardGeneratedAtLabel = dashboardOverview
     ? new Date(dashboardOverview.generatedAtUtc).toLocaleString('zh-CN', {
       hour12: false,
@@ -273,16 +176,6 @@ export default function DailyOperationsPage() {
     : ''
   const dashboardStatusVariant = dashboardError ? 'danger' as const : dashboardLoading ? 'warning' as const : 'success' as const
   const dashboardStatusLabel = dashboardError ? 'Live Unavailable' : dashboardLoading ? 'Syncing' : 'Live Snapshot'
-  const nursingWorkflowStatusVariant = isWorkflowDemoMode
-    ? 'warning' as const
-    : nursingSnapshot.error
-      ? 'danger' as const
-      : 'success' as const
-  const nursingWorkflowStatusLabel = isWorkflowDemoMode
-    ? 'Demo Snapshot'
-    : nursingSnapshot.error
-      ? 'Fallback Active'
-      : 'Live Workflow'
 
   const dataSourceCards = [
     {
@@ -296,96 +189,125 @@ export default function DailyOperationsPage() {
           : `首屏 KPI 与总览数字已来自 ${dashboardGeneratedAtLabel} 的 aggregate 快照。`,
     },
     {
-      title: '护理 Workflow',
-      variant: nursingWorkflowStatusVariant,
-      label: nursingWorkflowStatusLabel,
-      detail: isWorkflowDemoMode
-        ? '当前环境未启用护理 workflow BFF，服务计划任务仍来自 demo snapshot。'
-        : nursingSnapshot.error
-          ? `护理 workflow 已降级到 fallback 快照：${nursingSnapshot.error}`
-          : '服务计划任务与排班信号来自护理 workflow board。',
+      title: '工作流摘要',
+      variant: dashboardStatusVariant,
+      label: dashboardStatusLabel,
+      detail: dashboardLoading
+        ? '待复核计划、未分配计划和完成任务正在同步 aggregate 摘要。'
+        : dashboardError
+          ? '工作流摘要当前不可达，页面不会回退 demo workflow。'
+          : `当前待复核 ${livePendingReviewPlans}，未分配 ${liveUnassignedPlans}，已完成 ${liveCompletedTasks}。`,
     },
     {
-      title: '事故与资源补位',
-      variant: 'neutral' as const,
-      label: 'Local Snapshot',
-      detail: '事故、活动、房间、物资和人员补位仍来自本地 workflow store，尚未接入后端读模型。',
+      title: '待接通模块',
+      variant: 'warning' as const,
+      label: 'Pending Integration',
+      detail: '事故、活动、房间、物资和人员读模型尚未接入后端，本页不再展示这些模块的本地统计。',
     },
   ]
 
-  const focusQueue = [
-    ...prioritizedAlerts.slice(0, 2).map(item => ({
-      id: item.id,
-      category: '告警中心',
-      title: `${item.elderlyName} · ${item.description}`,
-      detail: `${item.roomNumber}${item.deviceName ? ` · ${item.deviceName}` : ''}`,
-      hint: item.status === 'pending' ? '优先接单并确认到场响应' : '持续跟进处理中事件',
-      href: withSceneQuery('/alerts', scene),
-      variant: item.level === 'critical' ? 'danger' as const : 'warning' as const,
-      sourceLabel: 'Local Snapshot',
-      sourceVariant: 'neutral' as const,
-    })),
-    ...prioritizedIncidents.slice(0, 2).map(item => ({
-      id: item.id,
-      category: '事故处置',
-      title: item.title,
-      detail: `${item.room} · 报告人 ${item.reporter}`,
-      hint: item.status === '待分派' ? '先确认责任人与通知动作' : item.nextStep ?? '补齐下一步与复核时间',
-      href: withSceneQuery('/incidents', scene),
-      variant: item.level === '严重' ? 'danger' as const : 'warning' as const,
-      sourceLabel: 'Local Snapshot',
-      sourceVariant: 'neutral' as const,
-    })),
-    ...prioritizedTasks.slice(0, 2).map(item => ({
-      id: item.id,
-      category: item.origin,
-      title: `${item.elderlyName} · ${item.title}`,
-      detail: `${item.room} · ${item.scheduledTime}`,
-      hint: item.hint,
-      href: withSceneQuery(item.href, scene),
-      variant: item.priority === '高' ? 'warning' as const : 'info' as const,
-      sourceLabel: item.origin === '服务计划' ? nursingWorkflowStatusLabel : 'Local Snapshot',
-      sourceVariant: item.origin === '服务计划' ? nursingWorkflowStatusVariant : 'neutral' as const,
-    })),
-    ...prioritizedActivities.slice(0, 1).map(item => ({
-      id: item.id,
-      category: '活动运营',
-      title: item.name,
-      detail: `${item.date} ${item.time} · ${item.location}`,
-      hint: item.status === '进行中' ? '关注签到、现场执行与容量波动' : '检查发布与报名节奏',
-      href: withSceneQuery('/activities', scene),
-      variant: item.status === '进行中' ? 'warning' as const : 'info' as const,
-      sourceLabel: 'Local Snapshot',
-      sourceVariant: 'neutral' as const,
-    })),
-  ]
+  const focusQueue = useMemo(() => {
+    const queue = []
+
+    if (liveTopAlertModule) {
+      queue.push({
+        id: `alert-${liveTopAlertModule.label}`,
+        category: '告警中心',
+        title: `${liveTopAlertModule.label} 待优先收口`,
+        detail: `待处理 ${liveTopAlertModule.totalOpen} 条 · 严重 ${liveTopAlertModule.critical} 条`,
+        hint: '优先确认到场响应与处理中事件，避免关键告警滞留。',
+        href: withSceneQuery('/alerts', scene),
+        variant: liveTopAlertModule.critical > 0 ? 'danger' as const : 'warning' as const,
+        sourceLabel: dashboardStatusLabel,
+        sourceVariant: dashboardStatusVariant,
+      })
+    }
+
+    if (liveWorkflowPendingCount > 0) {
+      queue.push({
+        id: 'workflow-pending',
+        category: '工作流待办',
+        title: '待复核与未分配计划需要优先闭环',
+        detail: `待复核 ${livePendingReviewPlans} · 未分配 ${liveUnassignedPlans}`,
+        hint: '先进入任务页核对认定和分派阻塞，再决定是否扩散到其它模块。',
+        href: withSceneQuery('/staff/tasks', scene),
+        variant: liveWorkflowPendingCount > 0 ? 'warning' as const : 'info' as const,
+        sourceLabel: dashboardStatusLabel,
+        sourceVariant: dashboardStatusVariant,
+      })
+    }
+
+    if (liveQueuedNotifications > 0) {
+      queue.push({
+        id: 'notification-queued',
+        category: '通知中心',
+        title: '仍有通知待发送，需要确认交付闭环',
+        detail: `待发送 ${liveQueuedNotifications} 条`,
+        hint: '优先确认关键通知是否因队列阻塞而影响当班闭环。',
+        href: withSceneQuery('/notifications', scene),
+        variant: liveQueuedNotifications > 0 ? 'info' as const : 'neutral' as const,
+        sourceLabel: dashboardStatusLabel,
+        sourceVariant: dashboardStatusVariant,
+      })
+    }
+
+    if (liveFinanceActionRequired > 0) {
+      queue.push({
+        id: 'finance-required',
+        category: '财务动作',
+        title: '财务动作必做项需要跟进',
+        detail: `动作必做 ${liveFinanceActionRequired} 项`,
+        hint: '先确认是否存在会影响当班交付的逾期或待复核账单。',
+        href: withSceneQuery('/financial', scene),
+        variant: liveFinanceActionRequired > 0 ? 'warning' as const : 'neutral' as const,
+        sourceLabel: dashboardStatusLabel,
+        sourceVariant: dashboardStatusVariant,
+      })
+    }
+
+    if (liveSecondAlertModule) {
+      queue.push({
+        id: `alert-${liveSecondAlertModule.label}`,
+        category: '次级告警',
+        title: `${liveSecondAlertModule.label} 需要继续观察`,
+        detail: `待处理 ${liveSecondAlertModule.totalOpen} 条`,
+        hint: '在主告警队列收口后，再回看次级模块是否需要升级。',
+        href: withSceneQuery('/alerts', scene),
+        variant: 'info' as const,
+        sourceLabel: dashboardStatusLabel,
+        sourceVariant: dashboardStatusVariant,
+      })
+    }
+
+    return queue.slice(0, 5)
+  }, [dashboardStatusLabel, dashboardStatusVariant, liveFinanceActionRequired, livePendingReviewPlans, liveQueuedNotifications, liveSecondAlertModule, liveTopAlertModule, liveUnassignedPlans, liveWorkflowPendingCount, scene])
 
   const operationEntries = [
-    { title: '实时告警', subtitle: `${pendingCriticalAlerts} 条紧急未闭环`, href: withSceneQuery('/alerts', scene), icon: <AlertTriangle size={16} />, tag: '告警' },
-    { title: '事故处置', subtitle: `${openIncidents} 条未结案`, href: withSceneQuery('/incidents', scene), icon: <ShieldAlert size={16} />, tag: '安全' },
-    { title: '现场评定任务', subtitle: `${openTasks} 项待闭环`, href: withSceneQuery('/staff/tasks', scene), icon: <ClipboardList size={16} />, tag: '任务' },
-    { title: '活动运营', subtitle: `今日 ${todayActivities} 场，进行中 ${runningActivities} 场`, href: withSceneQuery('/activities', scene), icon: <CalendarHeart size={16} />, tag: '运营' },
-    { title: '设备监控', subtitle: `${pendingCriticalAlerts} 条告警需联动监控`, href: withSceneQuery('/devices/realtime', scene), icon: <Monitor size={16} />, tag: '设备' },
-    { title: '房间承接', subtitle: `${maintenanceRooms} 项维护或清洁待办`, href: withSceneQuery('/rooms', scene), icon: <DoorOpen size={16} />, tag: '床位' },
-    { title: '补货上架', subtitle: `${shortageSupplies} 项库存风险`, href: withSceneQuery('/supplies', scene), icon: <Package size={16} />, tag: '物资' },
-    { title: '人员协同', subtitle: `${pendingOnboarding} 人待入职确认`, href: withSceneQuery('/staff', scene), icon: <UserCheck size={16} />, tag: '协同' },
+    { title: '实时告警', subtitle: hasDashboardSnapshot ? `${livePendingAlerts} 条待闭环` : '等待 aggregate 同步', href: withSceneQuery('/alerts', scene), icon: <AlertTriangle size={16} />, tag: '告警' },
+    { title: '现场任务', subtitle: hasDashboardSnapshot ? `${liveWorkflowPendingCount} 项待闭环` : '等待 aggregate 同步', href: withSceneQuery('/staff/tasks', scene), icon: <ClipboardList size={16} />, tag: '任务' },
+    { title: '排班承接', subtitle: topStaff ? `${topStaff.name} 完成率 ${topStaff.completionRate}%` : '查看排班覆盖摘要', href: withSceneQuery('/staff/schedule', scene), icon: <UserCheck size={16} />, tag: '排班' },
+    { title: '通知中心', subtitle: hasDashboardSnapshot ? `${liveQueuedNotifications} 条待发送` : '等待 aggregate 同步', href: withSceneQuery('/notifications', scene), icon: <BellRing size={16} />, tag: '通知' },
+    { title: '财务动作', subtitle: hasDashboardSnapshot ? `${liveFinanceActionRequired} 项必做` : '等待 aggregate 同步', href: withSceneQuery('/financial', scene), icon: <ReceiptText size={16} />, tag: '财务' },
+    { title: '老人主档', subtitle: hasDashboardSnapshot ? `${dashboardOverview?.kpis.elderCount ?? 0} 位在管对象` : '等待 aggregate 同步', href: withSceneQuery('/elderly', scene), icon: <Users size={16} />, tag: '主档' },
+    { title: '事故处置', subtitle: '真实读模型待接通，本页不再展示本地事故数', icon: <ShieldAlert size={16} />, tag: '待接通', disabled: true },
+    { title: '活动与资源', subtitle: '活动、房间、物资、人员读模型待接通', icon: <ShieldAlert size={16} />, tag: '待接通', disabled: true },
   ]
 
   const supportSignals = [
     {
       label: '优先人员',
-      value: prioritizedStaff[0] ? `${prioritizedStaff[0].name} · ${prioritizedStaff[0].lifecycleStatus}` : '暂无异常',
-      hint: '优先确认待入职、休假和第三方协同人员',
+      value: topStaff ? `${topStaff.name} · ${topStaff.role}` : '等待 aggregate 同步',
+      hint: topStaff ? `当前任务 ${topStaff.tasks}，完成 ${topStaff.completed}` : '当前只展示 aggregate 返回的人员摘要。',
     },
     {
-      label: '承接房间',
-      value: prioritizedRooms[0] ? `${prioritizedRooms[0].name} · ${prioritizedRooms[0].status}` : '暂无异常',
-      hint: '优先看待启用、维护和待清洁房间',
+      label: '次优人员',
+      value: secondStaff ? `${secondStaff.name} · ${secondStaff.role}` : '等待 aggregate 同步',
+      hint: secondStaff ? `当前任务 ${secondStaff.tasks}，完成率 ${secondStaff.completionRate}%` : '若 aggregate 未返回足够人员数据，则不补本地人员台账。',
     },
     {
-      label: '补货物资',
-      value: prioritizedSupplies[0] ? `${prioritizedSupplies[0].name} · ${prioritizedSupplies[0].status}` : '暂无异常',
-      hint: '优先处理待上架与库存不足条目',
+      label: '待接通模块',
+      value: '事故 / 活动 / 房间 / 物资 / 人员',
+      hint: '这些读模型尚未完成真实化，本页已停止展示对应本地统计。',
     },
   ]
 
@@ -411,14 +333,13 @@ export default function DailyOperationsPage() {
               description={
                 <>
                   <div>{sceneMeta.description}</div>
-                  <div style={{ marginTop: 6 }}>首屏总览优先读取 dashboard aggregate 与护理 workflow board，事故和资源补位区仍明确保留 local snapshot 边界。</div>
+                  <div style={{ marginTop: 6 }}>首屏总览只读取 dashboard aggregate；尚未真实化的事故、活动和资源模块统一后置标记为待接通。</div>
                 </>
               }
               badge={
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Tag variant="primary">Shift Control</Tag>
                   <Tag variant={dashboardStatusVariant}>{dashboardStatusLabel}</Tag>
-                  <Tag variant={nursingWorkflowStatusVariant}>{nursingWorkflowStatusLabel}</Tag>
                 </div>
               }
               metrics={[
@@ -434,47 +355,50 @@ export default function DailyOperationsPage() {
                   hint: dashboardLoading ? '待复核与未分派同步中' : dashboardError ? '工作流 aggregate 未就绪' : '待复核与未分派计划总和',
                   tone: dashboardLoading ? 'warning' : dashboardError ? 'danger' : liveWorkflowPendingCount > 0 ? 'warning' : 'success',
                 },
-                { label: '事故处理中', value: openIncidents, hint: 'Local Snapshot · 待分派与处理中事故统一收口', tone: openIncidents > 0 ? 'warning' : 'success' },
-                { label: '今日活动', value: todayActivities, hint: `Local Snapshot · 进行中 ${runningActivities} 场`, tone: todayActivities > 0 ? 'info' : 'neutral' },
+                { label: '通知待发送', value: hasDashboardSnapshot ? liveQueuedNotifications : '--', hint: dashboardLoading ? '通知摘要同步中' : dashboardError ? '通知 aggregate 未就绪' : 'Notification 摘要', tone: dashboardLoading ? 'warning' : dashboardError ? 'danger' : liveQueuedNotifications > 0 ? 'info' : 'success' },
+                { label: '财务必做', value: hasDashboardSnapshot ? liveFinanceActionRequired : '--', hint: dashboardLoading ? '财务摘要同步中' : dashboardError ? '财务 aggregate 未就绪' : 'Billing 摘要', tone: dashboardLoading ? 'warning' : dashboardError ? 'danger' : liveFinanceActionRequired > 0 ? 'warning' : 'success' },
               ]}
               signals={[
                 { label: dashboardLoading ? '日班工作台 aggregate 正在同步' : dashboardError ? `日班工作台 aggregate 不可达：${dashboardError}` : `工作台 aggregate 已更新：${dashboardGeneratedAtLabel}`, tone: dashboardLoading ? 'warning' : dashboardError ? 'danger' : 'success' },
-                { label: isWorkflowDemoMode ? '护理 workflow 当前仍处于 Demo Snapshot 模式' : nursingSnapshot.error ? `护理 workflow 已切到 fallback：${nursingSnapshot.error}` : '护理 workflow 当前正在读取 BFF board', tone: isWorkflowDemoMode ? 'warning' : nursingSnapshot.error ? 'danger' : 'success' },
-                { label: pendingOnboarding > 0 ? `有 ${pendingOnboarding} 人待入职确认，可能影响排班口径` : '当前无待入职人员阻塞排班', tone: pendingOnboarding > 0 ? 'warning' : 'success' },
+                { label: hasDashboardSnapshot ? `工作流摘要：待复核 ${livePendingReviewPlans}，未分配 ${liveUnassignedPlans}，已完成 ${liveCompletedTasks}` : '工作流摘要等待 aggregate 同步', tone: dashboardLoading ? 'warning' : dashboardError ? 'danger' : 'success' },
+                { label: '事故、活动、房间、物资与人员读模型尚未接通，本页不再展示本地统计。', tone: 'neutral' },
               ]}
               actions={
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Link href={withSceneQuery('/alerts', scene)} className="btn btn-secondary btn-sm">先看实时告警</Link>
                   <Link href={withSceneQuery('/staff/tasks', scene)} className="btn btn-secondary btn-sm">进入评定任务</Link>
-                  <Link href={withSceneQuery('/activities', scene)} className="btn btn-secondary btn-sm">跟进活动执行</Link>
+                  <Link href={withSceneQuery('/notifications', scene)} className="btn btn-secondary btn-sm">查看通知队列</Link>
                 </div>
               }
             />
 
             <div className="kpi-grid" style={{ marginBottom: 16 }}>
               <StatCard icon={<AlertTriangle size={18} />} label="告警待闭环" value={hasDashboardSnapshot ? livePendingAlerts : '--'} sub={dashboardLoading ? 'Syncing' : dashboardError ? 'Live Unavailable' : 'Live Snapshot'} color="danger" />
-              <StatCard icon={<ClipboardList size={18} />} label="工作流待办" value={hasDashboardSnapshot ? liveWorkflowPendingCount : '--'} sub={dashboardLoading ? '待复核与未分派同步中' : dashboardError ? 'Aggregate Unavailable' : `通知 ${liveQueuedNotifications} · 财务 ${liveFinanceActionRequired}`} color="info" />
-              <StatCard icon={<ShieldAlert size={18} />} label="事故未结案" value={openIncidents} sub="Local Snapshot" color="warning" />
-              <StatCard icon={<CalendarHeart size={18} />} label="今日活动" value={todayActivities} sub={`Local Snapshot · 进行中 ${runningActivities} 场`} color="primary" />
+              <StatCard icon={<ClipboardList size={18} />} label="工作流待办" value={hasDashboardSnapshot ? liveWorkflowPendingCount : '--'} sub={dashboardLoading ? '待复核与未分派同步中' : dashboardError ? 'Aggregate Unavailable' : `待复核 ${livePendingReviewPlans} · 未分配 ${liveUnassignedPlans}`} color="info" />
+              <StatCard icon={<BellRing size={18} />} label="通知待发送" value={hasDashboardSnapshot ? liveQueuedNotifications : '--'} sub={dashboardLoading ? 'Syncing' : dashboardError ? 'Aggregate Unavailable' : 'Notification Summary'} color="warning" />
+              <StatCard icon={<ReceiptText size={18} />} label="财务动作必做" value={hasDashboardSnapshot ? liveFinanceActionRequired : '--'} sub={dashboardLoading ? 'Syncing' : dashboardError ? 'Aggregate Unavailable' : 'Billing Summary'} color="primary" />
             </div>
 
             <DataCard
               icon={<ShieldAlert size={16} />}
               title="班次优先队列"
-              subtitle="按先处置风险、再推动执行、最后处理资源补位的顺序聚合。"
+              subtitle="按先处置风险、再推动待办、最后检查通知与财务闭环的顺序聚合。"
               badge={<Tag variant="warning">Shift Queue</Tag>}
             >
               <div className="ops-focus-list">
                 {focusQueue.map(item => (
                   <FocusQueueCard key={item.id} {...item} />
                 ))}
+                {focusQueue.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>当前 aggregate 尚未返回可排序的优先队列，保留工作台结构但不回退本地假数。</div>
+                ) : null}
               </div>
             </DataCard>
 
             <DataCard
               icon={<ChevronRight size={16} />}
               title="统一运营入口"
-              subtitle="先决定去哪处理，再进入对应专页；入口卡不再和来源说明混排。"
+              subtitle="先决定去哪处理，再进入对应专页；未接通模块只显示状态说明，不再展示本地数量。"
               badge={<Tag variant="info">Entry Board</Tag>}
             >
               <div className="ops-entry-grid">
@@ -526,11 +450,11 @@ export default function DailyOperationsPage() {
             <PageHelpCard
               title="页面帮助"
               subtitle="完整说明迁到帮助页"
-              summary="日班工作台首屏只保留当班收口总览、优先队列和统一入口；来源边界与资源补位信号统一压到后置上下文区。"
+              summary="日班工作台首屏只保留 live aggregate、优先队列和真实入口；来源边界与待接通模块说明统一压到后置上下文区。"
               items={[
-                '先看告警和事故，再进入评定与执行链路。',
-                '当班判断先以 aggregate 与 workflow 状态为准。',
-                '资源补位和补货判断只作为支撑信号，不抢主入口。',
+                '先看告警和工作流待办，再进入通知与财务闭环。',
+                '当班判断先以 aggregate 状态为准。',
+                '未接通模块不会再显示本地假数。',
               ]}
               href="/operations/daily/help"
               actionLabel="查看日班工作台帮助"

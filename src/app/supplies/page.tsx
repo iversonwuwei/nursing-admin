@@ -3,12 +3,12 @@
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, Pagination, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
 import { getSupplyAiInsights, getSupplyAiNarratives } from '@/lib/mock/admin-ai'
-import { confirmSupplyStocking, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
 import { sortSuppliesByPriority } from '@/lib/resource-operations-priority'
+import { activateAdminSupply, fetchAdminSupplies, type AdminSupplyRecord } from '@/lib/services/admin-operations-services'
 import { AlertTriangle, Bot, ChevronRight, Package, Plus, Search } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { '库存不足': 'danger', '正常': 'success', '待上架': 'warning' }
 const CAT_TAG: Record<string, TagVariant> = { '护理用品': 'primary', '防护用品': 'warning', '消毒用品': 'info', '医疗用品': 'purple' }
@@ -17,16 +17,41 @@ export default function SuppliesPage() {
   const searchParams = useSearchParams()
   const preselectedId = searchParams.get('selected')
   const fromNew = searchParams.get('entry') === 'supplies-new'
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const supplies = snapshot.supplies
+  const [supplies, setSupplies] = useState<AdminSupplyRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [page, setPage] = useState(1)
   const pageSize = 10
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminSupplies({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setSupplies(response.items)
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '物资列表查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   const selectedSupply = useMemo(
     () => supplies.find(item => item.id === preselectedId) ?? null,
     [preselectedId, supplies],
@@ -41,6 +66,19 @@ export default function SuppliesPage() {
     focus,
     target,
   })
+
+  async function handleActivate(supplyId: string) {
+    setSubmittingId(supplyId)
+    try {
+      const updated = await activateAdminSupply(supplyId)
+      setSupplies(current => current.map(item => item.id === updated.id ? updated : item))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '物资上架确认失败。')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
 
   const lowStock = supplies.filter(s => s.status === '库存不足').length
   const pendingStockingCount = supplies.filter(s => s.lifecycleStatus === '待上架').length
@@ -70,6 +108,12 @@ export default function SuppliesPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="物资实时链路当前不可用，页面不会回退本地库存台账。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
             <WorkflowOverviewCard
               eyebrow="Supply Operations"
               title="补货与上架总览"
@@ -105,8 +149,8 @@ export default function SuppliesPage() {
                     最近一次入库 {selectedSupply.lastIntakeQuantity ?? 0}{selectedSupply.unit}，当前库存 {selectedSupply.stock}{selectedSupply.unit}。
                   </div>
                   {selectedSupply.lifecycleStatus === '待上架' ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => confirmSupplyStocking(selectedSupply.id)}>
-                      确认上架
+                    <button className="btn btn-primary btn-sm" onClick={() => handleActivate(selectedSupply.id)} disabled={submittingId === selectedSupply.id}>
+                      {submittingId === selectedSupply.id ? '确认中...' : '确认上架'}
                     </button>
                   ) : (
                     <Link href={`/supplies/${selectedSupply.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
@@ -252,7 +296,14 @@ export default function SuppliesPage() {
                     </tbody>
                   </table>
                 </div>
-                {paged.length === 0 && <EmptyState variant="search" title="暂无数据" description="调整筛选条件试试" />}
+                {loading ? (
+                  <div style={{ padding: 16 }}>
+                    <DataCard title="物资加载中" subtitle="正在从 Operations Service 获取库存台账。">
+                      <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>补货优先队列和库存表格都已切换到真实后端数据。</div>
+                    </DataCard>
+                  </div>
+                ) : null}
+                {!loading && paged.length === 0 && <EmptyState variant="search" title="暂无数据" description="调整筛选条件试试" />}
                 <Pagination current={page} total={filtered.length} pageSize={pageSize} onChange={setPage} />
               </div>
             </DataCard>

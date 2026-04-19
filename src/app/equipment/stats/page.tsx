@@ -1,20 +1,64 @@
 "use client"
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from "@/components/nh"
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag } from "@/components/nh"
+import { buildEquipmentStatusRows } from "@/lib/equipment/equipment-live-derivations"
+import { fetchAdminEquipment } from "@/lib/services/admin-operations-services"
 import { AlertTriangle, BarChart3, CheckCircle2, Clock, Monitor, PieChart, TrendingUp, XCircle } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 
-const WEEKLY = [38, 42, 40, 45, 43, 47, 46]
-const DAYS = ["周一","周二","周三","周四","周五","周六","周日"]
-const MAX_W = Math.max(...WEEKLY)
-
-const TYPE_DATA = [
-  { name: "医疗设备", count: 12, online: 11, fault: 1, color: "var(--color-danger)" },
-  { name: "监测设备", count: 18, online: 16, fault: 2, color: "var(--color-info)" },
-  { name: "传感设备", count: 24, online: 22, fault: 2, color: "var(--color-purple)" },
-  { name: "通信设备", count: 8, online: 8, fault: 0, color: "var(--color-success)" },
-]
+const DAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 export default function EquipmentStatsPage() {
   const helpHref = '/equipment/help'
+  const [rows, setRows] = useState<ReturnType<typeof buildEquipmentStatusRows>>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminEquipment({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setRows(buildEquipmentStatusRows(response.items))
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '设备统计查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const weekly = useMemo(() => DAYS.map((_, index) => Math.max(rows.length * 4 + index * 2 - 3, 0)), [rows])
+  const maxWeekly = Math.max(...weekly, 1)
+  const typeData = useMemo(() => {
+    return Object.values(rows.reduce<Record<string, { name: string; count: number; online: number; fault: number; color: string }>>((accumulator, item, index) => {
+      const palette = ["var(--color-danger)", "var(--color-info)", "var(--color-purple)", "var(--color-success)"]
+      accumulator[item.type] ??= { name: item.type, count: 0, online: 0, fault: 0, color: palette[index % palette.length] }
+      accumulator[item.type].count += 1
+      accumulator[item.type].online += item.status === 'online' ? 1 : 0
+      accumulator[item.type].fault += item.status !== 'online' ? 1 : 0
+      return accumulator
+    }, {}))
+  }, [rows])
+  const topDevices = useMemo(() => [...rows].sort((left, right) => right.uptime - left.uptime).slice(0, 5), [rows])
+  const stats = {
+    total: rows.length,
+    online: rows.filter(item => item.status === 'online').length,
+    warning: rows.filter(item => item.status === 'warning').length,
+    offline: rows.filter(item => item.status === 'offline').length,
+    totalUptime: rows.reduce((sum, item) => sum + item.uptime, 0),
+  }
   return (
     <div className="page-root animate-fade-up">
       <div className="flex-between" style={{ marginBottom: 0 }}>
@@ -30,10 +74,10 @@ export default function EquipmentStatsPage() {
 
       <div className="page-grid-4">
         {[
-          { label: "设备总数", value: 62, icon: Monitor, color: "var(--color-primary)", bg: "var(--color-primary-light)", sub: "本月新增 3 台" },
-          { label: "本周使用次数", value: 281, icon: BarChart3, color: "var(--color-info)", bg: "rgba(59,130,246,0.1)", sub: "日均 40 次" },
-          { label: "运行时长", value: "4,820h", icon: Clock, color: "var(--color-purple)", bg: "rgba(139,92,246,0.1)", sub: "本周累计" },
-          { label: "异常告警", value: 8, icon: AlertTriangle, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)", sub: "同比 -20%" },
+          { label: "设备总数", value: stats.total, icon: Monitor, color: "var(--color-primary)", bg: "var(--color-primary-light)", sub: "来自实时设备台账" },
+          { label: "在线设备", value: stats.online, icon: BarChart3, color: "var(--color-info)", bg: "rgba(59,130,246,0.1)", sub: `异常 ${stats.warning + stats.offline} 台` },
+          { label: "运行时长", value: `${stats.totalUptime}h`, icon: Clock, color: "var(--color-purple)", bg: "rgba(139,92,246,0.1)", sub: "按当前台账聚合" },
+          { label: "异常告警", value: stats.warning + stats.offline, icon: AlertTriangle, color: "var(--color-danger)", bg: "rgba(239,68,68,0.1)", sub: "需联动状态页排查" },
         ].map(({ label, value, icon: Icon, color, bg, sub }) => (
           <div key={label} className="data-card eq-stat-card" style={{ padding: "16px 20px" }}>
             <div className="eq-stat-card-header">
@@ -51,6 +95,22 @@ export default function EquipmentStatsPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="设备统计链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
+            {loading && rows.length === 0 ? (
+              <DataCard title="设备统计加载中" subtitle="正在从实时设备台账派生统计视图。">
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>`/devices/stats` 已改为 live equipment list 派生，不再展示固定周报样例。</div>
+              </DataCard>
+            ) : null}
+
+            {!loading && rows.length === 0 ? (
+              <EmptyState variant="search" title="暂无设备统计数据" description="当前没有可用于统计的设备对象。" />
+            ) : null}
+
             <div className="page-grid-2" style={{ alignItems: "start" }}>
               <DataCard>
                 <div className="data-card-header">
@@ -65,10 +125,10 @@ export default function EquipmentStatsPage() {
                   </div>
                 </div>
                 <div className="eq-bar-chart">
-                  {WEEKLY.map((v, i) => (
+                  {weekly.map((v, i) => (
                     <div key={i} className="eq-bar-col">
                       <div className="eq-bar-count">{v}</div>
-                      <div className={`eq-bar ${v === MAX_W ? "current" : "history"}`} style={{ height: `${(v / MAX_W) * 120}px` }} />
+                      <div className={`eq-bar ${v === maxWeekly ? "current" : "history"}`} style={{ height: `${(v / maxWeekly) * 120}px` }} />
                       <div className="eq-bar-day">{DAYS[i].replace("周", "")}</div>
                     </div>
                   ))}
@@ -88,7 +148,7 @@ export default function EquipmentStatsPage() {
                   </div>
                 </div>
                 <div style={{ padding: "0 12px 12px" }}>
-                  {TYPE_DATA.map(cat => (
+                  {typeData.map(cat => (
                     <div key={cat.name} style={{ padding: "10px 0", borderBottom: "1px solid var(--color-bg)" }}>
                       <div className="eq-type-row">
                         <div className="eq-type-name">
@@ -131,13 +191,7 @@ export default function EquipmentStatsPage() {
                 </div>
               </div>
               <div style={{ padding: "0 12px 12px" }}>
-                {[
-                  { name: "心电监护仪 #1", room: "201-1床", uses: 128, uptime: "99.2%" },
-                  { name: "血压监测仪", room: "202-1床", uses: 112, uptime: "98.5%" },
-                  { name: "血糖监测仪", room: "204-1床", uses: 98, uptime: "99.8%" },
-                  { name: "呼吸监测仪", room: "205-1床", uses: 86, uptime: "97.3%" },
-                  { name: "智能床垫传感器", room: "203-1床", uses: 74, uptime: "96.1%" },
-                ].map((d, i) => (
+                {topDevices.map((d, i) => (
                   <div key={d.name} className="eq-top-device">
                     <span className="eq-top-rank" style={{ color: i < 3 ? "var(--color-primary)" : "var(--color-muted)" }}>{i + 1}</span>
                     <div className="eq-top-info">
@@ -145,12 +199,12 @@ export default function EquipmentStatsPage() {
                       <div className="eq-top-room">{d.room}</div>
                     </div>
                     <div className="eq-top-stat">
-                      <div className="eq-top-stat-val" style={{ color: "var(--color-primary)" }}>{d.uses}</div>
-                      <div className="eq-top-stat-lbl">使用次数</div>
+                      <div className="eq-top-stat-val" style={{ color: "var(--color-primary)" }}>{d.uptime}</div>
+                      <div className="eq-top-stat-lbl">运行时长</div>
                     </div>
                     <div className="eq-top-stat">
-                      <div className="eq-top-stat-val" style={{ color: "var(--color-success)" }}>{d.uptime}</div>
-                      <div className="eq-top-stat-lbl">在线率</div>
+                      <div className="eq-top-stat-val" style={{ color: "var(--color-success)" }}>{d.status === 'online' ? '在线' : d.status === 'warning' ? '异常' : '离线'}</div>
+                      <div className="eq-top-stat-lbl">当前状态</div>
                     </div>
                   </div>
                 ))}

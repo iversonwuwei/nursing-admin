@@ -2,30 +2,63 @@
 import { DataCard, EmptyState, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getSupplyDetailAiInsight, getSupplyProcurementInsight } from "@/lib/mock/admin-ai"
-import { findLiveSupplyById, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
+import { fetchAdminSupplyDetail, type AdminSupplyRecord } from '@/lib/services/admin-operations-services'
 import { ArrowLeft, Bot, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { "正常": "success", "库存不足": "danger", "待上架": "warning" }
 
 export default function SupplyDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const data = useMemo(() => findLiveSupplyById(id, snapshot), [id, snapshot])
+  const [data, setData] = useState<AdminSupplyRecord | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminSupplyDetail(id)
+      .then(response => {
+        if (active) {
+          setData(response)
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '物资详情查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="animate-fade-up">
+        <DataCard title="物资详情加载中" subtitle="正在从 Operations Service 拉取库存对象。">
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>详情页已切换到真实后端读取，不再依赖前端库存 workflow。</div>
+        </DataCard>
+      </div>
+    )
+  }
 
   if (!data) {
     return (
       <div className="animate-fade-up">
         <PageHeader
           title="物资不存在"
-          subtitle={`未找到编号 ${id} 对应的物资对象。`}
+          subtitle={error || `未找到编号 ${id} 对应的物资对象。`}
           actions={<Link href="/supplies" className="btn btn-secondary btn-sm"><ArrowLeft size={13} />返回物资管理</Link>}
         />
 

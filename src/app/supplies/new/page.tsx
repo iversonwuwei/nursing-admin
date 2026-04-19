@@ -1,31 +1,48 @@
 'use client'
 
 import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
-import { addSupplyIntake, EMPTY_SUPPLY_INTAKE_FORM, getResourceSnapshot, subscribeResourceWorkflow, validateSupplyIntakeForm, type SupplyIntakeFormState } from '@/lib/mock/resource-workflow'
+import { EMPTY_SUPPLY_INTAKE_FORM, validateSupplyIntakeForm, type SupplyIntakeFormState } from '@/lib/mock/resource-workflow'
+import { createAdminSupplyIntake, fetchAdminSupplies, type AdminSupplyRecord } from '@/lib/services/admin-operations-services'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Package, Save, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const inputClass = 'input'
 
 export default function SuppliesNewPage() {
   const router = useRouter()
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
+  const [supplies, setSupplies] = useState<AdminSupplyRecord[]>([])
   const [form, setForm] = useState<SupplyIntakeFormState>(EMPTY_SUPPLY_INTAKE_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const helpHref = '/supplies/help'
 
+  useEffect(() => {
+    let active = true
+
+    fetchAdminSupplies({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setSupplies(response.items)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSupplies([])
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   function updateForm<K extends keyof SupplyIntakeFormState>(key: K, value: SupplyIntakeFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validationError = validateSupplyIntakeForm(form)
     if (validationError) {
@@ -35,8 +52,23 @@ export default function SuppliesNewPage() {
 
     setLoading(true)
     setError('')
-    const record = addSupplyIntake(form)
-    router.push(`/supplies?selected=${record.id}&entry=supplies-new`)
+    try {
+      const record = await createAdminSupplyIntake({
+        existingId: form.existingId || undefined,
+        name: form.name || undefined,
+        category: form.category || undefined,
+        unit: form.unit || undefined,
+        quantity: Number(form.quantity),
+        minStock: form.minStock ? Number(form.minStock) : undefined,
+        price: form.price || undefined,
+        supplier: form.supplier || undefined,
+        contact: form.contact || undefined,
+      })
+      router.push(`/supplies?selected=${record.id}&entry=supplies-new`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '物资入库失败。')
+      setLoading(false)
+    }
   }
 
   return (
@@ -84,7 +116,7 @@ export default function SuppliesNewPage() {
                       <label className="form-label">补货现有物资</label>
                       <select className={inputClass} value={form.existingId} onChange={event => updateForm('existingId', event.target.value)}>
                         <option value="">不选择则视为新增物资</option>
-                        {snapshot.supplies.map(item => <option key={item.id} value={item.id}>{item.name} ({item.id})</option>)}
+                        {supplies.map(item => <option key={item.id} value={item.id}>{item.name} ({item.id})</option>)}
                       </select>
                     </div>
                     <div>
@@ -136,7 +168,7 @@ export default function SuppliesNewPage() {
           <>
             <DataCard title="入库边界" subtitle="主区只保留表单与提交动作，补货模式和上架边界后置到这里。" badge={<Tag variant={form.existingId ? 'info' : 'primary'}>{form.existingId ? 'Restock' : 'New Item'}</Tag>}>
               <div style={{ display: 'grid', gap: 10 }}>
-                <div className="page-help-card-item">当前模式：{form.existingId ? '补货现有物资' : '新增物资品类'}，库存目录共 {snapshot.supplies.length} 种物资。</div>
+                <div className="page-help-card-item">当前模式：{form.existingId ? '补货现有物资' : '新增物资品类'}，库存目录共 {supplies.length} 种物资。</div>
                 <div className="page-help-card-item">提交后统一先进入待上架，确认前不直接计入稳定库存口径。</div>
                 <div className="page-help-card-item">完整补货与采购边界说明统一迁移到帮助页。</div>
               </div>

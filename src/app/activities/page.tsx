@@ -2,12 +2,13 @@
 
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from '@/components/nh'
 import { buildAiAssistantHref } from '@/lib/ai-context'
-import { getActivityStats, getOperationsSnapshot, publishActivityDraft, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { getActivityStats } from '@/lib/mock/operations-workflow'
 import { sortActivitiesByPriority } from '@/lib/operations-priority'
+import { fetchAdminActivities, publishAdminActivity, type AdminActivityRecord } from '@/lib/services/admin-operations-services'
 import { CalendarHeart, ChevronRight, Clock, Plus, Search, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = {
   '待发布': 'warning',
@@ -20,12 +21,42 @@ export default function ActivitiesPage() {
   const searchParams = useSearchParams()
   const preselectedId = searchParams.get('selected')
   const fromNew = searchParams.get('entry') === 'activities-new'
-  const activities = useSyncExternalStore(
-    subscribeOperationsWorkflow,
-    () => getOperationsSnapshot().activities,
-    () => getOperationsSnapshot().activities,
-  )
+  const [activities, setActivities] = useState<AdminActivityRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminActivities({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (!active) {
+          return
+        }
+
+        setActivities(response.items)
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        if (!active) {
+          return
+        }
+
+        setError(reason instanceof Error ? reason.message : '活动列表查询失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   const stats = useMemo(() => getActivityStats(activities), [activities])
   const selectedActivity = useMemo(
     () => activities.find(item => item.id === preselectedId) ?? null,
@@ -52,6 +83,19 @@ export default function ActivitiesPage() {
     target,
   })
 
+  async function handlePublish(activityId: string) {
+    setSubmittingId(activityId)
+    try {
+      const updated = await publishAdminActivity(activityId)
+      setActivities(current => current.map(item => item.id === updated.id ? updated : item))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '活动发布失败。')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -67,6 +111,12 @@ export default function ActivitiesPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="活动实时链路当前不可用，页面不会回退本地草稿。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
             <WorkflowOverviewCard
               eyebrow="Activity Operations"
               title="活动运营总览"
@@ -133,8 +183,8 @@ export default function ActivitiesPage() {
                     当前计划安排在 {selectedActivity.date} {selectedActivity.time}，场地为 {selectedActivity.location}，负责人 {selectedActivity.teacher}。
                   </div>
                   {selectedActivity.lifecycleStatus === '待发布' ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => publishActivityDraft(selectedActivity.id)}>
-                      发布活动
+                    <button className="btn btn-primary btn-sm" onClick={() => handlePublish(selectedActivity.id)} disabled={submittingId === selectedActivity.id}>
+                      {submittingId === selectedActivity.id ? '发布中...' : '发布活动'}
                     </button>
                   ) : (
                     <Link href={`/activities/${selectedActivity.id}`} className="btn btn-secondary btn-sm">查看详情</Link>
@@ -194,7 +244,11 @@ export default function ActivitiesPage() {
               </FilterItem>
             </FilterBar>
 
-            {filtered.length === 0 ? (
+            {loading ? (
+              <DataCard title="活动加载中" subtitle="正在从 Operations Service 获取活动台账。">
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>首屏已切换到真实后端数据，不再读取前端 workflow 草稿。</div>
+              </DataCard>
+            ) : filtered.length === 0 ? (
               <EmptyState variant="search" title="暂无数据" description="尝试其他关键词搜索" />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

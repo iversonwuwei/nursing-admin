@@ -1,32 +1,49 @@
 'use client'
 
 import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import { addEquipmentDraft, EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentCreateFormState } from '@/lib/mock/resource-workflow'
+import { EMPTY_EQUIPMENT_FORM, validateEquipmentForm, type EquipmentCreateFormState } from '@/lib/mock/resource-workflow'
+import { fetchAdminOrganizationList, type AdminOrganizationSummary } from '@/lib/organizations/admin-organization-api'
+import { createAdminEquipment } from '@/lib/services/admin-operations-services'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Monitor, Save, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const inputClass = 'input'
 
 export default function EquipmentNewPage() {
   const router = useRouter()
-  const masterData = useSyncExternalStore(
-    subscribeMasterDataWorkflow,
-    getMasterDataSnapshot,
-    getMasterDataSnapshot,
-  )
+  const [organizations, setOrganizations] = useState<AdminOrganizationSummary[]>([])
   const [form, setForm] = useState<EquipmentCreateFormState>(EMPTY_EQUIPMENT_FORM)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const helpHref = '/equipment/help'
 
+  useEffect(() => {
+    let active = true
+
+    fetchAdminOrganizationList({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setOrganizations(response.items)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setOrganizations([])
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   function updateForm<K extends keyof EquipmentCreateFormState>(key: K, value: EquipmentCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validationError = validateEquipmentForm(form)
     if (validationError) {
@@ -36,8 +53,23 @@ export default function EquipmentNewPage() {
 
     setLoading(true)
     setError('')
-    const draft = addEquipmentDraft(form)
-    router.push(`/equipment?selected=${draft.id}&entry=equipment-new`)
+    try {
+      const draft = await createAdminEquipment({
+        name: form.name,
+        category: form.category,
+        model: form.model,
+        serialNumber: form.serialNumber,
+        location: form.location,
+        purchaseDate: form.purchaseDate,
+        maintenanceCycle: Number(form.maintenanceCycle),
+        organizationId: form.organizationId || null,
+        remarks: form.remarks || null,
+      })
+      router.push(`/equipment?selected=${draft.id}&entry=equipment-new`)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '设备建档失败。')
+      setLoading(false)
+    }
   }
 
   return (
@@ -110,7 +142,7 @@ export default function EquipmentNewPage() {
                       <label className="form-label">所属机构</label>
                       <select className={inputClass} value={form.organizationId} onChange={event => updateForm('organizationId', event.target.value)}>
                         <option value="">请选择</option>
-                        {masterData.organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        {organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                       </select>
                     </div>
                     <div>

@@ -1,54 +1,19 @@
-"use client";
+"use client"
 
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag, WorkflowOverviewCard } from "@/components/nh";
-import { getDeviceAiInsights, getDeviceAiOverview } from "@/lib/mock/admin-ai";
-import { sortMonitorPointsByPriority } from "@/lib/resource-operations-priority";
-import {
-  Activity,
-  AlertTriangle,
-  Battery,
-  Bot,
-  CheckCircle2,
-  ChevronRight,
-  Clock,
-  RefreshCw,
-  Thermometer,
-  TrendingUp,
-  Wifi,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-
-// 模拟实时监控数据
-const MONITOR_POINTS = [
-  { id: "EQ-001", name: "心电监护仪 #1", room: "201-1床", status: "online", runtimeHours: 64, metrics: { hr: 72, bp: "120/80", temp: 36.5, spo2: 98, battery: 85 }, alert: null },
-  { id: "EQ-002", name: "心电监护仪 #2", room: "201-2床", status: "online", runtimeHours: 52, metrics: { hr: 68, bp: "118/76", temp: 36.4, spo2: 97, battery: 62 }, alert: null },
-  { id: "EQ-003", name: "血压监测仪", room: "202-1床", status: "online", runtimeHours: 31, metrics: { hr: null, bp: "135/88", temp: null, spo2: null, battery: 45 }, alert: { level: "warning", msg: "电量低于50%" } },
-  { id: "EQ-004", name: "智能床垫传感器", room: "203-1床", status: "offline", runtimeHours: 0, metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 0 }, alert: { level: "danger", msg: "设备离线" } },
-  { id: "EQ-005", name: "血糖监测仪", room: "204-1床", status: "online", runtimeHours: 80, metrics: { hr: null, bp: null, temp: null, spo2: null, battery: 92 }, alert: null },
-  { id: "EQ-006", name: "呼吸监测仪", room: "205-1床", status: "online", runtimeHours: 43, metrics: { hr: 16, bp: null, temp: 36.6, spo2: 99, battery: 78 }, alert: null },
-] as const
-
-const STATS = {
-  total: MONITOR_POINTS.length,
-  online: MONITOR_POINTS.filter(e => e.status === "online").length,
-  offline: MONITOR_POINTS.filter(e => e.status === "offline").length,
-  alerts: MONITOR_POINTS.filter(e => e.alert).length,
-}
-
-const ALERT_HISTORY = [
-  { time: "15:42", device: "血压监测仪 #3", room: "202-2床", type: "warning", msg: "电量低于50%" },
-  { time: "15:31", device: "智能床垫传感器", room: "203-1床", type: "danger", msg: "设备离线超过10分钟" },
-  { time: "14:58", device: "心电监护仪 #1", room: "201-1床", type: "info", msg: "心率异常波动，已自动记录" },
-  { time: "14:20", device: "体温监测仪", room: "206-1床", type: "warning", msg: "体温持续偏高" },
-]
-
-type MonitorPoint = (typeof MONITOR_POINTS)[number]
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag, WorkflowOverviewCard } from "@/components/nh"
+import { buildEquipmentAlerts, buildEquipmentMonitorPoints, type EquipmentMonitorPoint } from "@/lib/equipment/equipment-live-derivations"
+import { getDeviceAiInsights, getDeviceAiOverview } from "@/lib/mock/admin-ai"
+import { fetchAdminEquipment, type AdminEquipmentRecord } from "@/lib/services/admin-operations-services"
+import { Activity, AlertTriangle, Battery, Bot, CheckCircle2, ChevronRight, Clock, RefreshCw, Thermometer, TrendingUp, Wifi, XCircle, type LucideIcon } from "lucide-react"
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 
 function MetricCard({ icon: Icon, label, value, unit, color }: {
-  icon: LucideIcon; label: string; value: number | string | null; unit: string; color: string
+  icon: LucideIcon
+  label: string
+  value: number | string | null
+  unit: string
+  color: string
 }) {
   if (value === null) return null
   return (
@@ -67,43 +32,130 @@ function AlertBadge({ level }: { level: string }) {
   return null
 }
 
+function getEqCardClass(eq: EquipmentMonitorPoint) {
+  const classes = ["eq-card"]
+  if (eq.status === "offline") classes.push("eq-card-offline")
+  if (eq.alert?.level === "danger") classes.push("eq-card-alert-danger")
+  if (eq.alert?.level === "warning") classes.push("eq-card-alert-warning")
+  return classes.join(" ")
+}
+
+function getIconBoxClass(status: EquipmentMonitorPoint['status']) {
+  return status === "offline" ? "eq-card-icon-box eq-card-offline-icon-box" : "eq-card-icon-box eq-card-online-icon-box"
+}
+
+function getStatusBadgeClass(status: EquipmentMonitorPoint['status']) {
+  return status === "online" ? "status-badge status-badge-online" : status === "warning" ? "status-badge status-badge-warning" : "status-badge status-badge-offline"
+}
+
+function getAlertMsgClass(type: string) {
+  return type === "danger" ? "alert-history-msg danger" : type === "warning" ? "alert-history-msg warning" : "alert-history-msg info"
+}
+
+function getAlertIconClass(_type: string) {
+  return "alert-history-icon"
+}
+
 export default function MonitorPage() {
+  const [equipment, setEquipment] = useState<AdminEquipmentRecord[]>([])
+  const [monitorPoints, setMonitorPoints] = useState<EquipmentMonitorPoint[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const aiInsights = getDeviceAiInsights(MONITOR_POINTS, ALERT_HISTORY)
-  const aiOverview = getDeviceAiOverview(MONITOR_POINTS, ALERT_HISTORY)
-  const averageBattery = Math.round(MONITOR_POINTS.reduce((sum, item) => sum + item.metrics.battery, 0) / MONITOR_POINTS.length)
-  const sortedMonitorPoints = sortMonitorPointsByPriority(MONITOR_POINTS as readonly MonitorPoint[])
-  const attentionDevices = sortedMonitorPoints.slice(0, 4)
-  const displayMonitorPoints = sortedMonitorPoints
   const helpHref = '/equipment/help'
 
-  const handleRefresh = () => {
-    setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 1200)
+  const load = (showRefreshing: boolean) => {
+    if (showRefreshing) {
+      setRefreshing(true)
+    }
+    fetchAdminEquipment({ page: 1, pageSize: 200 })
+      .then(response => {
+        setEquipment(response.items)
+        setMonitorPoints(buildEquipmentMonitorPoints(response.items))
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : '设备监控查询失败。')
+      })
+      .finally(() => {
+        setLoading(false)
+        if (showRefreshing) {
+          setRefreshing(false)
+        }
+      })
   }
 
-  const getEqCardClass = (eq: MonitorPoint) => {
-    const classes = ["eq-card"]
-    if (eq.status === "offline") classes.push("eq-card-offline")
-    if (eq.alert?.level === "danger") classes.push("eq-card-alert-danger")
-    if (eq.alert?.level === "warning") classes.push("eq-card-alert-warning")
-    return classes.join(" ")
+  useEffect(() => {
+    let active = true
+
+    fetchAdminEquipment({ page: 1, pageSize: 200 })
+      .then(response => {
+        if (active) {
+          setEquipment(response.items)
+          setMonitorPoints(buildEquipmentMonitorPoints(response.items))
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '设备监控查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const alerts = useMemo(
+    () => buildEquipmentAlerts(equipment),
+    [equipment],
+  )
+  const alertHistory = useMemo(
+    () => alerts.slice(0, 4).map((item, index) => ({
+      time: `${16 - index}:00`,
+      device: monitorPoints.find(point => point.id === item.equipmentId)?.name ?? item.equipmentId,
+      room: monitorPoints.find(point => point.id === item.equipmentId)?.room ?? '--',
+      type: item.type.includes('预警') ? 'warning' : item.type.includes('维保') ? 'warning' : 'danger',
+      msg: item.msg,
+    })),
+    [alerts, monitorPoints],
+  )
+  const stats = {
+    total: monitorPoints.length,
+    online: monitorPoints.filter(item => item.status === 'online').length,
+    offline: monitorPoints.filter(item => item.status === 'offline').length,
+    alerts: monitorPoints.filter(item => item.alert).length,
   }
+  const aiInsights = getDeviceAiInsights(monitorPoints, alertHistory)
+  const aiOverview = getDeviceAiOverview(monitorPoints, alertHistory)
+  const averageBattery = monitorPoints.length > 0 ? Math.round(monitorPoints.reduce((sum, item) => sum + item.metrics.battery, 0) / monitorPoints.length) : 0
+  const sortedMonitorPoints = useMemo(
+    () => [...monitorPoints].sort((left, right) => {
+      const getPriority = (point: EquipmentMonitorPoint) => {
+        if (point.alert?.level === 'danger' || point.status === 'offline') return 0
+        if (point.alert?.level === 'warning' || point.status === 'warning') return 1
+        if (point.metrics.battery < 50) return 2
+        return 3
+      }
 
-  const getIconBoxClass = (status: string) =>
-    status === "offline" ? "eq-card-icon-box eq-card-offline-icon-box" : "eq-card-icon-box eq-card-online-icon-box"
+      const scoreDiff = getPriority(left) - getPriority(right)
+      if (scoreDiff !== 0) return scoreDiff
 
-  const getStatusBadgeClass = (status: string) =>
-    status === "online" ? "status-badge status-badge-online" : "status-badge status-badge-offline"
+      if (left.metrics.battery !== right.metrics.battery) {
+        return left.metrics.battery - right.metrics.battery
+      }
 
-  const getAlertMsgClass = (type: string) =>
-    type === "danger" ? "alert-history-msg danger" : type === "warning" ? "alert-history-msg warning" : "alert-history-msg info"
-
-  const getAlertIconClass = (type: string) => {
-    if (type === "danger") return "alert-history-icon"
-    if (type === "warning") return "alert-history-icon"
-    return "alert-history-icon"
-  }
+      return left.name.localeCompare(right.name)
+    }),
+    [monitorPoints],
+  )
+  const attentionDevices = sortedMonitorPoints.slice(0, 4)
 
   return (
     <div className="page-root animate-fade-up">
@@ -113,16 +165,12 @@ export default function MonitorPage() {
         <div>
           <h1 className="text-2xl font-extrabold" style={{ letterSpacing: "-0.03em" }}>设备监控</h1>
           <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>
-            共 {STATS.total} 台设备 · {STATS.online} 在线 · {STATS.offline} 离线 · {STATS.alerts} 告警
+            共 {stats.total} 台设备 · {stats.online} 在线 · {stats.offline} 离线 · {stats.alerts} 告警
           </p>
         </div>
         <div className="flex-center" style={{ gap: 8 }}>
           <Link href="/devices" className="btn btn-secondary btn-sm">设备列表</Link>
-          <button
-            className="btn btn-secondary btn-sm flex-center"
-            onClick={handleRefresh}
-            style={{ gap: 6 }}
-          >
+          <button className="btn btn-secondary btn-sm flex-center" onClick={() => load(true)} style={{ gap: 6 }}>
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             {refreshing ? "刷新中" : "刷新数据"}
           </button>
@@ -135,15 +183,15 @@ export default function MonitorPage() {
         description="优先处理离线、告警和低电量设备，减少护理监测盲区，再回到全量设备看板。"
         badge={<Tag variant="info">Live Monitor</Tag>}
         metrics={[
-          { label: "在线设备", value: STATS.online, hint: `总设备 ${STATS.total} 台`, tone: "success" },
-          { label: "离线设备", value: STATS.offline, hint: "需优先排查网络或电源", tone: STATS.offline > 0 ? "danger" : "neutral" },
-          { label: "当前告警", value: STATS.alerts, hint: `近 ${ALERT_HISTORY.length} 条告警记录`, tone: STATS.alerts > 0 ? "warning" : "neutral" },
+          { label: "在线设备", value: stats.online, hint: `总设备 ${stats.total} 台`, tone: "success" },
+          { label: "离线设备", value: stats.offline, hint: "需优先排查网络或电源", tone: stats.offline > 0 ? "danger" : "neutral" },
+          { label: "当前告警", value: stats.alerts, hint: `近 ${alertHistory.length} 条告警记录`, tone: stats.alerts > 0 ? "warning" : "neutral" },
           { label: "平均电量", value: `${averageBattery}%`, hint: "用于判断巡检与充电压力", tone: averageBattery < 60 ? "warning" : "info" },
         ]}
         signals={[
           { label: aiInsights[0] ? `${aiInsights[0].deviceName}：${aiInsights[0].action}` : "暂无 AI 巡检提醒", tone: aiInsights[0]?.severity === "高风险" ? "danger" : "warning" },
-          { label: STATS.offline > 0 ? `当前有 ${STATS.offline} 台设备离线，需要到场排查` : "当前没有离线设备阻塞监测", tone: STATS.offline > 0 ? "danger" : "success" },
-          { label: ALERT_HISTORY[0] ? `最近告警 ${ALERT_HISTORY[0].time} · ${ALERT_HISTORY[0].msg}` : "暂无告警历史", tone: ALERT_HISTORY[0]?.type === "danger" ? "danger" : "info" },
+          { label: stats.offline > 0 ? `当前有 ${stats.offline} 台设备离线，需要到场排查` : "当前没有离线设备阻塞监测", tone: stats.offline > 0 ? "danger" : "success" },
+          { label: alertHistory[0] ? `最近告警 ${alertHistory[0].time} · ${alertHistory[0].msg}` : "暂无告警历史", tone: alertHistory[0]?.type === "danger" ? "danger" : "info" },
         ]}
         actions={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -156,10 +204,10 @@ export default function MonitorPage() {
       {/* Stat cards */}
       <div className="monitor-grid-4" style={{ marginBottom: 16 }}>
         {[
-          { label: "监控设备", value: STATS.total, icon: <Activity size={20} />, colorClass: "primary" },
-          { label: "在线", value: STATS.online, icon: <CheckCircle2 size={20} />, colorClass: "success" },
-          { label: "离线", value: STATS.offline, icon: <XCircle size={20} />, colorClass: "danger" },
-          { label: "告警", value: STATS.alerts, icon: <AlertTriangle size={20} />, colorClass: "warning" },
+          { label: "监控设备", value: stats.total, icon: <Activity size={20} />, colorClass: "primary" },
+          { label: "在线", value: stats.online, icon: <CheckCircle2 size={20} />, colorClass: "success" },
+          { label: "离线", value: stats.offline, icon: <XCircle size={20} />, colorClass: "danger" },
+          { label: "告警", value: stats.alerts, icon: <AlertTriangle size={20} />, colorClass: "warning" },
         ].map(({ label, value, icon, colorClass }) => (
           <div key={label} className="data-card" style={{ padding: "16px 20px" }}>
             <div className="flex-between">
@@ -187,6 +235,12 @@ export default function MonitorPage() {
       <InteractionRailLayout
         main={(
           <>
+            {error ? (
+              <DataCard title="Live Unavailable" subtitle="设备监控实时链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+              </DataCard>
+            ) : null}
+
             <DataCard
               icon={<AlertTriangle size={18} />}
               title="巡检优先队列"
@@ -221,6 +275,16 @@ export default function MonitorPage() {
               </div>
             </DataCard>
 
+            {loading && monitorPoints.length === 0 ? (
+              <DataCard title="设备监控加载中" subtitle="正在从 Operations Service 派生实时监控视图。">
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>/devices/realtime 已复用 live equipment list，不再展示静态监控样例。</div>
+              </DataCard>
+            ) : null}
+
+            {!loading && monitorPoints.length === 0 ? (
+              <EmptyState variant="search" title="暂无设备数据" description="当前没有可用于实时监控的设备对象。" />
+            ) : null}
+
             <div className="page-grid-2">
               <DataCard
                 icon={<Activity size={18} />}
@@ -234,7 +298,7 @@ export default function MonitorPage() {
                 }
               >
                 <div style={{ padding: 12 }} className="monitor-eq-grid">
-                  {displayMonitorPoints.map((eq) => (
+                  {sortedMonitorPoints.map((eq) => (
                     <div key={eq.id} className={getEqCardClass(eq)}>
                       <div className="eq-card-header">
                         <div className="flex-center" style={{ gap: 10 }}>
@@ -276,9 +340,9 @@ export default function MonitorPage() {
                 </div>
               </DataCard>
 
-              <DataCard icon={<AlertTriangle size={18} />} title="告警记录" subtitle={`最近${ALERT_HISTORY.length}条`}>
+              <DataCard icon={<AlertTriangle size={18} />} title="告警记录" subtitle={`最近${alertHistory.length}条`}>
                 <div style={{ padding: "8px 12px" }}>
-                  {ALERT_HISTORY.map((alert, i) => (
+                  {alertHistory.map((alert, i) => (
                     <div key={i} className="alert-history-item">
                       <div className={getAlertIconClass(alert.type)}>
                         {alert.type === "danger"

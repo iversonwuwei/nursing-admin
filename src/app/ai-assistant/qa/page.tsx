@@ -3,19 +3,14 @@
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { getAiSceneLabel, getAiSourceLabel, readAiTrackingContext } from '@/lib/ai-context'
-import { isAdminAiDemoMode, sendAdminAiChat } from '@/lib/ai/admin-ai-api'
-import { getAdminAiPromptReply } from '@/lib/mock/admin-ai'
-import {
-    getAdmissionApplicationsSnapshot,
-    getStaffTaskItems,
-    subscribeAdmissionWorkflow,
-} from '@/lib/mock/admission-workflow'
+import { sendAdminAiChat } from '@/lib/ai/admin-ai-api'
+import { fetchAdminDashboardOverview, type AdminDashboardOverviewResponse } from '@/lib/dashboard/admin-dashboard-api'
 import { readSessionPlatformState } from '@/lib/platform/session'
 import { Bot, BrainCircuit, MessageSquareText, Send, Sparkles } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const PRESET_PROMPTS = [
   '总结当前入住评估闭环进度',
@@ -33,19 +28,35 @@ export default function AiAssistantQaPage() {
   const { data: session } = useSession()
   const trackingContext = readAiTrackingContext(searchParams)
   const platformState = useMemo(() => readSessionPlatformState(session), [session])
-  const demoMode = isAdminAiDemoMode()
-  const applications = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
-  )
-  const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
-  const pendingTasks = getStaffTaskItems(applications).filter(item => item.status !== '已完成').length
+  const [dashboardOverview, setDashboardOverview] = useState<AdminDashboardOverviewResponse | null>(null)
   const [prompt, setPrompt] = useState(PRESET_PROMPTS[0])
-  const [reply, setReply] = useState(() => demoMode ? getAdminAiPromptReply(PRESET_PROMPTS[0]) : LIVE_REPLY_PLACEHOLDER)
+  const [reply, setReply] = useState(LIVE_REPLY_PLACEHOLDER)
   const [conversationId, setConversationId] = useState('')
   const [replyBusy, setReplyBusy] = useState(false)
   const [replyError, setReplyError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    void fetchAdminDashboardOverview()
+      .then(result => {
+        if (!cancelled) {
+          setDashboardOverview(result)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDashboardOverview(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const pendingTasks = dashboardOverview?.kpis.workflowPendingCount ?? 0
+  const pendingAlerts = dashboardOverview?.kpis.pendingAlerts ?? 0
 
   async function handlePromptSubmit(nextPrompt: string) {
     setPrompt(nextPrompt)
@@ -54,11 +65,6 @@ export default function AiAssistantQaPage() {
     if (!platformState.runtimeFlags.aiAssistantEnabled) {
       setReply(LIVE_REPLY_UNAVAILABLE)
       setReplyError('当前租户未启用 AI 模块。')
-      return
-    }
-
-    if (demoMode) {
-      setReply(getAdminAiPromptReply(nextPrompt))
       return
     }
 
@@ -127,33 +133,33 @@ export default function AiAssistantQaPage() {
               description={trackingContext
                 ? `当前上下文来自${getAiSourceLabel(trackingContext.source)}，问题将围绕“${trackingContext.focus ?? '未指定'}”生成解释或摘要。`
                 : '本页只负责输入问题并查看回答。需要看 AI 总览、规则治理或日志审计时，请进入对应独立页面。'}
-              badge={<Tag variant={demoMode ? 'info' : 'success'}>{demoMode ? 'Demo Safe Mode' : 'Live Q&A'}</Tag>}
+              badge={<Tag variant="success">Live Q&A</Tag>}
               metrics={[
                 { label: '预设问题', value: PRESET_PROMPTS.length, hint: '快速进入常见问答主题', tone: 'info' },
-                { label: '待确认建议', value: pendingConfirmations, hint: '可进一步追问人工复核原因', tone: pendingConfirmations > 0 ? 'warning' : 'success' },
-                { label: '待办任务', value: pendingTasks, hint: '可追问任务优先级与解释', tone: pendingTasks > 0 ? 'primary' : 'neutral' },
+                { label: '流程待办', value: pendingTasks, hint: '来自 Dashboard 聚合快照', tone: pendingTasks > 0 ? 'warning' : 'success' },
+                { label: '实时告警', value: pendingAlerts, hint: '可继续追问风险与解释', tone: pendingAlerts > 0 ? 'primary' : 'neutral' },
                 { label: '会话状态', value: conversationId ? '进行中' : '新会话', hint: conversationId || '尚未生成第一轮回答', tone: conversationId ? 'success' : 'neutral' },
               ]}
               signals={[
                 { label: trackingContext ? `来源：${getAiSourceLabel(trackingContext.source)}` : '当前未绑定业务来源', tone: trackingContext ? 'info' : 'neutral' },
                 { label: trackingContext?.scene ? `场景：${getAiSceneLabel(trackingContext.scene)}` : '当前未绑定场景', tone: trackingContext?.scene ? 'primary' : 'neutral' },
                 { label: trackingContext?.focus ? `关注点：${trackingContext.focus}` : '当前为通用问答模式', tone: trackingContext?.focus ? 'primary' : 'neutral' },
-                { label: demoMode ? '当前模式：Demo 回答，仅用于离线演示' : '当前模式：BFF 实时问答，不自动执行业务动作', tone: demoMode ? 'info' : 'success' },
+                { label: '当前模式：BFF 实时问答，不自动执行业务动作', tone: 'success' },
               ]}
             />
 
             <div className="kpi-grid" style={{ marginBottom: 16 }}>
               <StatCard icon={<MessageSquareText size={18} />} label="即时问答" value="已拆页" sub="根页仅保留总览与分流" color="primary" />
               <StatCard icon={<Sparkles size={18} />} label="预设问题" value={PRESET_PROMPTS.length} sub="覆盖评估、健康、晨会、任务" color="info" />
-              <StatCard icon={<Bot size={18} />} label="回答模式" value={demoMode ? 'Demo' : 'Live'} sub={demoMode ? '前端 mock 回答' : '后端问答链路'} color={demoMode ? 'warning' : 'success'} />
+              <StatCard icon={<Bot size={18} />} label="回答模式" value="Live" sub="后端问答链路" color="success" />
               <StatCard icon={<BrainCircuit size={18} />} label="人工边界" value="保留" sub="结果只做建议与解释" color="warning" />
             </div>
 
             <DataCard
               icon={<MessageSquareText size={16} />}
               title="问答面板"
-              subtitle={demoMode ? '当前只演示结果型问答，不直接下发业务动作。' : '当前直接调用真实 AI 问答接口，不自动下发业务动作。'}
-              badge={<Tag variant={demoMode ? 'info' : 'success'}>{demoMode ? 'Demo Safe Mode' : 'Live Q&A'}</Tag>}
+              subtitle="当前直接调用真实 AI 问答接口，不自动下发业务动作。"
+              badge={<Tag variant="success">Live Q&A</Tag>}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -229,7 +235,7 @@ export default function AiAssistantQaPage() {
             >
               <div style={{ display: 'grid', gap: 10 }}>
                 {[
-                  `运行模式：${demoMode ? 'Demo 问答' : 'BFF 实时问答'}`,
+                  '运行模式：BFF 实时问答',
                   `会话编号：${conversationId || '尚未建立'}`,
                   `认证来源：${platformState.authSource === 'platform' ? '平台认证' : 'Demo 认证'}`,
                   replyError || '当前无问答链路错误',

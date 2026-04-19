@@ -1,11 +1,11 @@
 "use client"
 
-import { DataCard, InteractionRailLayout, PageHelpCard, StatCard, Tag, type TagVariant } from '@/components/nh'
-import { findLiveActivityById, getOperationsSnapshot, publishActivityDraft, subscribeOperationsWorkflow } from '@/lib/mock/operations-workflow'
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, StatCard, Tag, type TagVariant } from '@/components/nh'
+import { fetchAdminActivityDetail, publishAdminActivity, type AdminActivityRecord } from '@/lib/services/admin-operations-services'
 import { ArrowLeft, Edit } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = {
   '待发布': 'warning',
@@ -17,16 +17,93 @@ const STATUS_TAG: Record<string, TagVariant> = {
 export default function ActivityDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const activities = useSyncExternalStore(
-    subscribeOperationsWorkflow,
-    () => getOperationsSnapshot().activities,
-    () => getOperationsSnapshot().activities,
-  )
-  const data = useMemo(
-    () => findLiveActivityById(id, getOperationsSnapshot()) ?? activities[0],
-    [activities, id],
-  )
+  const [data, setData] = useState<AdminActivityRecord | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const helpHref = '/activities/help'
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminActivityDetail(id)
+      .then(response => {
+        if (!active) {
+          return
+        }
+
+        setData(response)
+        setError('')
+      })
+      .catch((reason: unknown) => {
+        if (!active) {
+          return
+        }
+
+        setError(reason instanceof Error ? reason.message : '活动详情查询失败。')
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  const notFound = !loading && !data && error.includes('不存在')
+
+  async function handlePublish() {
+    if (!data) {
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const updated = await publishAdminActivity(data.id)
+      setData(updated)
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '活动发布失败。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="活动详情加载中" subtitle="正在从 Operations Service 拉取对象事实。">
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>详情页已切换到真实后端读取，不再回退首条本地活动。</div>
+        </DataCard>
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="page-root animate-fade-up">
+        <EmptyState
+          variant="search"
+          title="活动不存在"
+          description={`未找到编号 ${id} 对应的活动对象。`}
+          action={<Link href="/activities" className="btn btn-primary btn-sm">返回活动管理</Link>}
+        />
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="Live Unavailable" subtitle="活动详情实时链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error || '活动详情查询失败。'}</div>
+        </DataCard>
+      </div>
+    )
+  }
 
   return (
     <div className="page-root animate-fade-up">
@@ -41,8 +118,8 @@ export default function ActivityDetailPage() {
           </div>
         </div>
         {data.lifecycleStatus === '待发布' ? (
-          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => publishActivityDraft(data.id)}>
-            <Edit size={13} />发布活动
+          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handlePublish} disabled={submitting}>
+            <Edit size={13} />{submitting ? '发布中...' : '发布活动'}
           </button>
         ) : (
             <button className="btn btn-primary btn-sm flex items-center gap-2">

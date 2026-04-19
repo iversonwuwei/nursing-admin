@@ -10,7 +10,7 @@ import type { FamilyAppAiSummary, StaffAppAiFocus, VisitAiSuggestion } from '@/l
 
 export type AdminAiMode = 'demo' | 'bff'
 
-const ADMIN_AI_MODE: AdminAiMode = process.env.NEXT_PUBLIC_ADMIN_AI_MODE === 'bff' ? 'bff' : 'demo'
+const ADMIN_AI_MODE: AdminAiMode = 'bff'
 
 interface AiResultEnvelope<T> {
   available: boolean
@@ -42,6 +42,14 @@ interface AiAlertSuggestionResponse {
   rationale: string
   priority: string
   steps: string[]
+}
+
+interface AiOpsReportResponse {
+  reportTitle: string
+  summary: string
+  highlights: string[]
+  concerns: string[]
+  recommendations: string[]
 }
 
 interface AiTaskPriorityResponse {
@@ -110,6 +118,14 @@ export interface AdminAiHealthRiskRequest {
   oxygen: number
   currentMedications?: string
   medicalHistory?: string
+}
+
+export interface AdminAiAlertSuggestionRequest {
+  alertType: string
+  alertDescription: string
+  severity: string
+  elderContext?: string
+  recentHistory?: string
 }
 
 export interface AdminAiTaskPriorityItem {
@@ -190,6 +206,20 @@ export interface AdminAiChatRequest {
   message: string
   conversationId?: string
   userRole?: string
+}
+
+export interface AdminAiOpsReportRequest {
+  reportType: string
+  period: string
+  metricsJson?: string
+}
+
+export interface AdminAiOpsReportResult {
+  title: string
+  summary: string
+  highlights: string[]
+  concerns: string[]
+  recommendations: string[]
 }
 
 interface AiRuleResponse {
@@ -468,6 +498,25 @@ export async function fetchAdminAiDashboardInsights(payload: AiDashboardInsights
   return mapDashboardEnvelopeToInsights(envelope)
 }
 
+export async function fetchAdminAiOpsReport(payload: AdminAiOpsReportRequest): Promise<AdminAiOpsReportResult> {
+  const envelope = await requestAdminAi<AiResultEnvelope<AiOpsReportResponse>>('/ops-report', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  if (!envelope.available || !envelope.result) {
+    throw new Error('AI 运营报告当前不可用。')
+  }
+
+  return {
+    title: envelope.result.reportTitle,
+    summary: envelope.result.summary,
+    highlights: envelope.result.highlights,
+    concerns: envelope.result.concerns,
+    recommendations: envelope.result.recommendations,
+  }
+}
+
 export async function fetchAdminAiHealthRisk(payload: AdminAiHealthRiskRequest): Promise<AiHealthInsight> {
   const envelope = await requestAdminAi<AiResultEnvelope<AiHealthRiskResponse>>('/health-risk', {
     method: 'POST',
@@ -498,6 +547,19 @@ export async function fetchAdminAiHealthRisk(payload: AdminAiHealthRiskRequest):
     action: envelope.result.recommendations[0] ?? envelope.result.monitoringPoints[0] ?? '继续观察。',
     confidence: envelope.cached ? 90 : 86,
   }
+}
+
+export async function fetchAdminAiAlertSuggestion(payload: AdminAiAlertSuggestionRequest) {
+  const envelope = await requestAdminAi<AiResultEnvelope<AiAlertSuggestionResponse>>('/alert-suggestion', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+  if (!envelope.available || !envelope.result) {
+    throw new Error('报警建议 AI 当前不可用。')
+  }
+
+  return envelope.result
 }
 
 export async function fetchAdminTaskPriorityFocus(tasks: AdminAiTaskPriorityItem[]): Promise<StaffAppAiFocus[]> {

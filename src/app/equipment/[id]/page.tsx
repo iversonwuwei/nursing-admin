@@ -1,67 +1,132 @@
 "use client"
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from "@/components/nh"
+import { DataCard, EmptyState, InteractionRailLayout, PageHelpCard, Tag, type TagVariant } from "@/components/nh"
 import { buildAiAssistantHref } from "@/lib/ai-context"
 import { getEquipmentDetailAiInsight, getEquipmentMaintenanceNarratives } from "@/lib/mock/admin-ai"
-import { findLiveEquipmentById, getResourceSnapshot, subscribeResourceWorkflow } from '@/lib/mock/resource-workflow'
+import { activateAdminEquipment, fetchAdminEquipmentDetail, type AdminEquipmentRecord } from '@/lib/services/admin-operations-services'
 import { ArrowLeft, Bot, Edit, Monitor } from "lucide-react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const STATUS_TAG: Record<string, TagVariant> = { '正常': 'success', '待维修': 'warning', '维修中': 'warning', '已报废': 'danger' }
 
 export default function EquipmentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const snapshot = useSyncExternalStore(
-    subscribeResourceWorkflow,
-    getResourceSnapshot,
-    getResourceSnapshot,
-  )
-  const data = useMemo(
-    () => findLiveEquipmentById(id, snapshot) ?? snapshot.equipment[0],
-    [id, snapshot],
-  )
-  const maintenance = useMemo(
-    () => ({
-      last: data.activatedAt?.slice(0, 10) ?? data.purchaseDate,
-      next: data.maintenanceDate,
-      cycle: `${data.maintenanceCycle}个月`,
-    }),
-    [data.activatedAt, data.maintenanceCycle, data.maintenanceDate, data.purchaseDate],
-  )
+  const [data, setData] = useState<AdminEquipmentRecord | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    fetchAdminEquipmentDetail(id)
+      .then(response => {
+        if (active) {
+          setData(response)
+          setError('')
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(reason instanceof Error ? reason.message : '设备详情查询失败。')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="设备详情加载中" subtitle="正在从 Operations Service 拉取设备对象。">
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>详情页已切换到真实后端读取，不再回退默认设备样例。</div>
+        </DataCard>
+      </div>
+    )
+  }
+
+  if (!data && error.includes('不存在')) {
+    return (
+      <div className="page-root animate-fade-up">
+        <EmptyState
+          variant="search"
+          title="设备不存在"
+          description={`未找到编号 ${id} 对应的设备对象。`}
+          action={<Link href="/equipment" className="btn btn-primary btn-sm">返回设备列表</Link>}
+        />
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="page-root animate-fade-up">
+        <DataCard title="Live Unavailable" subtitle="设备详情实时链路当前不可用。" badge={<Tag variant="danger">Operations API</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error || '设备详情查询失败。'}</div>
+        </DataCard>
+      </div>
+    )
+  }
+
+  const equipment = data
+  const maintenance = {
+    last: equipment.activatedAt?.slice(0, 10) ?? equipment.purchaseDate,
+    next: equipment.maintenanceDate,
+    cycle: `${equipment.maintenanceCycle}个月`,
+  }
   const aiInsight = getEquipmentDetailAiInsight({
-    id: data.id,
-    name: data.name,
-    room: data.room,
-    type: data.type,
-    status: data.status,
-    signal: data.signal,
-    battery: data.battery,
-    uptime: data.uptime,
+    id: equipment.id,
+    name: equipment.name,
+    room: equipment.room,
+    type: equipment.type,
+    status: equipment.status,
+    signal: equipment.signal,
+    battery: equipment.battery,
+    uptime: equipment.uptime,
     maintenance,
-    history: data.history.map(item => ({ ...item })),
+    history: equipment.history.map(item => ({ ...item })),
   })
   const maintenanceNarratives = getEquipmentMaintenanceNarratives({
-    id: data.id,
-    name: data.name,
-    room: data.room,
-    type: data.type,
-    status: data.status,
-    signal: data.signal,
-    battery: data.battery,
-    uptime: data.uptime,
+    id: equipment.id,
+    name: equipment.name,
+    room: equipment.room,
+    type: equipment.type,
+    status: equipment.status,
+    signal: equipment.signal,
+    battery: equipment.battery,
+    uptime: equipment.uptime,
     maintenance,
-    history: data.history.map(item => ({ ...item })),
+    history: equipment.history.map(item => ({ ...item })),
   })
   const buildAiHref = (focus: string, target: 'inference' | 'rules' | 'logs' = "inference") => buildAiAssistantHref({
     source: 'equipment-detail',
-    entityId: data.id,
-    entityName: data.name,
+    entityId: equipment.id,
+    entityName: equipment.name,
     focus,
     target,
   })
   const helpHref = '/equipment/help'
+
+  async function handleActivate() {
+    setSubmitting(true)
+    try {
+      setData(await activateAdminEquipment(equipment.id))
+      setError('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '设备验收失败。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="page-root animate-fade-up">
@@ -81,10 +146,22 @@ export default function EquipmentDetailPage() {
             </p>
           </div>
         </div>
-        <button className="btn btn-primary btn-sm flex items-center gap-2">
-          <Edit size={14} />编辑
-        </button>
+        {data.lifecycleStatus === '待验收' ? (
+          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handleActivate} disabled={submitting}>
+            <Edit size={14} />{submitting ? '验收中...' : '完成验收'}
+          </button>
+        ) : (
+            <button className="btn btn-primary btn-sm flex items-center gap-2">
+              <Edit size={14} />编辑
+            </button>
+        )}
       </div>
+
+      {error ? (
+        <DataCard title="Live Unavailable" subtitle="设备动作已切换到真实后端，失败时不会回退本地状态。" badge={<Tag variant="danger">Operations API</Tag>}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{error}</div>
+        </DataCard>
+      ) : null}
 
       <InteractionRailLayout
         main={(

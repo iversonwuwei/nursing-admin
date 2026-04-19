@@ -1,129 +1,210 @@
 'use client'
 
-import { DataCard, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
+import { DataCard, FilterBar, FilterItem, InteractionRailLayout, PageHeader, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { ModuleEntitlementGate } from '@/components/platform/ModuleEntitlementGate'
-import { getCareScene, matchesAdmissionScene } from '@/lib/care-scenes'
-import { getAssessmentConfigForCase, getAssessmentConfigSnapshot, subscribeAssessmentConfigWorkflow } from '@/lib/mock/assessment-config-workflow'
+import { getCareScene, withSceneQuery } from '@/lib/care-scenes'
 import {
-  activateAssessmentBenefits,
-  CARE_LEVELS,
-  COGNITIVE_LEVELS,
-  confirmAssessmentDecision,
-  EMPTY_ASSESSMENT_FORM,
-  getAssessmentCasesSnapshot,
-  getAssessmentSourceLabel,
-  getAssessmentStatusLabel,
-  getAssessmentStatusVariant,
-  getLevelVariant,
-  getReminderItems,
-  getReminderStatusVariant,
-  getStaffTaskItems,
-  getTaskStatusVariant,
-  submitAssessmentCase,
-  subscribeAssessmentWorkflow,
-  validateAssessmentForm,
-  type AssessmentCase,
-  type AssessmentFormState,
-  type CareLevel,
-} from '@/lib/mock/assessment-workflow'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import {
-  Bot,
-  Building2,
-  CheckCircle2,
-  ClipboardCheck,
-  Eye,
-  Home as HomeIcon,
-  Plus,
-  Search,
-  Shield,
-  UserPlus,
-} from 'lucide-react'
+    activateAdminAssessmentCase,
+    confirmAdminAssessmentDecision,
+    createAdminAssessmentCase,
+    fetchAdminAssessmentCases,
+    type AdminAssessmentCaseResponse,
+    type AdminCreateAssessmentCaseRequest,
+} from '@/lib/elderly/admin-elderly-api'
+import { Bot, Building2, CheckCircle2, ClipboardCheck, Home as HomeIcon, Plus, Search, Shield, UserPlus } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-type LoopStage = '待生成' | '待启动' | '执行中' | '已闭环'
-type AssessmentCoordinationType = '首次认定' | '复评跟踪' | '抽检回访'
-type AssessmentCoordinationStatus = '待机构接单' | '待复评回传' | '待抽检回传'
+const CARE_LEVELS = ['特级护理', '一级护理', '二级护理', '三级护理'] as const
+const COGNITIVE_LEVELS = ['正常', '轻度受损', '中度受损', '重度受损'] as const
 
-function getLoopStageVariant(stage: LoopStage) {
-  if (stage === '已闭环') return 'success'
-  if (stage === '执行中') return 'primary'
-  if (stage === '待启动') return 'warning'
-  return 'neutral'
+type CareLevel = typeof CARE_LEVELS[number]
+type AssessmentStatus = '待人工确认' | '计划已生成' | '已入住'
+
+type AssessmentFormState = {
+    elderName: string
+    age: string
+    gender: string
+    phone: string
+    emergencyContact: string
+    roomNumber: string
+    requestedCareLevel: CareLevel
+    chronicConditions: string
+    medicationSummary: string
+    allergySummary: string
+    adlScore: string
+    cognitiveLevel: string
+    riskNotes: string
+    entrustmentType: string
+    entrustmentOrganization: string
+    monthlySubsidy: string
+    serviceItems: string
+    serviceNotes: string
 }
 
-function parseDateValue(value?: string) {
+const EMPTY_FORM: AssessmentFormState = {
+    elderName: '',
+    age: '',
+    gender: '女',
+    phone: '',
+    emergencyContact: '',
+    roomNumber: '',
+    requestedCareLevel: '二级护理',
+    chronicConditions: '',
+    medicationSummary: '',
+    allergySummary: '',
+    adlScore: '',
+    cognitiveLevel: '轻度受损',
+    riskNotes: '',
+    entrustmentType: '',
+    entrustmentOrganization: '',
+    monthlySubsidy: '',
+    serviceItems: '',
+    serviceNotes: '',
+}
+
+const PENDING_INTEGRATION_ITEMS = [
+    {
+        title: '规则集匹配',
+        summary: '当前 live 版本不再读取 assessment-config-workflow，本区块等待真实规则服务接入。',
+    },
+    {
+        title: '认定模板与护理项',
+        summary: '模板命中与护理项编排未接入真实接口，页面只显示 Pending Integration。',
+    },
+    {
+        title: '协同机构与执行回执',
+        summary: '机构接单、任务派发和提醒回执不再从本地 store 伪造，等待后续聚合服务。',
+    },
+] as const
+
+function formatDateTime(value?: string | null) {
   if (!value) {
-    return null
+      return '暂无'
   }
 
-  const direct = new Date(value)
-  if (!Number.isNaN(direct.getTime())) {
-    return direct
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+        return '暂无'
   }
 
-  const shortPattern = /^(\d{2})\/(\d{2})\s(\d{2}):(\d{2})$/
-  const matched = value.match(shortPattern)
-  if (!matched) {
-    return null
-  }
-
-  const [, month, day, hour, minute] = matched
-  const now = new Date()
-  return new Date(now.getFullYear(), Number(month) - 1, Number(day), Number(hour), Number(minute))
+    return new Intl.DateTimeFormat('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(date)
 }
 
-function formatElapsedLabel(isoOrDate?: string | null) {
-  const target = parseDateValue(isoOrDate ?? undefined)
-  if (!target) {
+function formatElapsed(value?: string | null) {
+    if (!value) {
+        return '暂无'
+    }
+
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
     return '暂无'
   }
 
-  const diffMs = Math.max(0, Date.now() - target.getTime())
+    const diffMs = Math.max(0, Date.now() - date.getTime())
   const hours = Math.floor(diffMs / (1000 * 60 * 60))
-  const days = Math.floor(hours / 24)
-  const remainHours = hours % 24
+    const days = Math.floor(hours / 24)
 
   if (days > 0) {
-    return `${days}天${remainHours}小时`
+      return `${days}天${hours % 24}小时`
   }
 
-  const minutes = Math.max(1, Math.floor(diffMs / (1000 * 60)))
   if (hours > 0) {
     return `${hours}小时`
   }
 
-  return `${minutes}分钟`
+    return `${Math.max(1, Math.floor(diffMs / (1000 * 60)))}分钟`
 }
 
-function formatRecentTimeLabel(isoOrDate?: string | null) {
-  const target = parseDateValue(isoOrDate ?? undefined)
-  if (!target) {
-    return '暂无'
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(target)
+function getStatusVariant(status: string) {
+    if (status === '已入住') return 'success'
+    if (status === '计划已生成') return 'primary'
+    return 'warning'
 }
 
-function isBlockedOverdue(stage: LoopStage, isoOrDate?: string | null) {
-  if (stage === '已闭环' || stage === '待生成') {
-    return false
+function getLevelVariant(level: string) {
+    if (level === '特级护理') return 'danger'
+    if (level === '一级护理') return 'warning'
+    if (level === '二级护理') return 'primary'
+    return 'info'
+}
+
+function buildSceneMeta(scene: ReturnType<typeof getCareScene>) {
+    if (scene === 'home') {
+        return {
+            title: '居家个案评定中心',
+            subtitle: '资料受理 -> AI 建议 -> 人工认定 -> 生效确认',
+            actionLabel: '补录居家评定申请',
+            sourceType: 'document-import',
+            sourceLabel: '资料导入',
+            sourceSummary: '居家评估资料已导入，待人工复核。',
+        }
   }
 
-  const target = parseDateValue(isoOrDate ?? undefined)
-  if (!target) {
-    return false
+    if (scene === 'institutional') {
+        return {
+            title: '机构评估认定中心',
+            subtitle: '院内受理 -> AI 建议 -> 人工认定 -> 生效确认',
+            actionLabel: '新建机构评定申请',
+            sourceType: 'manual-form',
+            sourceLabel: '前台建档',
+            sourceSummary: '院内首评待处理。',
+        }
   }
 
-  return Date.now() - target.getTime() >= 24 * 60 * 60 * 1000
+    return {
+        title: '长护险评估认定',
+        subtitle: '申请受理 -> AI 辅助评估 -> 人工认定 -> 生效确认',
+        actionLabel: '新建评估申请',
+        sourceType: 'manual-form',
+        sourceLabel: '前台建档',
+        sourceSummary: '综合评定申请待处理。',
+    }
+}
+
+function validateForm(form: AssessmentFormState) {
+    if (!form.elderName.trim()) return '请填写长者姓名。'
+    if (!form.age.trim() || Number(form.age) <= 0) return '请填写正确年龄。'
+    if (!form.phone.trim()) return '请填写联系电话。'
+    if (!form.emergencyContact.trim()) return '请填写紧急联系人。'
+    if (!form.roomNumber.trim()) return '请填写房间号或服务地址。'
+    if (!form.adlScore.trim() || Number(form.adlScore) < 0) return '请填写正确的 ADL 评分。'
+    if (!form.cognitiveLevel.trim()) return '请选择认知状态。'
+    return ''
+}
+
+function toRequest(form: AssessmentFormState, sceneMeta: ReturnType<typeof buildSceneMeta>): AdminCreateAssessmentCaseRequest {
+    return {
+        elderName: form.elderName.trim(),
+        age: Number(form.age),
+        gender: form.gender.trim(),
+        phone: form.phone.trim(),
+        emergencyContact: form.emergencyContact.trim(),
+        roomNumber: form.roomNumber.trim(),
+        requestedCareLevel: form.requestedCareLevel,
+        chronicConditions: form.chronicConditions.trim(),
+        medicationSummary: form.medicationSummary.trim(),
+        allergySummary: form.allergySummary.trim(),
+        adlScore: Number(form.adlScore),
+        cognitiveLevel: form.cognitiveLevel.trim(),
+        riskNotes: form.riskNotes.trim(),
+        entrustmentType: form.entrustmentType.trim() || null,
+        entrustmentOrganization: form.entrustmentOrganization.trim() || null,
+        monthlySubsidy: form.monthlySubsidy.trim() ? Number(form.monthlySubsidy) : null,
+        serviceItems: form.serviceItems.split(/[，,]/).map(item => item.trim()).filter(Boolean),
+        serviceNotes: form.serviceNotes.trim() || null,
+        sourceType: sceneMeta.sourceType,
+        sourceLabel: sceneMeta.sourceLabel,
+        sourceDocumentNames: sceneMeta.sourceType === 'document-import' ? ['居家评估资料'] : [],
+        sourceSummary: sceneMeta.sourceSummary,
+    }
 }
 
 export default function CheckinPage() {
@@ -132,261 +213,155 @@ export default function CheckinPage() {
   const selectedFromQuery = searchParams.get('selected')
   const selectedFromNew = searchParams.get('entry') === 'elderly-new'
   const selectedFromImport = searchParams.get('entry') === 'elderly-import'
-  const applications = useSyncExternalStore(
-    subscribeAssessmentWorkflow,
-    getAssessmentCasesSnapshot,
-    getAssessmentCasesSnapshot,
-  )
-  const masterSnapshot = useSyncExternalStore(
-    subscribeMasterDataWorkflow,
-    getMasterDataSnapshot,
-    getMasterDataSnapshot,
-  )
-  useSyncExternalStore(
-    subscribeAssessmentConfigWorkflow,
-    getAssessmentConfigSnapshot,
-    getAssessmentConfigSnapshot,
-  )
-  const scopedApplications = useMemo(
-    () => applications.filter(application => matchesAdmissionScene(application.sourceType, scene)),
-    [applications, scene],
-  )
-  const initialSelectedApplication = scopedApplications.find(application => application.id === selectedFromQuery) ?? scopedApplications[0]
+    const sceneMeta = buildSceneMeta(scene)
+
+    const [cases, setCases] = useState<AdminAssessmentCaseResponse[]>([])
+    const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [overdueOnly, setOverdueOnly] = useState(false)
-  const [form, setForm] = useState<AssessmentFormState>(EMPTY_ASSESSMENT_FORM)
-  const [selectedId, setSelectedId] = useState(initialSelectedApplication?.id ?? '')
+    const [statusFilter, setStatusFilter] = useState<'all' | AssessmentStatus>('all')
+    const [showForm, setShowForm] = useState(selectedFromNew || selectedFromImport)
+    const [form, setForm] = useState<AssessmentFormState>(EMPTY_FORM)
   const [formError, setFormError] = useState('')
-  const [reviewLevel, setReviewLevel] = useState<CareLevel>(
-    initialSelectedApplication?.confirmedCareLevel ?? initialSelectedApplication?.aiRecommendation.recommendedLevel ?? '二级护理',
-  )
-  const [reviewNote, setReviewNote] = useState(initialSelectedApplication?.reviewNote ?? '')
+    const [submitting, setSubmitting] = useState(false)
+    const [selectedId, setSelectedId] = useState(selectedFromQuery ?? '')
+    const [reviewLevel, setReviewLevel] = useState<CareLevel>('二级护理')
+    const [reviewNote, setReviewNote] = useState('')
+    const [decisionBusy, setDecisionBusy] = useState(false)
+    const [activateBusy, setActivateBusy] = useState(false)
 
-  const selectedApplication = useMemo(
-    () => scopedApplications.find(application => application.id === selectedId)
-      ?? scopedApplications.find(application => application.id === selectedFromQuery)
-      ?? scopedApplications[0],
-    [scopedApplications, selectedFromQuery, selectedId],
-  )
+    useEffect(() => {
+        let cancelled = false
 
-  const sceneMeta = scene === 'home'
-    ? {
-      title: '居家个案评定中心',
-      subtitle: '资料受理 -> 上门评定 -> 认定结论与回执跟进',
-      actionLabel: '补录居家评估申请',
-      overviewTitle: '居家个案认定工作台',
-      overviewDescription: '当前页面把资料导入、上门评定、机构协同和执行反馈放进同一条居家闭环里，减少跨页确认成本。',
+      async function loadCases() {
+          try {
+              setLoading(true)
+              const response = await fetchAdminAssessmentCases({ scene: scene ?? undefined, page: 1, pageSize: 100 })
+
+              if (cancelled) {
+                  return
+              }
+
+          setCases(response.items)
+          setLoadError('')
+      } catch (error) {
+          if (cancelled) {
+              return
+          }
+
+            setCases([])
+            setLoadError(error instanceof Error ? error.message : '个案评定列表加载失败。')
+        } finally {
+            if (!cancelled) {
+                setLoading(false)
+            }
+        }
     }
-    : scene === 'institutional'
-      ? {
-        title: '机构评估认定中心',
-        subtitle: '院内受理 -> AI 辅助评估 -> 人工认定 -> 结论确认',
-        actionLabel: '新建机构评估申请',
-        overviewTitle: '机构认定工作台',
-        overviewDescription: '当前页面把院内评估申请、AI 建议、人工认定和执行反馈放进同一条院内闭环里，减少跨页确认成本。',
+
+      void loadCases()
+
+      return () => {
+          cancelled = true
       }
-      : {
-        title: '长护险评估认定',
-        subtitle: '申请受理 -> AI 辅助评估 -> 人工认定 -> 认定结论与服务建议',
-        actionLabel: '新建评估申请',
-        overviewTitle: '长护险评估认定总览',
-        overviewDescription: '当前工作台按个案维度组织评估输入、AI 建议、人工认定和结算前置依据。',
-      }
+  }, [scene])
 
-  const stats = useMemo(() => ({
-    submitted: scopedApplications.length,
-    pendingConfirmation: scopedApplications.filter(application => application.status === '待人工确认').length,
-    planGenerated: scopedApplications.filter(application => application.status === '计划已生成').length,
-    admitted: scopedApplications.filter(application => application.status === '已入住').length,
-  }), [scopedApplications])
+    const filteredCases = useMemo(() => {
+        return cases
+            .filter(item => statusFilter === 'all' || item.status === statusFilter)
+            .filter(item => !search.trim() || [item.elderName, item.assessmentId, item.roomNumber].some(value => value.includes(search.trim())))
+    }, [cases, search, statusFilter])
 
-  const assessmentPartners = useMemo(
-    () => masterSnapshot.partners.filter(item => item.lifecycleStatus === '已启用' && item.institutionType === '评估机构'),
-    [masterSnapshot.partners],
-  )
+    const selectedCase = useMemo(() => {
+        return cases.find(item => item.assessmentId === selectedId)
+            ?? cases.find(item => item.assessmentId === selectedFromQuery)
+            ?? filteredCases[0]
+            ?? cases[0]
+            ?? null
+    }, [cases, filteredCases, selectedFromQuery, selectedId])
 
-  const allTaskItems = useMemo(() => getStaffTaskItems(applications), [applications])
-  const allReminderItems = useMemo(() => getReminderItems(applications), [applications])
-
-  const applicationProgressMap = useMemo(() => Object.fromEntries(applications.map(application => {
-    const taskItems = allTaskItems.filter(task => task.sourceId === application.id)
-    const reminderItems = allReminderItems.filter(reminder => reminder.sourceId === application.id)
-    const completedTasks = taskItems.filter(task => task.status === '已完成').length
-    const handledReminders = reminderItems.filter(reminder => reminder.status === '已处理').length
-    const totalUnits = taskItems.length + reminderItems.length
-    const completedUnits = completedTasks + handledReminders
-    const percent = totalUnits > 0 ? Math.round((completedUnits / totalUnits) * 100) : 0
-    const activeTasks = taskItems.filter(task => task.status === '执行中').length
-    const readReminders = reminderItems.filter(reminder => reminder.status === '已读').length
-    const stage: LoopStage = totalUnits === 0
-      ? '待生成'
-      : percent === 100
-        ? '已闭环'
-        : activeTasks > 0 || readReminders > 0 || completedUnits > 0
-          ? '执行中'
-          : '待启动'
-    const activityCandidates = [
-      application.confirmedAt,
-      application.createdAt,
-      ...taskItems.map(task => task.handledAtIso ?? task.handledAt),
-      ...reminderItems.map(reminder => reminder.handledAtIso ?? reminder.handledAt),
-    ]
-    const latestActivityDate = activityCandidates
-      .map(candidate => parseDateValue(candidate))
-      .filter((candidate): candidate is Date => Boolean(candidate))
-      .sort((left, right) => right.getTime() - left.getTime())[0] ?? null
-    const latestActivityIso = latestActivityDate?.toISOString() ?? null
-
-    return [application.id, {
-      taskItems,
-      reminderItems,
-      completedTasks,
-      handledReminders,
-      percent,
-      stage,
-      latestActivityIso,
-      latestActivityLabel: formatRecentTimeLabel(latestActivityIso ?? application.createdAt),
-      blockedDurationLabel: stage === '已闭环' ? '0分钟' : formatElapsedLabel(latestActivityIso ?? application.createdAt),
-      blockedOverdue: isBlockedOverdue(stage, latestActivityIso ?? application.createdAt),
-    }]
-  })), [allReminderItems, allTaskItems, applications])
-
-  const filteredApplications = useMemo(
-    () => scopedApplications
-      .filter(application => (
-        application.name.includes(search) || application.id.includes(search) || application.room.includes(search)
-      ))
-      .filter(application => (!overdueOnly || Boolean(applicationProgressMap[application.id]?.blockedOverdue)))
-      .sort((left, right) => {
-        const leftTime = parseDateValue(applicationProgressMap[left.id]?.latestActivityIso ?? left.createdAt)?.getTime() ?? 0
-        const rightTime = parseDateValue(applicationProgressMap[right.id]?.latestActivityIso ?? right.createdAt)?.getTime() ?? 0
-        return rightTime - leftTime
-      }),
-    [applicationProgressMap, overdueOnly, scopedApplications, search],
-  )
-
-  const selectedTaskItems = useMemo(
-    () => selectedApplication ? applicationProgressMap[selectedApplication.id]?.taskItems ?? [] : [],
-    [applicationProgressMap, selectedApplication],
-  )
-
-  const selectedReminderItems = useMemo(
-    () => selectedApplication ? applicationProgressMap[selectedApplication.id]?.reminderItems ?? [] : [],
-    [applicationProgressMap, selectedApplication],
-  )
-
-  const executionReceipt = useMemo(() => ({
-    totalTasks: selectedTaskItems.length,
-    completedTasks: selectedTaskItems.filter(task => task.status === '已完成').length,
-    activeTasks: selectedTaskItems.filter(task => task.status === '执行中').length,
-    handledReminders: selectedReminderItems.filter(reminder => reminder.status === '已处理').length,
-    readReminders: selectedReminderItems.filter(reminder => reminder.status === '已读').length,
-  }), [selectedReminderItems, selectedTaskItems])
-
-  const overdueCount = useMemo(
-    () => scopedApplications.filter(application => Boolean(applicationProgressMap[application.id]?.blockedOverdue)).length,
-    [applicationProgressMap, scopedApplications],
-  )
-
-  const coordinationItems = useMemo(() => applications.map((application, index) => {
-    const assignedPartner = assessmentPartners.length > 0 ? assessmentPartners[index % assessmentPartners.length] : null
-    const coordinationType: AssessmentCoordinationType = application.status === '待人工确认'
-      ? '首次认定'
-      : application.status === '计划已生成'
-        ? '复评跟踪'
-        : '抽检回访'
-    const coordinationStatus: AssessmentCoordinationStatus = application.status === '待人工确认'
-      ? '待机构接单'
-      : application.status === '计划已生成'
-        ? '待复评回传'
-        : '待抽检回传'
-    const nextAction = coordinationType === '首次认定'
-      ? '评估机构完成首评并回传认定意见'
-      : coordinationType === '复评跟踪'
-        ? '结合当前服务计划发起复评结论回传'
-        : '抽检机构补齐回访记录并返回经办复核'
-    const slaLabel = coordinationType === '首次认定'
-      ? '24小时内完成首评'
-      : coordinationType === '复评跟踪'
-        ? '48小时内完成复评回传'
-        : '72小时内完成抽检回访'
-
-    return {
-      applicationId: application.id,
-      assignedPartnerId: assignedPartner?.id,
-      assignedPartnerName: assignedPartner?.name ?? '待配置评估机构',
-      coordinationType,
-      coordinationStatus,
-      nextAction,
-      slaLabel,
+    useEffect(() => {
+        if (!selectedCase) {
+            return
     }
-  }), [applications, assessmentPartners])
 
-  const coordinationStats = useMemo(() => ({
-    activeInstitutions: assessmentPartners.length,
-    initialReviews: coordinationItems.filter(item => item.coordinationType === '首次认定').length,
-    reevaluations: coordinationItems.filter(item => item.coordinationType === '复评跟踪').length,
-    spotChecks: coordinationItems.filter(item => item.coordinationType === '抽检回访').length,
-  }), [assessmentPartners.length, coordinationItems])
+      setSelectedId(selectedCase.assessmentId)
+      setReviewLevel((selectedCase.confirmedCareLevel ?? selectedCase.aiRecommendation.recommendedLevel) as CareLevel)
+      setReviewNote(selectedCase.reviewNote ?? '')
+  }, [selectedCase])
 
-  const selectedCoordination = useMemo(
-    () => selectedApplication ? coordinationItems.find(item => item.applicationId === selectedApplication.id) ?? null : null,
-    [coordinationItems, selectedApplication],
-  )
-  const selectedAssessmentConfig = selectedApplication ? getAssessmentConfigForCase(selectedApplication) : null
-  const selectedProgress = selectedApplication ? applicationProgressMap[selectedApplication.id] ?? null : null
+    const stats = useMemo(() => ({
+        total: cases.length,
+        pending: cases.filter(item => item.status === '待人工确认').length,
+        planned: cases.filter(item => item.status === '计划已生成').length,
+        active: cases.filter(item => item.status === '已入住').length,
+    }), [cases])
 
   function updateForm<K extends keyof AssessmentFormState>(key: K, value: AssessmentFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function syncReviewDraft(application: AssessmentCase) {
-    setSelectedId(application.id)
-    setReviewLevel(application.confirmedCareLevel ?? application.aiRecommendation.recommendedLevel)
-    setReviewNote(application.reviewNote ?? '')
-  }
-
-  function handleCreateApplication() {
-    const validationError = validateAssessmentForm(form)
+    async function handleCreateCase() {
+        const validationError = validateForm(form)
     if (validationError) {
       setFormError(validationError)
       return
     }
 
-    const application = submitAssessmentCase(form)
-    syncReviewDraft(application)
-    setShowForm(false)
-    setForm(EMPTY_ASSESSMENT_FORM)
-    setFormError('')
+      try {
+          setSubmitting(true)
+          const created = await createAdminAssessmentCase(toRequest(form, sceneMeta))
+          setCases(current => [created, ...current])
+          setSelectedId(created.assessmentId)
+          setShowForm(false)
+        setForm(EMPTY_FORM)
+        setFormError('')
+    } catch (error) {
+        setFormError(error instanceof Error ? error.message : '个案评定创建失败。')
+    } finally {
+        setSubmitting(false)
+    }
   }
 
-  function handleConfirmPlan() {
-    if (!selectedApplication) {
+    async function handleConfirmDecision() {
+        if (!selectedCase) {
       return
     }
 
-    if (reviewLevel !== selectedApplication.aiRecommendation.recommendedLevel && !reviewNote.trim()) {
+      if (reviewLevel !== selectedCase.aiRecommendation.recommendedLevel && !reviewNote.trim()) {
       setFormError('人工调整护理级别时，请填写调整说明。')
       return
     }
 
-    const updated = confirmAssessmentDecision(selectedApplication.id, reviewLevel, reviewNote)
-    if (updated) {
-      syncReviewDraft(updated)
+      try {
+          setDecisionBusy(true)
+          const updated = await confirmAdminAssessmentDecision(selectedCase.assessmentId, {
+              confirmedCareLevel: reviewLevel,
+              reviewNote: reviewNote.trim() || null,
+              confirmedBy: '护理主管',
+          })
+          setCases(current => current.map(item => item.assessmentId === updated.assessmentId ? updated : item))
+          setFormError('')
+    } catch (error) {
+        setFormError(error instanceof Error ? error.message : '人工认定确认失败。')
+    } finally {
+        setDecisionBusy(false)
     }
-
-    setFormError('')
   }
 
-  function handleMarkAdmitted() {
-    if (!selectedApplication) {
+    async function handleActivateCase() {
+        if (!selectedCase) {
       return
     }
 
-    const updated = activateAssessmentBenefits(selectedApplication.id)
-    if (updated) {
-      syncReviewDraft(updated)
+      try {
+          setActivateBusy(true)
+          const updated = await activateAdminAssessmentCase(selectedCase.assessmentId)
+          setCases(current => current.map(item => item.assessmentId === updated.assessmentId ? updated : item))
+          setFormError('')
+      } catch (error) {
+          setFormError(error instanceof Error ? error.message : '认定生效失败。')
+      } finally {
+          setActivateBusy(false)
     }
   }
 
@@ -395,795 +370,307 @@ export default function CheckinPage() {
       module="ltci-service"
       pageTitle={sceneMeta.title}
       moduleLabel="评定与长护险"
-      disabledSummary="当前租户未开通评定与长护险模块。页面保留为只读禁用态，避免认定受理、任务派发和结算链路超出套餐边界。"
+          disabledSummary="当前租户未开通评定与长护险模块。页面保留为只读禁用态，避免认定受理和生效链路超出套餐边界。"
       fallbackLinks={[
         { href: '/', label: '返回首页' },
         { href: '/operations/daily', label: '进入日班工作台' },
       ]}
     >
-    <div className="page-root animate-fade-up">
-      <PageHeader
+          <div className="page-root animate-fade-up">
+              <PageHeader
           title={sceneMeta.title}
-          subtitle={`Demo 闭环：${sceneMeta.subtitle} · 共 ${scopedApplications.length} 条评估申请`}
-        actions={(
-          <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => setShowForm(current => !current)}>
-            <Plus size={14} />
-            {sceneMeta.actionLabel}
-          </button>
-        )}
-      />
+                  subtitle={`${sceneMeta.subtitle} · 当前 ${stats.total} 条真实 assessment case`}
+                  actions={(
+                      <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={() => setShowForm(current => !current)}>
+                          <Plus size={14} />
+                          {sceneMeta.actionLabel}
+                      </button>
+                  )}
+              />
 
-      <WorkflowOverviewCard
-        eyebrow="Assessment Command Center"
-          title={selectedApplication ? `${selectedApplication.name} 的认定工作台` : sceneMeta.overviewTitle}
-        description={selectedApplication
-          ? `${selectedApplication.room} · ${selectedApplication.sourceLabel ?? getAssessmentSourceLabel(selectedApplication.sourceType)}。${sceneMeta.overviewDescription}`
-          : sceneMeta.overviewDescription}
-        badge={selectedApplication ? <Tag variant={getAssessmentStatusVariant(selectedApplication.status)}>{getAssessmentStatusLabel(selectedApplication.status)}</Tag> : undefined}
-        metrics={[
-          {
-            label: '当前处理个案',
-            value: selectedApplication ? selectedApplication.name : '暂无',
-            hint: selectedApplication ? `${selectedApplication.id} · ${selectedApplication.room}` : '请选择左侧个案',
-            tone: 'primary',
-          },
-          {
-            label: 'AI 推荐等级',
-            value: selectedApplication ? selectedApplication.aiRecommendation.recommendedLevel : '--',
-            hint: selectedApplication ? `置信度 ${selectedApplication.aiRecommendation.confidence}%` : '等待评估输入',
-            tone: 'info',
-          },
-          {
-            label: '协同处理时限',
-            value: selectedCoordination?.slaLabel ?? '待配置',
-            hint: selectedCoordination?.assignedPartnerName ?? '尚未绑定评估机构',
-            tone: selectedCoordination ? 'warning' : 'neutral',
-          },
-          {
-            label: '闭环推进状态',
-            value: selectedProgress?.stage ?? '待生成',
-            hint: selectedProgress ? `最近更新 ${selectedProgress.latestActivityLabel}` : '确认认定后生成任务与提醒',
-            tone: selectedProgress?.blockedOverdue ? 'danger' : selectedProgress?.stage === '已闭环' ? 'success' : 'primary',
-          },
-        ]}
-        signals={[
-          { label: `待认定确认 ${stats.pendingConfirmation} 条`, tone: stats.pendingConfirmation > 0 ? 'warning' : 'success' },
-          { label: `超时关注 ${overdueCount} 条`, tone: overdueCount > 0 ? 'danger' : 'success' },
-          { label: selectedAssessmentConfig?.template?.name ?? '待匹配认定模板', tone: selectedAssessmentConfig?.template ? 'info' : 'warning' },
-          ...(selectedFromNew ? [{ label: '来自新增老人页同步', tone: 'success' as const }] : []),
-          ...(selectedFromImport ? [{ label: '来自资料导入页同步', tone: 'primary' as const }] : []),
-        ]}
-        actions={
-          <>
-            <Link href="/nursing/packages" className="btn btn-secondary btn-sm">查看评定标准</Link>
-            <Link href="/nursing/plans" className="btn btn-secondary btn-sm">查看认定模板</Link>
-          </>
-        }
-      />
-        <InteractionRailLayout
-          main={(
-            <>
+              <WorkflowOverviewCard
+                  eyebrow="Assessment Command Center"
+                  title={selectedCase ? `${selectedCase.elderName} 的认定工作台` : sceneMeta.title}
+                  description={selectedCase
+                      ? `${selectedCase.roomNumber} · ${selectedCase.sourceLabel}。当前页面只保留真实 assessment case、AI 建议和人工认定主流程。`
+                      : '当前页面已切换为真实 assessment case 模式，不再读取 assessment-workflow、assessment-config-workflow 或 master-data-workflow。'}
+                  badge={<Tag variant="primary">Live Assessment</Tag>}
+                  metrics={[
+                      { label: '评定申请', value: stats.total, hint: '真实 assessment case', tone: 'primary' },
+                      { label: '待人工确认', value: stats.pending, hint: '需要人工认定', tone: stats.pending > 0 ? 'warning' : 'success' },
+                      { label: '计划已生成', value: stats.planned, hint: '可推进到生效', tone: stats.planned > 0 ? 'info' : 'success' },
+                      { label: '已入住', value: stats.active, hint: '认定已生效', tone: 'success' },
+                  ]}
+                  signals={[
+                      { label: loadError || 'assessment case 已从真实 API 加载', tone: loadError ? 'danger' : 'success' },
+                      { label: `当前场景：${scene === 'home' ? '居家' : scene === 'institutional' ? '机构' : '综合'}`, tone: 'info' },
+                      { label: '规则集 / 模板 / 协同机构 当前仅显示 Pending Integration', tone: 'warning' },
+                      { label: '创建个案时由 Admin BFF 先调用 AI，再写入 Elder Service', tone: 'primary' },
+                  ]}
+                  actions={
+                      <>
+                          <Link href={withSceneQuery('/elderly/new', scene)} className="btn btn-secondary btn-sm">前往长者建档</Link>
+                          <Link href={withSceneQuery('/elderly/import', scene)} className="btn btn-secondary btn-sm">前往资料导入</Link>
+                      </>
+                  }
+              />
+
               <div className="kpi-grid" style={{ marginBottom: 16 }}>
-                <StatCard icon={<UserPlus size={18} />} label="评估申请" value={stats.submitted} sub="当前 demo 样本" color="primary" />
-                <StatCard icon={<Bot size={18} />} label="待认定确认" value={stats.pendingConfirmation} sub="AI 已出建议" color="warning" />
-                <StatCard icon={<ClipboardCheck size={18} />} label="认定结论已生成" value={stats.planGenerated} sub="已同步服务建议" color="info" />
-                <StatCard icon={<HomeIcon size={18} />} label="认定已生效" value={stats.admitted} sub="已进入回访/抽检期" color="success" />
+                  <StatCard icon={<ClipboardCheck size={18} />} label="待人工确认" value={stats.pending} sub="优先处理待确认个案" color={stats.pending > 0 ? 'warning' : 'success'} />
+                  <StatCard icon={<Bot size={18} />} label="AI 建议已生成" value={stats.total} sub="创建即写入真实 AI 建议" color="primary" />
+                  <StatCard icon={<CheckCircle2 size={18} />} label="计划已生成" value={stats.planned} sub="人工认定已完成" color={stats.planned > 0 ? 'info' : 'success'} />
+                  <StatCard icon={<HomeIcon size={18} />} label="已入住" value={stats.active} sub="认定已生效" color="success" />
               </div>
 
-              <FilterBar>
-                <FilterItem label="搜索">
-                  <div className="input-wrap" style={{ minWidth: 240 }}>
-                    <span className="input-icon"><Search size={14} /></span>
-                    <input
-                      className="input"
-                      placeholder="搜索姓名、编号或房间..."
-                      value={search}
-                      onChange={event => setSearch(event.target.value)}
-                      style={{ paddingLeft: 34 }}
-                    />
-                  </div>
-                </FilterItem>
-                <FilterItem label="阻塞筛选">
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text)', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} />
-                    仅看超时关注
-                    <Tag variant={overdueCount > 0 ? 'danger' : 'neutral'}>{overdueCount}</Tag>
-                  </label>
-                </FilterItem>
-              </FilterBar>
-
-              {showForm && (
-                <DataCard
-                  title="评估申请与 AI 辅助认定输入"
-                  subtitle="提交后会写入共享 mock store，并立即生成 AI 照护等级建议。"
-                  badge={<Tag variant="primary">AI Ready</Tag>}
-                >
-                  <div className="form-section">
-                    <div className="form-grid">
-                      <div>
-                        <label className="form-label">姓名</label>
-                        <input className="input" value={form.name} onChange={event => updateForm('name', event.target.value)} placeholder="请输入姓名" />
-                      </div>
-                      <div>
-                        <label className="form-label">年龄</label>
-                        <input className="input" value={form.age} onChange={event => updateForm('age', event.target.value)} placeholder="请输入年龄" type="number" />
-                      </div>
-                      <div>
-                        <label className="form-label">性别</label>
-                        <div className="select-wrap" style={{ width: '100%' }}>
-                          <select className="select" style={{ width: '100%' }} value={form.gender} onChange={event => updateForm('gender', event.target.value as AssessmentFormState['gender'])}>
-                            <option value="">请选择</option>
-                            <option value="男">男</option>
-                            <option value="女">女</option>
-                          </select>
-                          <span className="select-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg></span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="form-label">申请照护等级</label>
-                        <div className="select-wrap" style={{ width: '100%' }}>
-                          <select className="select" style={{ width: '100%' }} value={form.requestedLevel} onChange={event => updateForm('requestedLevel', event.target.value as CareLevel)}>
-                            {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-                          </select>
-                          <span className="select-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg></span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="form-label">联系电话</label>
-                        <input className="input" value={form.phone} onChange={event => updateForm('phone', event.target.value)} placeholder="手机号码" />
-                      </div>
-                      <div>
-                        <label className="form-label">紧急联系人</label>
-                        <input className="input" value={form.emergency} onChange={event => updateForm('emergency', event.target.value)} placeholder="姓名 + 电话" />
-                      </div>
-                      <div>
-                        <label className="form-label">服务地址/房间</label>
-                        <input className="input" value={form.room} onChange={event => updateForm('room', event.target.value)} placeholder="如 201-1" />
-                      </div>
-                      <div>
-                        <label className="form-label">ADL 评分</label>
-                        <input className="input" value={form.adlScore} onChange={event => updateForm('adlScore', event.target.value)} placeholder="0 - 100" type="number" />
-                      </div>
-                      <div className="form-grid-full">
-                        <label className="form-label">认知状态</label>
-                        <div className="select-wrap" style={{ width: '100%' }}>
-                          <select className="select" style={{ width: '100%' }} value={form.cognitiveLevel} onChange={event => updateForm('cognitiveLevel', event.target.value as AssessmentFormState['cognitiveLevel'])}>
-                            <option value="">请选择</option>
-                            {COGNITIVE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-                          </select>
-                          <span className="select-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg></span>
-                        </div>
-                      </div>
-                      <div className="form-grid-full">
-                        <label className="form-label">慢病与既往病史</label>
-                        <textarea className="input" rows={3} style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }} value={form.chronicConditions} onChange={event => updateForm('chronicConditions', event.target.value)} placeholder="例如：高血压、糖尿病、冠心病" />
-                      </div>
-                      <div>
-                        <label className="form-label">长期用药</label>
-                        <textarea className="input" rows={3} style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }} value={form.medicationSummary} onChange={event => updateForm('medicationSummary', event.target.value)} placeholder="例如：缬沙坦、二甲双胍" />
-                      </div>
-                      <div>
-                        <label className="form-label">过敏史</label>
-                        <textarea className="input" rows={3} style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }} value={form.allergySummary} onChange={event => updateForm('allergySummary', event.target.value)} placeholder="例如：青霉素过敏 / 无" />
-                      </div>
-                      <div className="form-grid-full">
-                        <label className="form-label">风险备注</label>
-                        <textarea className="input" rows={3} style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }} value={form.riskNotes} onChange={event => updateForm('riskNotes', event.target.value)} placeholder="例如：近半年有跌倒史、夜间失眠、吞咽困难、压疮风险" />
-                      </div>
-                    </div>
-
-                    {formError ? (
-                      <div className="form-error">
-                        <Shield size={14} color="var(--color-danger)" />
-                        <span className="form-error-text">{formError}</span>
-                      </div>
-                    ) : null}
-
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-secondary" onClick={() => { setShowForm(false); setFormError('') }}>取消</button>
-                      <button className="btn btn-primary" onClick={handleCreateApplication}>提交并生成 AI 评估建议</button>
-                    </div>
-                  </div>
-                </DataCard>
-              )}
-
-              <DataCard title="评估申请列表" subtitle={scene === 'home' ? '用于居家评估员查看资料导入个案、上门评定与回执进度。' : scene === 'institutional' ? '用于院内评估员查看手工建档个案、认定结果和执行跟踪。' : '用于评估员和评估主管查看 AI 建议、确认认定结果和追踪复评状态。'}>
-                {filteredApplications.length > 0 ? (
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 40, textAlign: 'center' }}>#</th>
-                          <th>姓名</th>
-                          <th>房间</th>
-                          <th>ADL</th>
-                          <th>AI 建议</th>
-                          <th>认定结果</th>
-                          <th>闭环进度</th>
-                          <th>申请日期</th>
-                          <th>状态</th>
-                          <th style={{ textAlign: 'right' }}>操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredApplications.map((application, index) => (
-                          <tr
-                            key={application.id}
-                            className="table-hover-row"
-                            style={{
-                              background: application.id === selectedId
-                                ? 'rgba(13,148,136,0.06)'
-                                : applicationProgressMap[application.id]?.blockedOverdue
-                                  ? 'rgba(239,68,68,0.05)'
-                                  : undefined,
-                            }}
-                          >
-                            <td><span className="table-row-num">{index + 1}</span></td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div className="avatar avatar-sm">{application.name.slice(0, 1)}</div>
-                                <div>
-                                  <div className="font-semibold" style={{ fontSize: 14 }}>{application.name}</div>
-                                  <div className="text-xs" style={{ color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                    <span>{application.id} · {application.gender} · {application.age}岁</span>
-                                    <Tag variant={application.sourceType === 'document-import' ? 'primary' : 'neutral'}>{getAssessmentSourceLabel(application.sourceType)}</Tag>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td><span style={{ fontSize: 14, fontFamily: 'monospace' }}>{application.room}</span></td>
-                            <td><span style={{ fontSize: 14 }}>{application.adlScore}</span></td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <Tag variant={getLevelVariant(application.aiRecommendation.recommendedLevel)}>{application.aiRecommendation.recommendedLevel}</Tag>
-                                <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>置信度 {application.aiRecommendation.confidence}%</span>
-                              </div>
-                            </td>
-                            <td>
-                              {application.confirmedCareLevel ? (
-                                <Tag variant={getLevelVariant(application.confirmedCareLevel)}>{application.confirmedCareLevel}</Tag>
-                              ) : (
-                                <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>待确认</span>
-                              )}
-                            </td>
-                            <td>
-                              {(() => {
-                                const progress = applicationProgressMap[application.id]
-                                return progress && (progress.taskItems.length > 0 || progress.reminderItems.length > 0) ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                      <Tag variant={getLoopStageVariant(progress.stage)}>{progress.stage}</Tag>
-                                      {progress.blockedOverdue ? <Tag variant="danger">超时关注</Tag> : null}
-                                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{progress.percent}%</span>
-                                    </div>
-                                    <div style={{ height: 6, borderRadius: 999, background: 'rgba(15,23,42,0.08)', overflow: 'hidden' }}>
-                                      <div style={{ width: `${progress.percent}%`, height: '100%', background: progress.blockedOverdue ? 'var(--color-danger)' : 'var(--color-primary)' }} />
-                                    </div>
-                                    <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
-                                      任务 {progress.completedTasks}/{progress.taskItems.length} · 提醒 {progress.handledReminders}/{progress.reminderItems.length}
-                                    </span>
-                                    <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
-                                      最近更新 {progress.latestActivityLabel} · 阻塞 {progress.blockedDurationLabel}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <Tag variant={getLoopStageVariant('待生成')}>待生成</Tag>
-                                )
-                              })()}
-                            </td>
-                            <td><span style={{ fontSize: 13, color: 'var(--color-muted)' }}>{application.createdAt}</span></td>
-                            <td><Tag variant={getAssessmentStatusVariant(application.status)}>{getAssessmentStatusLabel(application.status)}</Tag></td>
-                            <td style={{ textAlign: 'right' }}>
-                              <button className="btn btn-primary btn-sm" onClick={() => syncReviewDraft(application)}>
-                                {application.status === '待人工确认' ? '继续认定' : application.status === '计划已生成' ? '查看结论' : '查看生效'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div style={{ padding: 24, textAlign: 'center', color: 'var(--color-muted)', fontSize: 13 }}>
-                    当前筛选条件下暂无评估申请。
-                  </div>
-                )}
-              </DataCard>
-
-              {selectedApplication ? (
-                <div className="dashboard-grid-2">
-          <DataCard
-            title="AI 长护险评估建议"
-            subtitle={`${selectedApplication.name} · ${selectedApplication.room} · 当前状态 ${getAssessmentStatusLabel(selectedApplication.status)}`}
-            badge={<Tag variant={getAssessmentStatusVariant(selectedApplication.status)}>{getAssessmentStatusLabel(selectedApplication.status)}</Tag>}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div
-                style={{
-                  border: '1px solid rgba(13,148,136,0.18)',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(13,148,136,0.06)',
-                  padding: 16,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>AI 推荐照护等级</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Tag variant={getLevelVariant(selectedApplication.aiRecommendation.recommendedLevel)}>{selectedApplication.aiRecommendation.recommendedLevel}</Tag>
-                      <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>评分 {selectedApplication.aiRecommendation.assessmentScore}</span>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>模型置信度</div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-primary)' }}>{selectedApplication.aiRecommendation.confidence}%</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--color-text)' }}>{selectedApplication.aiRecommendation.reasonSummary}</div>
-                <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {selectedApplication.aiRecommendation.focusTags.map(tag => (
-                    <Tag key={tag} variant="info">{tag}</Tag>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="info-row"><span className="info-label">录入来源</span><span className="info-value">{selectedApplication.sourceLabel ?? getAssessmentSourceLabel(selectedApplication.sourceType)}</span></div>
-                        <div className="info-row"><span className="info-label">委托类型</span><span className="info-value">{selectedApplication.entrustmentType ?? '待补录'}</span></div>
-                        <div className="info-row"><span className="info-label">委托单位</span><span className="info-value">{selectedApplication.entrustmentOrganization ?? '待补录'}</span></div>
-                        <div className="info-row"><span className="info-label">月度补贴</span><span className="info-value">{typeof selectedApplication.monthlySubsidy === 'number' ? `￥${selectedApplication.monthlySubsidy.toLocaleString('zh-CN')}` : '待补录'}</span></div>
-                <div className="info-row"><span className="info-label">申请照护等级</span><span className="info-value">{selectedApplication.requestedLevel}</span></div>
-                <div className="info-row"><span className="info-label">ADL / 认知状态</span><span className="info-value">{selectedApplication.adlScore} / {selectedApplication.cognitiveLevel}</span></div>
-                <div className="info-row"><span className="info-label">慢病数量</span><span className="info-value">{selectedApplication.chronicConditions.split(/[，,、\n]/).filter(Boolean).length || 0} 项</span></div>
-                <div className="info-row"><span className="info-label">模板编码</span><span className="info-value">{selectedApplication.aiRecommendation.planTemplateCode}</span></div>
-              </div>
-
-                      <div
-                        style={{
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-md)',
-                          padding: 14,
-                          background: 'var(--color-bg)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>委托与服务项摘要</div>
-                          <Link href={`/elderly/entrustment?selected=${selectedApplication.id}`} className="btn btn-secondary btn-sm">查看机构工作台</Link>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {(selectedApplication.serviceItems ?? []).map(item => <Tag key={item} variant="info">{item}</Tag>)}
-                          {(selectedApplication.serviceItems ?? []).length === 0 ? <Tag variant="warning">待补录固定服务项</Tag> : null}
-                        </div>
-                        <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                          {selectedApplication.serviceNotes || '当前尚未填写委托补充说明，可前往编辑页或委托工作台继续完善。'}
-                        </div>
-                      </div>
-
-              {selectedAssessmentConfig ? (
-                <div
-                  style={{
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 14,
-                    background: 'var(--color-bg)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>当前认定依据</div>
-                    <Tag variant="info">{selectedAssessmentConfig.scene}</Tag>
-                  </div>
-                  <div className="info-row"><span className="info-label">生效规则集</span><span className="info-value">{selectedAssessmentConfig.ruleSet?.name ?? '待配置有效规则集'}</span></div>
-                  <div className="info-row"><span className="info-label">匹配模板</span><span className="info-value">{selectedAssessmentConfig.template?.name ?? '待配置启用模板'}</span></div>
-                  <div className="info-row"><span className="info-label">护理项数量</span><span className="info-value">{selectedAssessmentConfig.nursingItems.length} 项</span></div>
-                  <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {selectedAssessmentConfig.nursingItems.map(item => <Tag key={item.id} variant="neutral">{item.name}</Tag>)}
-                    {selectedAssessmentConfig.nursingItems.length === 0 ? <Tag variant="warning">请先在评定标准配置页补齐规则项</Tag> : null}
-                  </div>
-                  {selectedAssessmentConfig.template?.followupAction ? (
-                    <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                      后续动作：{selectedAssessmentConfig.template.followupAction}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {selectedCoordination ? (
-                <div
-                  style={{
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 14,
-                    background: 'var(--color-bg)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
-                      <Building2 size={14} />
-                      评估机构协同
-                    </div>
-                    <Tag variant="info">{selectedCoordination.coordinationType}</Tag>
-                  </div>
-                  <div className="info-row"><span className="info-label">指派机构</span><span className="info-value">{selectedCoordination.assignedPartnerName}</span></div>
-                  <div className="info-row"><span className="info-label">协同状态</span><span className="info-value">{selectedCoordination.coordinationStatus}</span></div>
-                  <div className="info-row"><span className="info-label">处理时限</span><span className="info-value">{selectedCoordination.slaLabel}</span></div>
-                  <div className="info-row"><span className="info-label">下一动作</span><span className="info-value">{selectedCoordination.nextAction}</span></div>
-                  {selectedCoordination.assignedPartnerId ? (
-                    <div style={{ marginTop: 10 }}>
-                      <Link href={`/organizations/partners?selected=${selectedCoordination.assignedPartnerId}`} className="btn btn-secondary btn-sm">查看评估机构</Link>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>AI 判断依据</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {selectedApplication.aiRecommendation.reasons.map(reason => (
-                    <div
-                      key={reason}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--color-bg)',
-                        fontSize: 12.5,
-                        lineHeight: 1.6,
-                        color: 'var(--color-text)',
-                      }}
-                    >
-                      {reason}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>人工认定</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-                  <div>
-                    <label className="form-label">最终认定等级</label>
-                    <div className="select-wrap" style={{ width: '100%' }}>
-                      <select className="select" style={{ width: '100%' }} value={reviewLevel} onChange={event => setReviewLevel(event.target.value as CareLevel)}>
-                        {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-                      </select>
-                      <span className="select-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg></span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="form-label">人工认定说明</label>
-                    <textarea
-                      className="input"
-                      rows={3}
-                      style={{ width: '100%', height: 'auto', padding: '10px 12px', resize: 'vertical' }}
-                      placeholder="如人工调整等级，请说明原因；保持 AI 建议时可留空。"
-                      value={reviewNote}
-                      onChange={event => setReviewNote(event.target.value)}
-                    />
-                  </div>
-
-                  {selectedApplication.confirmedCareLevel ? (
-                    <div style={{ fontSize: 12.5, color: 'var(--color-muted)', lineHeight: 1.7 }}>
-                      已由 {selectedApplication.confirmedBy ?? '评估主管'} 于 {selectedApplication.confirmedAt ?? '待记录'} 完成人工认定，最终等级为 {selectedApplication.confirmedCareLevel}。
-                    </div>
-                  ) : null}
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={handleConfirmPlan} disabled={selectedApplication.status === '已入住'}>
-                      确认认定并生成结论
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </DataCard>
-
-          <DataCard
-            title="认定结论与服务建议预览"
-            subtitle="当前为共享 mock 预览，认定后会同步生成服务建议、任务和提醒。"
-            badge={<Tag variant={selectedApplication.carePlan ? 'success' : 'neutral'}>{selectedApplication.carePlan ? '已生成' : '待生成'}</Tag>}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div
-                style={{
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 16,
-                  background: 'var(--color-bg)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>最终护理等级</div>
-                    <Tag variant={getLevelVariant(selectedApplication.confirmedCareLevel ?? reviewLevel)}>{selectedApplication.confirmedCareLevel ?? reviewLevel}</Tag>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 6 }}>随访策略</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>到点提醒 + 超时升级</div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.7, color: 'var(--color-muted)' }}>
-                  {selectedApplication.carePlan
-                    ? `已生成 ${selectedApplication.carePlan.length} 条服务建议任务，并同步写入任务中心与提醒中心页。`
-                    : '当前尚未确认认定等级，服务建议、提醒与回访计划会在人工认定后生成。'}
-                </div>
-              </div>
-
-              {selectedApplication.carePlan ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {selectedApplication.carePlan.map(task => (
-                    <div
-                      key={task.id}
-                      style={{
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: 14,
-                        background: 'var(--color-card)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{task.title}</div>
-                          <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 4 }}>{task.owner} · {task.reminder}</div>
-                        </div>
-                        <Tag variant="primary">{task.time}</Tag>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    border: '1px dashed var(--color-border-strong)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 20,
-                    textAlign: 'center',
-                    fontSize: 12.5,
-                    color: 'var(--color-muted)',
-                    lineHeight: 1.7,
-                  }}
-                >
-                    服务建议、任务和到点提醒将在评估员或评估主管确认认定后生成。当前页仅展示共享 mock 预览，不写入真实后端。
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                  当前 mock 通知对象：评估员、评估主管、复评协同机构联系人。
-                </div>
-                {selectedApplication.status === '计划已生成' ? (
-                  <button className="btn btn-secondary" onClick={handleMarkAdmitted}>
-                    标记认定生效
-                  </button>
-                ) : selectedApplication.status === '已入住' ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-success)', fontSize: 13, fontWeight: 600 }}>
-                    <CheckCircle2 size={14} />
-                    已进入认定生效期
-                  </div>
-                ) : null}
-              </div>
-
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', marginBottom: 10 }}>结构化评定输入摘要</div>
-                {selectedApplication.sourceDocumentNames?.length ? (
-                  <div className="info-row"><span className="info-label">导入资料</span><span className="info-value">{selectedApplication.sourceDocumentNames.join('、')}</span></div>
-                ) : null}
-                <div className="info-row"><span className="info-label">慢病与病史</span><span className="info-value">{selectedApplication.chronicConditions || '未填写'}</span></div>
-                <div className="info-row"><span className="info-label">长期用药</span><span className="info-value">{selectedApplication.medicationSummary || '未填写'}</span></div>
-                <div className="info-row"><span className="info-label">过敏史</span><span className="info-value">{selectedApplication.allergySummary || '无'}</span></div>
-                <div className="info-row"><span className="info-label">风险备注</span><span className="info-value">{selectedApplication.riskNotes || '常规观察'}</span></div>
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>执行回执与提醒反馈</div>
-                  <Tag variant="info">Assessment Feedback Loop</Tag>
-                </div>
-
-                {selectedTaskItems.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>任务总数</div>
-                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-text)' }}>{executionReceipt.totalTasks}</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>已完成</div>
-                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-success)' }}>{executionReceipt.completedTasks}</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>执行中</div>
-                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-primary)' }}>{executionReceipt.activeTasks}</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>提醒已处理</div>
-                        <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-success)' }}>{executionReceipt.handledReminders}</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>最近更新</div>
-                        <div style={{ marginTop: 6, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{selectedApplication ? applicationProgressMap[selectedApplication.id]?.latestActivityLabel ?? '暂无' : '暂无'}</div>
-                      </div>
-                      <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                        <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>阻塞时长</div>
-                        <div style={{ marginTop: 6, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>{selectedApplication ? applicationProgressMap[selectedApplication.id]?.blockedDurationLabel ?? '暂无' : '暂无'}</div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-                      {selectedTaskItems.map(task => {
-                        const reminder = selectedReminderItems.find(item => item.id === `reminder-${task.id}`)
-                        return (
-                          <div
-                            key={task.id}
-                            style={{
-                              border: '1px solid var(--color-border)',
-                              borderRadius: 'var(--radius-md)',
-                              padding: 14,
-                              background: 'var(--color-card)',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                              <div>
-                                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{task.title}</div>
-                                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--color-muted)' }}>{task.owner} · {task.scheduledTime} · {task.room}</div>
-                              </div>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                <Tag variant={getTaskStatusVariant(task.status)}>{task.status}</Tag>
-                                {reminder ? <Tag variant={getReminderStatusVariant(reminder.status)}>{reminder.status}</Tag> : null}
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6, marginTop: 10 }}>
-                              <div className="info-row"><span className="info-label">任务提醒</span><span className="info-value">{task.reminder}</span></div>
-                              <div className="info-row"><span className="info-label">提醒接收人</span><span className="info-value">{reminder?.recipient ?? task.owner}</span></div>
-                              <div className="info-row"><span className="info-label">提醒状态</span><span className="info-value">{reminder ? `${reminder.status} · ${reminder.policy}` : '尚未生成提醒回执'}</span></div>
-                              <div className="info-row"><span className="info-label">任务回执</span><span className="info-value">{task.handledBy && task.handledAt ? `${task.handledBy} · ${task.handledAt}` : '尚未形成执行回执'}</span></div>
-                              <div className="info-row"><span className="info-label">提醒回执</span><span className="info-value">{reminder?.handledBy && reminder?.handledAt ? `${reminder.handledBy} · ${reminder.handledAt}` : '尚未形成提醒回执'}</span></div>
-                              <div className="info-row"><span className="info-label">操作说明</span><span className="info-value">{task.actionNote ?? reminder?.actionNote ?? '暂无说明'}</span></div>
-                              <div className="info-row"><span className="info-label">异常原因</span><span className="info-value">{task.exceptionReason ?? reminder?.exceptionReason ?? (reminder?.status === '需升级' ? '触发超时升级策略，需要主管介入。' : '无异常升级记录')}</span></div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--color-muted)' }}>
-                      <Eye size={14} />
-                      认定页现在会回流服务执行页和提醒中心的处理结果，经办或护理主管无需切页即可确认首轮执行闭环。
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      border: '1px dashed var(--color-border-strong)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: 18,
-                      textAlign: 'center',
-                      fontSize: 12.5,
-                      color: 'var(--color-muted)',
-                      lineHeight: 1.7,
-                    }}
+              {showForm ? (
+                  <DataCard
+                      icon={<UserPlus size={16} />}
+                      title={sceneMeta.actionLabel}
+                      subtitle="创建后会实时调用 AI admission-assessment，并把结果与表单一起落入真实 assessment case。"
+                      badge={<Tag variant="primary">Create Live Case</Tag>}
+                      action={<button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>收起</button>}
                   >
-                    当前尚无可回流的执行回执。请先确认认定结果，并在服务执行页或提醒中心完成执行/处理动作。
-                  </div>
-                )}
-              </div>
-            </div>
-          </DataCard>
-                </div>
+                      <div style={{ display: 'grid', gap: 12 }}>
+                          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                              <input className="input" placeholder="长者姓名" value={form.elderName} onChange={event => updateForm('elderName', event.target.value)} />
+                              <input className="input" placeholder="年龄" inputMode="numeric" value={form.age} onChange={event => updateForm('age', event.target.value)} />
+                              <select className="select" value={form.gender} onChange={event => updateForm('gender', event.target.value)}>
+                                  <option value="女">女</option>
+                                  <option value="男">男</option>
+                              </select>
+                              <input className="input" placeholder="联系电话" value={form.phone} onChange={event => updateForm('phone', event.target.value)} />
+                              <input className="input" placeholder="紧急联系人" value={form.emergencyContact} onChange={event => updateForm('emergencyContact', event.target.value)} />
+                              <input className="input" placeholder="房间号 / 服务地址" value={form.roomNumber} onChange={event => updateForm('roomNumber', event.target.value)} />
+                              <select className="select" value={form.requestedCareLevel} onChange={event => updateForm('requestedCareLevel', event.target.value as CareLevel)}>
+                                  {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                              </select>
+                              <input className="input" placeholder="ADL 评分" inputMode="numeric" value={form.adlScore} onChange={event => updateForm('adlScore', event.target.value)} />
+                              <select className="select" value={form.cognitiveLevel} onChange={event => updateForm('cognitiveLevel', event.target.value)}>
+                                  {COGNITIVE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                              </select>
+                              <input className="input" placeholder="委托类型" value={form.entrustmentType} onChange={event => updateForm('entrustmentType', event.target.value)} />
+                              <input className="input" placeholder="委托单位" value={form.entrustmentOrganization} onChange={event => updateForm('entrustmentOrganization', event.target.value)} />
+                              <input className="input" placeholder="月度补贴" inputMode="decimal" value={form.monthlySubsidy} onChange={event => updateForm('monthlySubsidy', event.target.value)} />
+                          </div>
+                          <textarea className="textarea" placeholder="慢病与既往病史" rows={3} value={form.chronicConditions} onChange={event => updateForm('chronicConditions', event.target.value)} />
+                          <textarea className="textarea" placeholder="长期用药" rows={3} value={form.medicationSummary} onChange={event => updateForm('medicationSummary', event.target.value)} />
+                          <textarea className="textarea" placeholder="过敏史" rows={2} value={form.allergySummary} onChange={event => updateForm('allergySummary', event.target.value)} />
+                          <textarea className="textarea" placeholder="风险备注" rows={3} value={form.riskNotes} onChange={event => updateForm('riskNotes', event.target.value)} />
+                          <input className="input" placeholder="服务项，使用逗号分隔" value={form.serviceItems} onChange={event => updateForm('serviceItems', event.target.value)} />
+                          <textarea className="textarea" placeholder="服务备注" rows={2} value={form.serviceNotes} onChange={event => updateForm('serviceNotes', event.target.value)} />
+                          {formError ? <div style={{ color: 'var(--color-danger)', fontSize: 12 }}>{formError}</div> : null}
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button className="btn btn-primary btn-sm" onClick={handleCreateCase} disabled={submitting}>{submitting ? '提交中...' : '创建真实个案'}</button>
+                              <button className="btn btn-secondary btn-sm" onClick={() => setForm(EMPTY_FORM)} disabled={submitting}>重置</button>
+                          </div>
+                      </div>
+                  </DataCard>
               ) : null}
+
+              <InteractionRailLayout
+                  main={(
+                      <>
+                          <FilterBar>
+                              <FilterItem label="搜索">
+                                  <div className="filter-input-wrap">
+                                      <Search size={14} />
+                                      <input className="filter-input" placeholder="姓名 / 个案编号 / 房间号" value={search} onChange={event => setSearch(event.target.value)} />
+                                  </div>
+                              </FilterItem>
+                              <FilterItem label="状态">
+                                  <select className="select" value={statusFilter} onChange={event => setStatusFilter(event.target.value as 'all' | AssessmentStatus)}>
+                                      <option value="all">全部状态</option>
+                                      <option value="待人工确认">待人工确认</option>
+                                      <option value="计划已生成">计划已生成</option>
+                                      <option value="已入住">已入住</option>
+                                  </select>
+                              </FilterItem>
+                          </FilterBar>
+
+                          <DataCard
+                              icon={<ClipboardCheck size={16} />}
+                              title="真实个案列表"
+                              subtitle={loading ? '正在从 assessment API 加载...' : `当前共 ${filteredCases.length} 条个案`}
+                              badge={<Tag variant="primary">Live Data</Tag>}
+                          >
+                              {loadError ? <div style={{ fontSize: 12.5, color: 'var(--color-danger)' }}>{loadError}</div> : null}
+
+                              {!loading && filteredCases.length === 0 ? (
+                                  <div style={{ display: 'grid', gap: 12 }}>
+                                      <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                                          当前没有可展示的真实 assessment case。可以从本页直接新建，或者从长者建档、资料导入入口进入。
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>新建评定申请</button>
+                                          <Link href={withSceneQuery('/elderly/new', scene)} className="btn btn-secondary btn-sm">前往长者建档</Link>
+                                          <Link href={withSceneQuery('/elderly/import', scene)} className="btn btn-secondary btn-sm">前往资料导入</Link>
+                                      </div>
+                                  </div>
+                              ) : null}
+
+                              <div style={{ display: 'grid', gap: 12 }}>
+                                  {filteredCases.map(item => {
+                                      const isSelected = item.assessmentId === selectedCase?.assessmentId
+                                      const effectiveLevel = item.confirmedCareLevel ?? item.aiRecommendation.recommendedLevel
+
+                      return (
+                        <button
+                            key={item.assessmentId}
+                            type="button"
+                            onClick={() => setSelectedId(item.assessmentId)}
+                            style={{
+                            textAlign: 'left',
+                            border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                            background: isSelected ? 'color-mix(in srgb, var(--color-primary) 8%, white)' : 'white',
+                            borderRadius: 16,
+                            padding: 14,
+                                display: 'grid',
+                                gap: 10,
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                <div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>{item.elderName}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{item.assessmentId} · {item.roomNumber}</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    <Tag variant={getStatusVariant(item.status)}>{item.status}</Tag>
+                                    <Tag variant={getLevelVariant(effectiveLevel)}>{effectiveLevel}</Tag>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--color-muted)' }}>
+                                <span>{item.sourceLabel}</span>
+                                <span>创建于 {formatDateTime(item.createdAtUtc)}</span>
+                                <span>AI 置信度 {item.aiRecommendation.confidence}%</span>
+                                <span>已等待 {formatElapsed(item.confirmedAtUtc ?? item.createdAtUtc)}</span>
+                            </div>
+                          </button>
+                      )
+                  })}
+                              </div>
+                          </DataCard>
+
+                          <DataCard
+                              icon={<Building2 size={16} />}
+                              title="Pending Integration"
+                              subtitle="以下模块不再从浏览器本地 store 读取，等待后端或聚合接口接入。"
+                              badge={<Tag variant="warning">Pending Integration</Tag>}
+                          >
+                              <div style={{ display: 'grid', gap: 12 }}>
+                                  {PENDING_INTEGRATION_ITEMS.map(item => (
+                                      <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 16, padding: 14, display: 'grid', gap: 6 }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
+                                              <Tag variant="warning">Pending Integration</Tag>
+                                          </div>
+                          <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.summary}</div>
+                      </div>
+                  ))}
+                              </div>
+                          </DataCard>
             </>
           )}
           rail={(
-            <>
-              <DataCard
-                title="本次交付范围"
-                subtitle={scene === 'home'
-                  ? '面向居家评估员与评定主管的上门认定闭环，当前由共享 assessment workflow 和评定配置 store 共同承载。'
-                  : scene === 'institutional'
-                    ? '面向院内评估员与护理主管的认定闭环，当前由共享 assessment workflow 和评定配置 store 共同承载。'
-                    : '面向评估员与评估主管的认定首条闭环，当前由共享 assessment workflow 和评定配置 store 共同承载。'}
-                badge={<Tag variant="info">Shared Mock Store</Tag>}
-              >
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {selectedFromNew && selectedApplication ? (
-                    <div className="page-help-card-item">已从新增老人页同步 {selectedApplication.name}，下一步直接进入认定闭环。</div>
-                  ) : null}
-                  {selectedFromImport && selectedApplication ? (
-                    <div className="page-help-card-item">已从资料导入页同步 {selectedApplication.name}，下一步复核字段并确认认定等级。</div>
-                  ) : null}
-                  {[
-                    '申请受理：补充慢病、用药、过敏、ADL 和认知状态，作为评估输入。',
-                    'AI 辅助建议：输出照护等级建议、理由、置信度和模板编码。',
-                    '人工认定：经办或护理主管可保持 AI 建议，也可调整等级并写明原因。',
-                    '认定输出：确认后的认定结论会匹配规则集、模板和服务建议预览。',
-                  ].map(item => (
-                    <div key={item} className="page-help-card-item">{item}</div>
-                  ))}
-                </div>
-              </DataCard>
+              selectedCase ? (
+                  <>
+                      <DataCard
+                          icon={<Shield size={16} />}
+                          title="个案概览"
+                          subtitle={`${selectedCase.gender} · ${selectedCase.age}岁 · ${selectedCase.sourceLabel}`}
+                          badge={<Tag variant={getStatusVariant(selectedCase.status)}>{selectedCase.status}</Tag>}
+                      >
+                          <div style={{ display: 'grid', gap: 10, fontSize: 12.5, color: 'var(--color-text)' }}>
+                              <div>申请等级：<Tag variant={getLevelVariant(selectedCase.requestedCareLevel)}>{selectedCase.requestedCareLevel}</Tag></div>
+                              <div>慢病与既往病史：{selectedCase.chronicConditions || '未填写'}</div>
+                              <div>长期用药：{selectedCase.medicationSummary || '未填写'}</div>
+                              <div>过敏史：{selectedCase.allergySummary || '未填写'}</div>
+                              <div>风险备注：{selectedCase.riskNotes || '未填写'}</div>
+                              <div>委托信息：{selectedCase.entrustmentType || '未填写'} / {selectedCase.entrustmentOrganization || '未填写'}</div>
+                              <div>服务项：{selectedCase.serviceItems.length > 0 ? selectedCase.serviceItems.join('、') : '未填写'}</div>
+                              <div>创建时间：{formatDateTime(selectedCase.createdAtUtc)}</div>
+                          </div>
+                      </DataCard>
 
-            <DataCard
-              title="评估机构协同"
-              subtitle="协同机构状态后置展示，避免与认定主流程争抢首屏。"
-              badge={<Tag variant={assessmentPartners.length > 0 ? 'info' : 'warning'}>{assessmentPartners.length > 0 ? `${assessmentPartners.length} 家评估机构已启用` : '待配置评估机构'}</Tag>}
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
-                <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>评估机构</div>
-                  <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-text)' }}>{coordinationStats.activeInstitutions}</div>
-                </div>
-                <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>首次认定</div>
-                  <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-primary)' }}>{coordinationStats.initialReviews}</div>
-                </div>
-                <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>复评跟踪</div>
-                  <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-warning)' }}>{coordinationStats.reevaluations}</div>
-                </div>
-                <div style={{ padding: 12, borderRadius: 'var(--radius-md)', background: 'var(--color-bg)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>抽检回访</div>
-                  <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: 'var(--color-info)' }}>{coordinationStats.spotChecks}</div>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                {coordinationItems.map(item => {
-                  const isSelected = item.applicationId === selectedApplication?.id
-                  const application = applications.find(current => current.id === item.applicationId)
-                  if (!application) {
-                    return null
-                  }
+                      <DataCard
+                          icon={<Bot size={16} />}
+                          title="AI 建议"
+                          subtitle={`模板编码 ${selectedCase.aiRecommendation.planTemplateCode}`}
+                          badge={<Tag variant="primary">{selectedCase.aiRecommendation.confidence}%</Tag>}
+                      >
+                          <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <Tag variant={getLevelVariant(selectedCase.aiRecommendation.recommendedLevel)}>{selectedCase.aiRecommendation.recommendedLevel}</Tag>
+                                  <Tag variant="info">评分 {selectedCase.aiRecommendation.assessmentScore}</Tag>
+                                  {selectedCase.aiRecommendation.focusTags.map(tag => <Tag key={tag} variant="info">{tag}</Tag>)}
+                              </div>
+                              <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>{selectedCase.aiRecommendation.reasonSummary}</div>
+                              <div style={{ display: 'grid', gap: 6, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                                  {selectedCase.aiRecommendation.reasons.map(reason => <div key={reason}>- {reason}</div>)}
+                              </div>
+                          </div>
+                      </DataCard>
 
-                  return (
-                    <div
-                      key={item.applicationId}
-                      style={{
-                        border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: 14,
-                        background: isSelected ? 'rgba(13,148,136,0.05)' : 'var(--color-card)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                        <div>
-                          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{application.name} · {application.id}</div>
-                          <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--color-muted)' }}>{item.assignedPartnerName} · {item.slaLabel}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <Tag variant="info">{item.coordinationType}</Tag>
-                          <Tag variant={item.coordinationType === '首次认定' ? 'warning' : item.coordinationType === '复评跟踪' ? 'primary' : 'info'}>{item.coordinationStatus}</Tag>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>{item.nextAction}</div>
-                    </div>
+                      <DataCard
+                          icon={<ClipboardCheck size={16} />}
+                          title="人工认定"
+                          subtitle="人工确认后状态会推进为计划已生成。"
+                          badge={<Tag variant={selectedCase.confirmedCareLevel ? 'success' : 'warning'}>{selectedCase.confirmedCareLevel ? '已确认' : '待确认'}</Tag>}
+                      >
+                          <div style={{ display: 'grid', gap: 12 }}>
+                              <select className="select" value={reviewLevel} onChange={event => setReviewLevel(event.target.value as CareLevel)} disabled={decisionBusy || selectedCase.status === '已入住'}>
+                                  {CARE_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                              </select>
+                              <textarea className="textarea" rows={4} placeholder="人工认定说明" value={reviewNote} onChange={event => setReviewNote(event.target.value)} disabled={decisionBusy || selectedCase.status === '已入住'} />
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <button className="btn btn-primary btn-sm" onClick={handleConfirmDecision} disabled={decisionBusy || selectedCase.status === '已入住'}>
+                                      {decisionBusy ? '提交中...' : '确认人工认定'}
+                                  </button>
+                                  <button className="btn btn-secondary btn-sm" onClick={handleActivateCase} disabled={activateBusy || selectedCase.status !== '计划已生成'}>
+                                      {activateBusy ? '生效中...' : '标记认定生效'}
+                                  </button>
+                              </div>
+                              <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                                  当前人工结论：{selectedCase.confirmedCareLevel ?? '尚未确认'} · 认定人：{selectedCase.confirmedBy ?? '未填写'} · 时间：{formatDateTime(selectedCase.confirmedAtUtc)}
+                              </div>
+                              {formError ? <div style={{ color: 'var(--color-danger)', fontSize: 12 }}>{formError}</div> : null}
+                          </div>
+                      </DataCard>
+
+                      <DataCard
+                          icon={<CheckCircle2 size={16} />}
+                          title="生效与回滚说明"
+                          subtitle="当前交付只真实化 assessment case 主流程。"
+                          badge={<Tag variant="info">Harness Gate</Tag>}
+                      >
+                          <div style={{ display: 'grid', gap: 8, fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                              <div>健康信号：列表、AI 建议和人工认定结果必须来自真实 assessment API。</div>
+                              <div>加载态：进入页面时拉取 assessment case 列表；空态保留新建入口。</div>
+                              <div>错误态：API 调用失败时展示明确错误；未接通模块统一展示 Pending Integration。</div>
+                              <div>回滚方式：回退 assessment routes、BFF 编排和当前页面 live-only 实现。</div>
+                          </div>
+                      </DataCard>
+                  </>
+              ) : (
+                  <DataCard
+                      icon={<Shield size={16} />}
+                      title="暂无可查看个案"
+                      subtitle="当前没有选中的真实个案。"
+                      badge={<Tag variant="info">Empty</Tag>}
+                  >
+                      <div style={{ display: 'grid', gap: 10 }}>
+                              <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-muted)' }}>
+                                  可以先新建评定申请，或者从长者建档 / 资料导入入口进入。
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>新建评定申请</button>
+                                  <Link href={withSceneQuery('/elderly/new', scene)} className="btn btn-secondary btn-sm">长者建档</Link>
+                              </div>
+                          </div>
+                      </DataCard>
                   )
-                })}
-              </div>
-            </DataCard>
-
-            <DataCard title="集成与回滚说明" subtitle="当前只影响评估认定 Demo 页与共享 mock store，不影响其他真实业务模块。">
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div className="page-help-card-item">受影响用户：管理端经办人员、护理主管、服务执行查看人员、提醒中心查看人员。</div>
-                <div className="page-help-card-item">验证门禁：以 TypeScript / ESLint / build 静态校验为主，确认评估认定与跨页同步逻辑无错误。</div>
-                <div className="page-help-card-item">回滚路径：若需要回退，只需恢复认定页、服务执行页和提醒中心页对共享 mock store 的当前接入方式。</div>
-              </div>
-            </DataCard>
-
-              <PageHelpCard
-                title="页面帮助"
-                subtitle="完整认定边界迁移到显式帮助页"
-                summary="长者评定页现在只保留筛选、认定、结果预览和回执反馈，完整协同说明、交付范围与回滚边界统一后置。"
-                items={[
-                  '先筛选并定位个案，再进入 AI 建议与人工认定。',
-                  '认定依据、模板匹配和结果预览保留在主区，便于直接决策。',
-                  '若需要完整模块说明与边界口径，进入帮助页查看。',
-                ]}
-                href="/elderly/help"
-                actionLabel="查看长者模块帮助"
-              />
-            </>
           )}
         />
-    </div>
+          </div>
     </ModuleEntitlementGate>
   )
 }

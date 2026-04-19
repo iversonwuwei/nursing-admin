@@ -3,33 +3,17 @@
 import { AdminAiNav } from '@/components/ai/admin-ai-nav'
 import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard } from '@/components/nh'
 import { appendAiTrackingContext, getAiSceneLabel, getAiSourceLabel, getAiTargetLabel, readAiTrackingContext } from '@/lib/ai-context'
-import {
-  fetchAdminAiDashboardInsights,
-  isAdminAiDemoMode,
-} from '@/lib/ai/admin-ai-api'
-import { alertRecords } from '@/lib/data/alerts-data'
-import {
-  type AiDashboardInsight,
-  getAiDashboardInsights,
-} from '@/lib/mock/admin-ai'
-import {
-  getAdmissionApplicationsSnapshot,
-  getStaffTaskItems,
-  subscribeAdmissionWorkflow,
-} from '@/lib/mock/admission-workflow'
+import { fetchAdminAiDashboardInsights } from '@/lib/ai/admin-ai-api'
+import { fetchAdminDashboardOverview, type AdminDashboardOverviewResponse } from '@/lib/dashboard/admin-dashboard-api'
+import type { AiDashboardInsight } from '@/lib/mock/admin-ai'
 import { readSessionPlatformState } from '@/lib/platform/session'
-import {
-  Bot,
-  BrainCircuit,
-  ChevronRight,
-  Sparkles,
-} from 'lucide-react'
+import { Bot, BrainCircuit, ChevronRight, Sparkles } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-const LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS = [
+const LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS: AiDashboardInsight[] = [
   {
     id: 'ai-live-unavailable',
     title: 'AI 总览暂不可用',
@@ -45,19 +29,10 @@ export default function AIAssistantPage() {
   const { data: session } = useSession()
   const trackingContext = readAiTrackingContext(searchParams)
   const platformState = useMemo(() => readSessionPlatformState(session), [session])
-  const demoMode = isAdminAiDemoMode()
-  const applications = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
-  )
-  const mockDashboardInsights = useMemo(() => getAiDashboardInsights(applications), [applications])
-  const [liveDashboardInsights, setLiveDashboardInsights] = useState<AiDashboardInsight[]>(LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS)
-  const [dashboardError, setDashboardError] = useState('')
-
-  const pendingConfirmations = applications.filter(item => item.status === '待人工确认').length
-  const openAlerts = alertRecords.filter(item => item.status !== 'resolved').length
-  const pendingTasks = getStaffTaskItems(applications).filter(item => item.status !== '已完成').length
+    const [dashboardOverview, setDashboardOverview] = useState<AdminDashboardOverviewResponse | null>(null)
+    const [dashboardInsights, setDashboardInsights] = useState<AiDashboardInsight[]>(LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS)
+    const [loadError, setLoadError] = useState('')
+    const [loading, setLoading] = useState(true)
   const trackingSource = trackingContext?.source ?? ''
   const trackingFocus = trackingContext?.focus ?? ''
   const trackedTargetLabel = trackingContext?.target ? getAiTargetLabel(trackingContext.target) : '推理详情'
@@ -66,46 +41,64 @@ export default function AIAssistantPage() {
     : trackingContext?.target === 'logs'
       ? appendAiTrackingContext('/ai-assistant/logs', { ...trackingContext, target: 'logs' })
       : appendAiTrackingContext('/ai-assistant/inference', trackingContext ? { ...trackingContext, target: 'inference' } : null)
-  const effectiveDashboardError = !platformState.runtimeFlags.aiAssistantEnabled || demoMode ? '' : dashboardError
-  const dashboardInsights = !platformState.runtimeFlags.aiAssistantEnabled || demoMode
-    ? mockDashboardInsights
-    : effectiveDashboardError
-      ? LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS
-      : liveDashboardInsights
+    const workflowPending = dashboardOverview?.kpis.workflowPendingCount ?? 0
+    const openAlerts = dashboardOverview?.kpis.pendingAlerts ?? 0
 
   useEffect(() => {
-    if (!platformState.runtimeFlags.aiAssistantEnabled || demoMode) {
+      if (!platformState.runtimeFlags.aiAssistantEnabled) {
       return
     }
 
     let cancelled = false
 
-    void fetchAdminAiDashboardInsights({
-      totalElders: applications.length,
-      activeCarePlans: Math.max(applications.length - pendingConfirmations, 0),
-      openAlerts,
-      pendingTasks,
-      occupancyPercent: Math.min(100, Math.round((applications.length / 12) * 100)),
-      additionalContext: trackingSource
-        ? `${trackingSource}:${trackingFocus || 'general'}`
-        : 'admin-ai-overview',
-    })
-      .then(result => {
+      async function loadAiHub() {
+          try {
+              const overview = await fetchAdminDashboardOverview()
+
+              if (cancelled) {
+                  return
+              }
+
+              setDashboardOverview(overview)
+
+              const insights = await fetchAdminAiDashboardInsights({
+                  totalElders: overview.kpis.elderCount,
+                  activeCarePlans: Math.max(overview.kpis.elderCount - overview.kpis.workflowPendingCount, 0),
+                  openAlerts: overview.kpis.pendingAlerts,
+                  pendingTasks: overview.kpis.workflowPendingCount,
+                  occupancyPercent: overview.kpis.elderCount > 0 ? 100 : 0,
+                  additionalContext: trackingSource
+                      ? `${trackingSource}:${trackingFocus || 'general'}`
+                      : 'admin-ai-overview',
+              })
+
+          if (cancelled) {
+              return
+          }
+
+          setDashboardInsights(insights.length > 0 ? insights : LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS)
+          setLoadError('')
+      } catch (error) {
+          if (cancelled) {
+              return
+          }
+
+          setDashboardOverview(null)
+          setDashboardInsights(LIVE_UNAVAILABLE_DASHBOARD_INSIGHTS)
+          setLoadError(error instanceof Error ? error.message : 'AI 总览加载失败。')
+      } finally {
         if (!cancelled) {
-          setLiveDashboardInsights(result)
-          setDashboardError('')
+            setLoading(false)
         }
-      })
-      .catch(error => {
-        if (!cancelled) {
-          setDashboardError(error instanceof Error ? error.message : 'AI 总览加载失败。')
-        }
-      })
+      }
+      }
+
+      void loadAiHub()
 
     return () => {
       cancelled = true
     }
-  }, [applications.length, demoMode, openAlerts, pendingConfirmations, pendingTasks, platformState.runtimeFlags.aiAssistantEnabled, trackingFocus, trackingSource])
+  }, [platformState.runtimeFlags.aiAssistantEnabled, trackingFocus, trackingSource])
 
   if (!platformState.runtimeFlags.aiAssistantEnabled) {
     return (
@@ -140,7 +133,7 @@ export default function AIAssistantPage() {
     <div className="page-root animate-fade-up">
       <PageHeader
         title="AI 运营入口"
-        subtitle="统一查看 Admin 端 AI 总览，并进入问答、推理详情、规则治理和问答日志。"
+              subtitle="统一查看 Admin 端 AI 总览，并进入问答、推理详情、规则治理和审计日志。"
         actions={<Tag variant="primary">AI 先建议，人再确认</Tag>}
       />
 
@@ -157,22 +150,22 @@ export default function AIAssistantPage() {
               metrics={[
                 { label: 'AI 子页入口', value: 6, hint: '含员工端与家属端预览入口', tone: 'primary' },
                 { label: '风险摘要信号', value: dashboardInsights.length, hint: '已聚合到当前 AI 总览', tone: 'info' },
-                { label: '待确认建议', value: pendingConfirmations, hint: '仍需人工复核的评估建议', tone: pendingConfirmations > 0 ? 'warning' : 'success' },
+                  { label: '流程待办', value: workflowPending, hint: '来自 Dashboard 聚合快照', tone: workflowPending > 0 ? 'warning' : 'success' },
                 { label: '当前追踪目标', value: trackedTargetLabel, hint: trackingContext?.entityId ?? '未携带业务上下文', tone: trackingContext ? 'success' : 'neutral' },
               ]}
               signals={[
                 { label: trackingContext ? `来源：${getAiSourceLabel(trackingContext.source)}` : '当前未绑定业务来源', tone: trackingContext ? 'info' : 'neutral' },
                 { label: trackingContext?.scene ? `场景：${getAiSceneLabel(trackingContext.scene)}` : '当前未绑定场景', tone: trackingContext?.scene ? 'primary' : 'neutral' },
                 { label: trackingContext?.focus ? `关注点：${trackingContext.focus}` : '默认展示总览级 AI 能力', tone: trackingContext?.focus ? 'primary' : 'neutral' },
-                { label: demoMode ? '当前模式：Demo 回退，未调用后端 AI' : '当前模式：BFF 实时 AI，仍然只读不自动执行', tone: demoMode ? 'info' : 'success' },
+                  { label: loading ? '当前模式：实时 AI 聚合同步中' : '当前模式：BFF 实时 AI，仍然只读不自动执行', tone: loading ? 'warning' : 'success' },
                 { label: `认证来源：${platformState.authSource === 'platform' ? '平台认证' : 'Demo 认证'} · 租户：${platformState.tenantName}`, tone: platformState.authSource === 'platform' ? 'success' : 'info' },
-                { label: effectiveDashboardError || '当前无 AI 总览链路错误', tone: effectiveDashboardError ? 'danger' : 'neutral' },
+                  { label: loadError || '当前无 AI 总览链路错误', tone: loadError ? 'danger' : 'neutral' },
               ]}
               actions={
                 <>
                   <Link href={targetHref} className="btn btn-secondary btn-sm">按当前上下文继续</Link>
                   <Link href="/ai-assistant/qa" className="btn btn-secondary btn-sm">进入 AI 问答</Link>
-                  <Link href="/ai-assistant/logs" className="btn btn-secondary btn-sm">查看问答日志</Link>
+                      <Link href="/ai-assistant/logs" className="btn btn-secondary btn-sm">查看审计日志</Link>
                 </>
               }
             />
@@ -180,9 +173,22 @@ export default function AIAssistantPage() {
             <div className="kpi-grid" style={{ marginBottom: 16 }}>
               <StatCard icon={<Bot size={18} />} label="AI 子页入口" value={6} sub="含问答、员工端与家属端 AI 页" color="primary" />
               <StatCard icon={<BrainCircuit size={18} />} label="风险摘要" value={dashboardInsights.length} sub="当前总览已聚合" color="success" />
-              <StatCard icon={<Sparkles size={18} />} label="待确认建议" value={pendingConfirmations} sub="需继续人工复核" color="warning" />
+                          <StatCard icon={<Sparkles size={18} />} label="实时告警" value={openAlerts} sub="来自 Dashboard 聚合" color={openAlerts > 0 ? 'warning' : 'info'} />
               <StatCard icon={<BrainCircuit size={18} />} label="当前模式" value="入口型" sub="只做总览、分流与摘要" color="info" />
             </div>
+
+                      {loadError ? (
+                          <DataCard
+                              icon={<Sparkles size={16} />}
+                              title="AI 总览当前不可用"
+                              subtitle={loadError}
+                              badge={<Tag variant="danger">Live Unavailable</Tag>}
+                          >
+                              <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
+                                  当前页面只保留真实 AI 总览与导航入口。链路恢复前，你仍可进入日志页确认最近一次成功调用结果。
+                              </div>
+                          </DataCard>
+                      ) : null}
 
             <DataCard
               icon={<ChevronRight size={16} />}
@@ -205,7 +211,7 @@ export default function AIAssistantPage() {
                     cta: '查看规则',
                   },
                   {
-                    title: '3. 回看问答日志',
+                      title: '3. 回看审计日志',
                     description: '当你需要复盘某次问答或运营解释输出时，再进入日志页确认历史上下文。',
                     href: appendAiTrackingContext('/ai-assistant/logs', trackingContext ? { ...trackingContext, target: 'logs' } : null),
                     cta: '查看日志',
@@ -224,120 +230,17 @@ export default function AIAssistantPage() {
               </div>
             </DataCard>
 
-            <AdminAiNav />
-
-            <DataCard
-              icon={<BrainCircuit size={16} />}
-              title="子页导航"
-              subtitle="把推理、规则和日志拆成独立页面，便于后续接真实 AI 服务。"
-            >
-              <div style={{ display: 'grid', gap: 10 }}>
-                {[
-                  {
-                    href: '/ai-assistant/qa',
-                    title: 'AI 问答页',
-                    description: '单独输入问题并查看回答，不再和总览、治理或审计混放。',
-                  },
-                  {
-                    href: '/ai-assistant/inference',
-                    title: '推理详情页',
-                    description: '查看模型状态、健康解释样本与入住评估推理记录。',
-                  },
-                  {
-                    href: '/ai-assistant/rules',
-                    title: '规则治理页',
-                    description: '查看规则启停、治理边界和回滚路径。',
-                  },
-                  {
-                    href: '/ai-assistant/logs',
-                    title: '问答日志页',
-                    description: '查看按场景沉淀的 AI 问答与结果日志。',
-                  },
-                  {
-                    href: '/ai-assistant/staff-app',
-                    title: '员工 APP + AI 预览',
-                    description: '验证班次摘要、任务 Copilot、报警响应和交接班草稿。',
-                  },
-                  {
-                    href: '/ai-assistant/family-app',
-                    title: '家属 APP + AI 预览',
-                    description: '验证今日状态摘要、健康解释、探视助手与护理问答。',
-                  },
-                ].map(item => (
-                  <Link
-                    key={item.href}
-                    href={appendAiTrackingContext(item.href, trackingContext ? {
-                      ...trackingContext,
-                      target: item.href.endsWith('/rules') ? 'rules' : item.href.endsWith('/logs') ? 'logs' : item.href.endsWith('/inference') ? 'inference' : trackingContext.target,
-                    } : null)}
-                    style={{ textDecoration: 'none' }}
-                  >
-                    <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
-                        <Tag variant={trackingContext?.target && item.href.endsWith(`/${trackingContext.target}`) ? 'warning' : 'primary'}><ChevronRight size={12} /></Tag>
-                      </div>
-                      <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.description}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </DataCard>
+                      <AdminAiNav />
           </>
         )}
         rail={(
           <>
-            {trackingContext && (
-              <DataCard
-                icon={<BrainCircuit size={16} />}
-                title="当前追踪上下文"
-                subtitle="从业务页面带入的上下文会继续透传到 AI 子页，便于追踪来源和动作闭环。"
-                badge={<Tag variant="warning">Tracked Context</Tag>}
-              >
-                <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-                    {[
-                      { label: '来源页面', value: getAiSourceLabel(trackingContext.source) },
-                      { label: '场景视角', value: getAiSceneLabel(trackingContext.scene) },
-                      { label: '对象', value: trackingContext.entityName ?? '-' },
-                      { label: '对象编号', value: trackingContext.entityId ?? '-' },
-                      { label: '关注点', value: trackingContext.focus ?? '-' },
-                    ].map(item => (
-                      <div key={item.label} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
-                        <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 4 }}>{item.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 12.5, color: 'var(--color-text)', lineHeight: 1.6 }}>
-                      推荐下一步：进入{getAiTargetLabel(trackingContext.target ?? 'inference')}，继续查看与当前页面相关的 AI 解释和治理信息。
-                    </div>
-                    <Link href={targetHref} className="btn btn-primary btn-sm">按当前来源继续追踪</Link>
-                  </div>
-                </div>
-              </DataCard>
-            )}
-
-            {effectiveDashboardError ? (
-              <DataCard
-                icon={<Sparkles size={16} />}
-                title="AI 已回退到本地摘要"
-                subtitle={effectiveDashboardError}
-                badge={<Tag variant="danger">Fallback Active</Tag>}
-              >
-                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: 'var(--color-text)' }}>
-                  当前仍展示本地 mock 摘要和只读导航，便于继续验证页面语义与 scene 上下文；若需要真实 AI 结果，请先恢复 identity 与 Admin BFF。
-                </div>
-              </DataCard>
-            ) : null}
-
-            <DataCard icon={<BrainCircuit size={16} />} title="当前摘要信号" subtitle="保留总览级风险摘要，详细治理与审计进入子页面查看。">
+                <DataCard title="AI 总览摘要" subtitle="后置展示总览快照和运行边界。" badge={<Tag variant="info">Snapshot</Tag>}>
               <div style={{ display: 'grid', gap: 10 }}>
                 {dashboardInsights.map(item => (
-                  <div key={item.id} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 14 }}>
+                    <div key={item.id} style={{ borderRadius: 'var(--radius-md)', background: 'var(--color-bg)', padding: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</span>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.title}</div>
                       <Tag variant={item.variant}>{item.value}</Tag>
                     </div>
                     <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6, color: 'var(--color-muted)' }}>{item.summary}</div>
@@ -348,13 +251,13 @@ export default function AIAssistantPage() {
 
             <PageHelpCard
               title="页面帮助"
-              subtitle="完整说明迁到帮助页"
-              summary="AI 运营入口首屏只保留总览、子页导航和主路径；即时问答已拆到独立页面，上下文追踪、风险摘要和 fallback 边界统一收在右轨。"
+                    subtitle="完整 AI 入口说明迁移到显式帮助页"
+                    summary="AI 入口页现在只保留真实总览、上下文透传和子页导航，不再混入 admission workflow、alertRecords 或 demo 摘要。"
               items={[
                 '先按当前业务上下文进入最接近的 AI 子页。',
                 '即时问答已拆到独立页面，不再和入口总览混放。',
                 'AI 只给建议和解释，不自动执行业务动作。',
-                '真实链路异常时，以 fallback 提示和日志页为准。',
+                  '真实链路异常时，以 unavailable 提示和日志页为准。',
               ]}
               href="/ai-assistant/help"
               actionLabel="查看 AI 入口帮助"

@@ -1,40 +1,129 @@
 'use client'
 
 import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
-import { getMasterDataSnapshot, subscribeMasterDataWorkflow } from '@/lib/mock/master-data-workflow'
-import { addStaffDraft, EMPTY_STAFF_FORM, validateStaffForm, type StaffCreateFormState } from '@/lib/mock/resource-workflow'
+import { fetchAdminOrganizationList } from '@/lib/organizations/admin-organization-api'
+import { createAdminStaff } from '@/lib/staff/admin-staff-api'
 import { AlertCircle, ArrowLeft, ClipboardCheck, Save, ShieldCheck, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 const inputClass = 'input'
+
+type StaffCreateFormState = {
+  name: string
+  role: string
+  department: string
+  organizationId: string
+  organizationName: string
+  employmentSource: '自营' | '第三方合作'
+  partnerAgencyName: string
+  partnerAffiliationRole: string
+  gender: '男' | '女' | ''
+  phone: string
+  email: string
+  age: string
+  hireDate: string
+}
+
+const EMPTY_STAFF_FORM: StaffCreateFormState = {
+  name: '',
+  role: '',
+  department: '',
+  organizationId: '',
+  organizationName: '',
+  employmentSource: '自营',
+  partnerAgencyName: '',
+  partnerAffiliationRole: '',
+  gender: '',
+  phone: '',
+  email: '',
+  age: '',
+  hireDate: new Date().toISOString().slice(0, 10),
+}
+
+type OrganizationOption = {
+  id: string
+  name: string
+}
+
+function validateStaffForm(form: StaffCreateFormState) {
+  if (!form.name.trim() || !form.role.trim() || !form.department.trim() || !form.gender || !form.phone.trim() || !form.email.trim() || !form.age.trim() || !form.hireDate.trim()) {
+    return '请补齐姓名、角色、部门、性别、联系电话、邮箱、年龄和入职日期。'
+  }
+
+  if (form.employmentSource === '第三方合作' && !form.partnerAgencyName.trim()) {
+    return '第三方合作人员需填写护理服务机构名称。'
+  }
+
+  return ''
+}
 
 export default function StaffNewPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const scene = searchParams.get('scene')
+  const presetOrganizationId = searchParams.get('organizationId') ?? ''
+  const presetOrganizationName = searchParams.get('organizationName') ?? ''
   const [form, setForm] = useState<StaffCreateFormState>(() => ({
     ...EMPTY_STAFF_FORM,
+    organizationId: presetOrganizationId,
+    organizationName: presetOrganizationName,
     employmentSource: scene === 'home' ? '第三方合作' : EMPTY_STAFF_FORM.employmentSource,
   }))
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([])
+  const [organizationLoadError, setOrganizationLoadError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const masterSnapshot = useSyncExternalStore(
-    subscribeMasterDataWorkflow,
-    getMasterDataSnapshot,
-    getMasterDataSnapshot,
-  )
-  const activePartners = useMemo(
-    () => masterSnapshot.partners.filter(item => item.lifecycleStatus === '已启用' && item.institutionType === '护理服务机构'),
-    [masterSnapshot.partners],
-  )
+  const organizationRequired = scene !== 'home'
+
+  useEffect(() => {
+    let disposed = false
+
+    async function loadOrganizations() {
+      setOrganizationLoadError('')
+
+      try {
+        const response = await fetchAdminOrganizationList({ lifecycleStatus: '已启用', page: 1, pageSize: 200 })
+        if (disposed) {
+          return
+        }
+
+        const items = response.items.map(item => ({ id: item.id, name: item.name }))
+        setOrganizations(items)
+
+        setForm(current => {
+          if (current.organizationId || !organizationRequired || items.length !== 1) {
+            return current
+          }
+
+          return {
+            ...current,
+            organizationId: items[0].id,
+            organizationName: items[0].name,
+          }
+        })
+      } catch (loadError) {
+        if (disposed) {
+          return
+        }
+
+        setOrganizationLoadError(loadError instanceof Error ? loadError.message : '机构列表加载失败。')
+        setOrganizations([])
+      }
+    }
+
+    void loadOrganizations()
+    return () => {
+      disposed = true
+    }
+  }, [organizationRequired])
 
   function updateForm<K extends keyof StaffCreateFormState>(key: K, value: StaffCreateFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const validationError = validateStaffForm(form)
     if (validationError) {
@@ -42,11 +131,37 @@ export default function StaffNewPage() {
       return
     }
 
+    if (organizationRequired && !form.organizationId) {
+      setError('机构养老员工必须绑定真实机构。')
+      return
+    }
+
     setLoading(true)
     setError('')
-    const draft = addStaffDraft(form)
-    const nextQuery = scene === 'home' ? '&scene=home' : ''
-    router.push(`/staff?selected=${draft.id}&entry=staff-new${nextQuery}`)
+
+    try {
+      const draft = await createAdminStaff({
+        name: form.name.trim(),
+        role: form.role.trim(),
+        department: form.department.trim(),
+        organizationId: form.organizationId || null,
+        organizationName: form.organizationName || null,
+        employmentSource: form.employmentSource,
+        partnerAgencyId: null,
+        partnerAgencyName: form.employmentSource === '第三方合作' ? form.partnerAgencyName.trim() : null,
+        partnerAffiliationRole: form.employmentSource === '第三方合作' && form.partnerAffiliationRole.trim() ? form.partnerAffiliationRole.trim() : null,
+        phone: form.phone.trim(),
+        gender: form.gender,
+        email: form.email.trim(),
+        age: Number(form.age),
+        hireDate: form.hireDate,
+      })
+      const nextQuery = scene === 'home' ? '&scene=home' : ''
+      router.push(`/staff?selected=${draft.id}&entry=staff-new${nextQuery}`)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '员工建档失败。')
+      setLoading(false)
+    }
   }
 
   const sceneMeta = scene === 'home'
@@ -117,7 +232,7 @@ export default function StaffNewPage() {
                           setForm(current => ({
                             ...current,
                             employmentSource: nextSource,
-                            partnerAgencyId: nextSource === '第三方合作' ? current.partnerAgencyId : '',
+                            partnerAgencyName: nextSource === '第三方合作' ? current.partnerAgencyName : '',
                             partnerAffiliationRole: nextSource === '第三方合作' ? current.partnerAffiliationRole : '',
                           }))
                         }}
@@ -138,14 +253,33 @@ export default function StaffNewPage() {
                       <label className="form-label">部门</label>
                       <input className={inputClass} value={form.department} onChange={event => updateForm('department', event.target.value)} placeholder="如 护理部" />
                     </div>
+                    <div>
+                      <label className="form-label" htmlFor="staff-organization">所属机构{organizationRequired ? '' : '（可选）'}</label>
+                      <select
+                        id="staff-organization"
+                        className={inputClass}
+                        value={form.organizationId}
+                        onChange={event => {
+                          const nextOrganizationId = event.target.value
+                          const selectedOrganization = organizations.find(item => item.id === nextOrganizationId)
+                          setForm(current => ({
+                            ...current,
+                            organizationId: nextOrganizationId,
+                            organizationName: selectedOrganization?.name ?? '',
+                          }))
+                        }}
+                      >
+                        <option value="">{organizationRequired ? '请选择所属机构' : '当前可不绑定机构'}</option>
+                        {organizations.map(item => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     {form.employmentSource === '第三方合作' ? (
                       <>
                         <div>
                           <label className="form-label">护理服务机构</label>
-                          <select className={inputClass} value={form.partnerAgencyId} onChange={event => updateForm('partnerAgencyId', event.target.value)}>
-                            <option value="">请选择已启用护理服务机构</option>
-                            {activePartners.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                          </select>
+                          <input className={inputClass} value={form.partnerAgencyName} onChange={event => updateForm('partnerAgencyName', event.target.value)} placeholder="请输入护理服务机构名称" />
                         </div>
                         <div>
                           <label className="form-label">合作角色</label>
@@ -178,14 +312,19 @@ export default function StaffNewPage() {
                       <input className={inputClass} type="date" value={form.hireDate} onChange={event => updateForm('hireDate', event.target.value)} />
                     </div>
                   </div>
-                  {form.employmentSource === '第三方合作' && activePartners.length === 0 ? (
-                    <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-warning)' }}>
-                      当前还没有已启用护理服务机构。请先前往 <Link href="/organizations/partners/new" className="btn-link">新增定点机构</Link> 并选择“护理服务机构”完成启用。
+                  {organizationLoadError ? (
+                    <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-danger)' }}>
+                      机构列表加载失败：{organizationLoadError}
                     </div>
                   ) : null}
-                  {form.employmentSource === '第三方合作' && activePartners.length > 0 ? (
+                  {form.employmentSource === '第三方合作' ? (
                     <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-muted)' }}>
-                      第三方人员仅允许绑定护理服务机构；评估机构不会出现在该选择器中。
+                      第三方人员会保留护理服务机构名称；若当前服务于机构养老场景，仍应绑定真实所属机构。
+                    </div>
+                  ) : null}
+                  {organizationRequired ? (
+                    <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                      当前为机构养老建档，提交前必须绑定真实机构，机构详情员工 tab 将按此归属展示。
                     </div>
                   ) : null}
                 </DataCard>
@@ -205,7 +344,7 @@ export default function StaffNewPage() {
             <DataCard title="录入边界" subtitle="主区只保留字段和提交动作，归属说明后置到这里。" badge={<Tag variant={scene === 'home' ? 'primary' : 'info'}>{scene === 'home' ? 'Home Care' : 'In-House'}</Tag>}>
               <div style={{ display: 'grid', gap: 10 }}>
                 <div className="page-help-card-item">当前来源：{form.employmentSource}，提交后统一先进入待入职，再纳入排班与任务口径。</div>
-                <div className="page-help-card-item">{form.employmentSource === '第三方合作' ? `已启用护理服务机构 ${activePartners.length} 家，仅允许绑定护理服务机构。` : '自营人员不要求合作机构绑定。'}</div>
+                <div className="page-help-card-item">{organizationRequired ? `当前必须绑定真实机构${form.organizationName ? `：${form.organizationName}` : ''}。` : 'home 协同人员当前可暂不绑定机构主档，等待 partners 切片接通。'}</div>
                 <div className="page-help-card-item">完整协同口径与帮助说明统一迁移到帮助页。</div>
               </div>
             </DataCard>
@@ -215,8 +354,8 @@ export default function StaffNewPage() {
               subtitle="完整员工管理说明迁移到显式帮助页"
               summary="员工新建页现在只保留录入闭环和表单字段，来源边界与协同说明统一后置。"
               items={[
-                '先完成基础录入，再决定是否绑定护理服务机构。',
-                '第三方合作人员仅允许进入护理服务机构口径。',
+                '机构养老员工提交前必须绑定真实机构。',
+                '第三方合作人员仍可填写护理服务机构名称作为协同来源。',
                 '如需完整协同说明，进入员工帮助页。',
               ]}
               href={helpHref}

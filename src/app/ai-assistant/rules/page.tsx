@@ -8,41 +8,30 @@ import {
   fetchAdminAiAuditLogs,
   fetchAdminAiRules,
   getPrimaryCapabilityForContext,
-  isAdminAiDemoMode,
   toggleAdminAiRule,
 } from '@/lib/ai/admin-ai-api'
-import { AI_RULE_TOGGLES, getAiLogsForContext } from '@/lib/mock/admin-ai'
 import { Power, RefreshCcw, ShieldCheck, ToggleLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 
-function buildDemoRelatedLogs(source: string, entityId?: string, focus?: string) {
-  if (!source) {
-    return []
-  }
-
-  return getAiLogsForContext({ source, entityId, focus }).slice(0, 2)
-}
-
 export default function AiRulesPage() {
   const searchParams = useSearchParams()
   const trackingContext = readAiTrackingContext(searchParams)
-  const demoMode = isAdminAiDemoMode()
-  const [rules, setRules] = useState(AI_RULE_TOGGLES)
+  const [rules, setRules] = useState<Awaited<ReturnType<typeof fetchAdminAiRules>>>([])
   const [actionError, setActionError] = useState('')
-  const [liveRelatedLogs, setLiveRelatedLogs] = useState<ReturnType<typeof getAiLogsForContext>>([])
+  const [loading, setLoading] = useState(true)
+  const [liveRelatedLogs, setLiveRelatedLogs] = useState<Awaited<ReturnType<typeof fetchAdminAiAuditLogs>>['items']>([])
 
   const trackingSource = trackingContext?.source ?? ''
   const trackingEntityId = trackingContext?.entityId ?? ''
   const trackingFocus = trackingContext?.focus ?? ''
   const primaryCapability = getPrimaryCapabilityForContext(trackingContext)
-  const demoRelatedLogs = buildDemoRelatedLogs(trackingSource, trackingEntityId || undefined, trackingFocus || undefined)
 
   const enabledCount = useMemo(() => rules.filter(item => item.enabled).length, [rules])
   const disabledCount = rules.length - enabledCount
   const relatedRuleCards = trackingContext ? buildAiRuleCardsForContext(rules, trackingContext) : []
-  const relatedLogs = demoMode ? demoRelatedLogs : liveRelatedLogs
+  const relatedLogs = liveRelatedLogs
   const highRiskRules = rules.filter(item => /健康|报警|入住/.test(`${item.scope}${item.name}`)).length
   const helpHref = '/ai-assistant/help'
   const contextBoundaries = trackingContext
@@ -55,10 +44,6 @@ export default function AiRulesPage() {
     : []
 
   useEffect(() => {
-    if (demoMode) {
-      return
-    }
-
     let cancelled = false
 
     void Promise.all([
@@ -72,28 +57,25 @@ export default function AiRulesPage() {
           setRules(nextRules)
           setLiveRelatedLogs(logsResult.items)
           setActionError('')
+          setLoading(false)
         }
       })
       .catch(error => {
         if (!cancelled) {
-          setRules(AI_RULE_TOGGLES)
-          setLiveRelatedLogs(demoRelatedLogs)
+          setRules([])
+          setLiveRelatedLogs([])
           setActionError(error instanceof Error ? error.message : 'AI 规则加载失败。')
+          setLoading(false)
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [demoMode, demoRelatedLogs, primaryCapability, trackingSource])
+  }, [primaryCapability, trackingSource])
 
   async function handleToggle(ruleId: string, nextEnabled: boolean) {
     setActionError('')
-
-    if (demoMode) {
-      setRules(current => current.map(item => item.id === ruleId ? { ...item, enabled: nextEnabled } : item))
-      return
-    }
 
     setRules(current => current.map(item => item.id === ruleId ? { ...item, enabled: nextEnabled } : item))
     try {
@@ -119,7 +101,7 @@ export default function AiRulesPage() {
         <StatCard icon={<Power size={18} />} label="已启用规则" value={enabledCount} sub="当前对外生效" color="success" />
         <StatCard icon={<ToggleLeft size={18} />} label="停用规则" value={disabledCount} sub="保留回滚能力" color="warning" />
         <StatCard icon={<ShieldCheck size={18} />} label="高风险规则" value={highRiskRules} sub="需人工确认后生效" color="danger" />
-        <StatCard icon={<RefreshCcw size={18} />} label="回滚策略" value="手动切换" sub={demoMode ? '当前仍为前端 mock 治理' : '当前已接后端治理开关'} color="info" />
+        <StatCard icon={<RefreshCcw size={18} />} label="回滚策略" value="手动切换" sub="当前已接后端治理开关" color="info" />
       </div>
 
       <InteractionRailLayout
@@ -162,10 +144,15 @@ export default function AiRulesPage() {
               </DataCard>
             )}
 
-            <DataCard icon={<Power size={16} />} title="规则启停列表" subtitle="当前演示治理面；未来接真实配置中心时可直接替换数据源。">
+            <DataCard icon={<Power size={16} />} title="规则启停列表" subtitle="当前直接读取真实 AI 规则中心。">
               {actionError ? (
                 <div style={{ marginBottom: 12, fontSize: 12.5, color: 'var(--color-danger)' }}>
                   {actionError}
+                </div>
+              ) : null}
+              {loading ? (
+                <div style={{ marginBottom: 12, fontSize: 12.5, color: 'var(--color-muted)' }}>
+                  正在同步真实规则与相关审计日志...
                 </div>
               ) : null}
               <div style={{ display: 'grid', gap: 10 }}>
@@ -191,6 +178,11 @@ export default function AiRulesPage() {
                     </div>
                   )
                 })}
+                {!loading && rules.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--color-muted)' }}>
+                    当前没有可展示的真实 AI 规则。
+                  </div>
+                ) : null}
               </div>
             </DataCard>
           </>
