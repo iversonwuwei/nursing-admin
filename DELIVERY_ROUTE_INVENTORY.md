@@ -118,17 +118,24 @@ This section is the current route-facing integration audit for admin. It does no
 - `/elderly`, `/elderly/[id]`, `/elderly/health`, `/elderly/health/new`: current route set reads and writes through `src/lib/elderly/admin-elderly-api.ts` and the matching Next proxy routes.
 - `/settings/static-texts`, `/settings/option-groups`, `/settings/audit-logs`: pages import `src/lib/mock/content-management-workflow.ts`, but when `NEXT_PUBLIC_CONTENT_MANAGEMENT_MODE=bff` that module switches to `/api/content/*` and becomes Config Service-backed instead of local demo-backed.
 - `/notifications`: page data comes from `src/lib/services/admin-module-services.ts`; on successful reads the page stays on the real notification summary and queue and does not fall back to local demo notifications.
+- `/branch`: page now reads through `fetchAdminOrganizationList()` in `src/lib/organizations/admin-organization-api.ts` -> Admin BFF `/api/admin/organizations` aggregation (床位/在院/员工/入住率); 营收维度仍显式标注 `接入中` 直到 Billing 按机构聚合完成。
+- `/alerts/history`: page now reads through `fetchAdminAlertHistory()` in `src/lib/services/admin-module-services.ts` -> `/api/admin/alerts?status=...` -> Operations Service; 默认展示 resolved 历史，支持 processing/all 过滤；静态 `alertRecords` 和 `alertsHistoryPage` 配置 不再被该路由消费。
+- `/devices/assets`: page now reads through `fetchAdminEquipment({ pageSize: 500 })` in `src/lib/services/admin-operations-services.ts` -> `/api/admin/equipment` -> Operations Service `/api/operations/equipment`；前端按 category/status 聚合呈现资产视图，静态 `devicesAssetsPage` 配置不再被该路由消费。
+- `/settings`: page now aggregates live counts via `fetchStaticTexts`, `fetchOptionGroups`, `fetchAuditLogs` (BFF mode -> `/api/content/*`) 和 `fetchAdminRoles()` (-> `/api/admin-identity/roles` -> Admin BFF `/api/admin/roles` -> Identity Service `/api/identity/roles`); 静态 `settingsPage` 配置不再被该路由消费。
+- `/settings/roles`: page now reads through `fetchAdminRoles()` in `src/lib/services/admin-identity-services.ts` -> Admin BFF `/api/admin/roles` -> Identity Service `/api/identity/roles`; 静态 `settingsRolesPage` 不再被该路由消费，权限分配写 API 待 Identity 后端补齐后再扩展。
+- `/elderly/visits`: page now reads through `fetchAdminVisits()` in `src/lib/services/admin-visit-services.ts` -> Admin BFF `/api/admin/visits` -> Visit Service `/api/visits/appointments`; 返回当前租户最近 100 条真实预约，不再订阅 `care-service-workflow` mock；审批写 API 待 Visit Service 补齐后再扩展。
+- `/elderly/visits/new`: page now writes through `createAdminVisit()` -> Admin BFF `POST /api/admin/visits` -> Visit Service `POST /api/visits/appointments`，老人选项走 `/api/admin/elders`；提交成功后跳转 `/elderly/visits?selected=<visitId>`。
+- `/elderly/vitals`: page now reads through `fetchAdminVitals()` in `src/lib/services/admin-vital-services.ts` -> `/api/admin-vitals/vitals` -> Admin BFF `/api/admin/vitals` -> Health Service `/api/health/vitals`; KPI 基于最近一条实时记录，静态 `care-service-workflow` mock 不再被该路由消费。
+- `/elderly/vitals/new`: page now writes through `createAdminVitals()` -> Admin BFF `POST /api/admin/vitals` -> Health Service `POST /api/health/vitals`，老人选项走 `/api/admin/elders`；提交成功后跳转 `/elderly/vitals?selected=<observationId>&entry=elderly-vitals-new`。
+- `/elderly/face`: page now reads and writes through `src/lib/services/admin-face-services.ts` -> Next `/api/elders/*` proxies -> Admin BFF `/api/admin/elders/*` -> Elder Service `/api/elders/*`; face enrollment queue and status transitions are persisted in Elder profile face fields rather than localStorage mock workflow.
+- `/health`, `/health-monitoring`: page now reads through `fetchHealthMonitoringData()` in `src/lib/services/admin-health-services.ts` -> `fetchAdminVitals()` -> `/api/admin-vitals/vitals` -> Admin BFF `/api/admin/vitals` -> Health Service `/api/health/vitals`; KPI、异常队列、趋势图和对象卡均由真实 observation 派生。
+- `/health/[metric]`: route now validates `bp`/`hr`/`sleep` and renders live metric views from the same health monitoring dataset; `sleep` 明确标记为夜间 observation 代理视角，不再使用 `standard-pages.tsx` 静态样例。
 
 ### Frontend Mock Routes
 
-- `/branch`: page state is still a local array in `src/app/branch/page.tsx`, and the UI explicitly marks the route as local overview data pending future organization-service aggregation.
-- `/settings`, `/settings/roles`: both routes render `StandardModulePage` static config from `src/lib/data/standard-pages.tsx`, not real configuration APIs.
-- `/alerts/history`: the route renders `StandardModulePage` static config from `src/lib/data/standard-pages.tsx` using local `alertRecords`, not persisted alert-history queries.
-- `/devices/assets`: the route renders `StandardModulePage` static config from `src/lib/data/standard-pages.tsx`, not a real device asset API.
 - `/staff/tasks`: page state still depends on `src/lib/mock/assessment-workflow.ts` and `src/lib/mock/nursing-service-workflow.ts`, including local task actions and workflow subscriptions.
 - `/elderly/import`: import flow is still a frontend simulation path; the page explicitly documents current OCR and file-ingest behavior as demo.
 - `/elderly/entrustment`: current source of truth still comes from assessment or admission workflow-derived frontend state rather than a dedicated live backend route.
-- `/elderly/face`: current face enrollment flow still runs from `src/lib/mock/face-enrollment-workflow.ts`.
 
 ### Fallback Or Mixed Routes
 
@@ -140,9 +147,6 @@ This section is the current route-facing integration audit for admin. It does no
 
 ### Not Fully Re-Audited Yet
 
-- `/health`
-- `/health/[metric]`
-- `/health-monitoring`
-- `/elderly/vitals`, `/elderly/vitals/new`, `/elderly/visits`, `/elderly/visits/new`, `/elderly/[id]/edit`, `/elderly/new`
+- `/elderly/[id]/edit`, `/elderly/new`
 
 Routes in this last group should not be described as fully backend-integrated until they are checked individually against their current page-level data source and runtime behavior.

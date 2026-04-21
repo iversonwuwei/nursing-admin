@@ -121,6 +121,15 @@ export async function fetchAlertCenterSnapshot() {
   return { summary, queue }
 }
 
+export async function fetchAdminAlertHistory(filters: { status?: string; module?: string; level?: string } = {}) {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.module) params.set('module', filters.module)
+  if (filters.level) params.set('level', filters.level)
+  const qs = params.toString()
+  return requestJson<AdminAlertQueueItemResponse[]>(`/alerts${qs ? `?${qs}` : ''}`)
+}
+
 export async function submitAlertAction(alertId: string, action: string, note?: string) {
   return requestJson<AdminAlertQueueItemResponse>(`/alerts/${encodeURIComponent(alertId)}/actions`, {
     method: 'POST',

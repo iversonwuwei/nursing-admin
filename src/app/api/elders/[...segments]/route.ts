@@ -11,6 +11,10 @@ type RouteContext = {
 }
 
 function resolveReadPath(segments: string[], search: string): string | null {
+  if (segments.length === 1 && segments[0] === 'face-enrollment') {
+    return `/api/admin/elders/face-enrollment${search}`
+  }
+
   if (segments.length === 1) {
     return `/api/admin/elders/${encodeURIComponent(segments[0])}${search}`
   }
@@ -25,6 +29,10 @@ function resolveReadPath(segments: string[], search: string): string | null {
 function resolveWritePath(segments: string[]): string | null {
   if (segments.length === 1 && segments[0] === 'admissions') {
     return '/api/admin/elders/admissions'
+  }
+
+  if (segments.length === 3 && segments[1] === 'face-enrollment') {
+    return `/api/admin/elders/${encodeURIComponent(segments[0])}/face-enrollment/${encodeURIComponent(segments[2])}`
   }
 
   if (segments.length === 1) {
@@ -49,8 +57,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { segments } = await context.params
   const path = resolveWritePath(segments)
 
-  if (!path || segments[0] !== 'admissions') {
-    return NextResponse.json({ message: '未知的长者建档路径。' }, { status: 404 })
+  const isAdmission = segments.length === 1 && segments[0] === 'admissions'
+  const isFaceAction = segments.length === 3 && segments[1] === 'face-enrollment'
+  if (!path || (!isAdmission && !isFaceAction)) {
+    return NextResponse.json({ message: '未知的长者写入路径。' }, { status: 404 })
   }
 
   return forwardToAdminBff(request, 'POST', path, await request.json())

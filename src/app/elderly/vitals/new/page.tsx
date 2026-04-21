@@ -1,38 +1,96 @@
 'use client'
 
-import { DataCard, InteractionRailLayout, PageHelpCard, Tag } from '@/components/nh'
-import { elderlyList } from '@/lib/data'
-import { addVitalsEntry, EMPTY_VITALS_FORM, validateVitalsForm, type VitalsCreateFormState } from '@/lib/mock/care-service-workflow'
-import { Activity, AlertCircle, ArrowLeft, Save } from 'lucide-react'
+import { DataCard, InteractionRailLayout, PageHeader, PageHelpCard, Tag } from '@/components/nh'
+import { fetchAdminElderList, type AdminElderListItemResponse } from '@/lib/elderly/admin-elderly-api'
+import { createAdminVitals } from '@/lib/services/admin-vital-services'
+import { Activity, AlertCircle, ArrowLeft, Save, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { type FormEvent, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 const inputClass = 'input'
 
+interface VitalsFormState {
+  elderId: string
+  bloodPressure: string
+  heartRate: string
+  temperature: string
+  bloodSugar: string
+  oxygen: string
+  recordedBy: string
+}
+
+const EMPTY_FORM: VitalsFormState = {
+  elderId: '',
+  bloodPressure: '',
+  heartRate: '',
+  temperature: '',
+  bloodSugar: '',
+  oxygen: '',
+  recordedBy: '',
+}
+
+function validate(form: VitalsFormState): string {
+  if (!form.elderId) return '请选择要录入体征的老人。'
+  if (!/^\d{2,3}\/\d{2,3}$/.test(form.bloodPressure.trim())) return '请输入正确的血压格式，例如 135/85。'
+  if (Number.isNaN(Number(form.heartRate)) || Number(form.heartRate) <= 0) return '请输入正确的心率。'
+  if (Number.isNaN(Number(form.temperature)) || Number(form.temperature) <= 0) return '请输入正确的体温。'
+  if (Number.isNaN(Number(form.bloodSugar)) || Number(form.bloodSugar) <= 0) return '请输入正确的血糖。'
+  if (Number.isNaN(Number(form.oxygen)) || Number(form.oxygen) <= 0) return '请输入正确的血氧。'
+  if (!form.recordedBy.trim()) return '请填写记录人。'
+  return ''
+}
+
 export default function VitalsNewPage() {
   const router = useRouter()
-  const [form, setForm] = useState<VitalsCreateFormState>(EMPTY_VITALS_FORM)
-  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState<VitalsFormState>(EMPTY_FORM)
+  const [elders, setElders] = useState<AdminElderListItemResponse[] | null>(null)
+  const [eldersError, setEldersError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const helpHref = '/elderly/help'
 
-  function updateForm<K extends keyof VitalsCreateFormState>(key: K, value: VitalsCreateFormState[K]) {
+  useEffect(() => {
+    let cancelled = false
+    fetchAdminElderList({ page: 1, pageSize: 500 })
+      .then(result => {
+        if (cancelled) return
+        setElders(result.items)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setEldersError(err instanceof Error ? err.message : '老人列表加载失败。')
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  function updateForm<K extends keyof VitalsFormState>(key: K, value: VitalsFormState[K]) {
     setForm(current => ({ ...current, [key]: value }))
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const validationError = validateVitalsForm(form)
-    if (validationError) {
-      setError(validationError)
+    const msg = validate(form)
+    if (msg) {
+      setError(msg)
       return
     }
-
-    setLoading(true)
+    setSubmitting(true)
     setError('')
-    const record = addVitalsEntry(form)
-    router.push(`/elderly/vitals?selected=${record.id}&entry=elderly-vitals-new`)
+    try {
+      const record = await createAdminVitals({
+        elderId: form.elderId,
+        bloodPressure: form.bloodPressure.trim(),
+        heartRate: Number(form.heartRate),
+        temperature: Number(form.temperature),
+        bloodSugar: Number(form.bloodSugar),
+        oxygen: Number(form.oxygen),
+        recordedBy: form.recordedBy.trim(),
+      })
+      router.push(`/elderly/vitals?selected=${encodeURIComponent(record.observationId)}&entry=elderly-vitals-new`)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '提交失败，请稍后重试。')
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -40,20 +98,25 @@ export default function VitalsNewPage() {
       <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
         <Link href="/elderly/vitals" className="btn btn-ghost btn-icon-sm btn-icon"><ArrowLeft size={16} /></Link>
         <div>
-          <h1 className="text-xl font-extrabold" style={{ letterSpacing: '-0.02em' }}>生命体征录入</h1>
-          <p className="text-sm" style={{ color: 'var(--color-muted)' }}>把当班生命体征录入回流到体征列表，形成可追踪记录。</p>
+          <h1 className="text-xl font-extrabold" style={{ letterSpacing: '-0.02em' }}>录入体征</h1>
+          <p className="text-sm" style={{ color: 'var(--color-muted)' }}>提交后写入 Health Service，列表页会回流展示最新记录。</p>
         </div>
       </div>
+
+      <PageHeader
+        title="体征记录"
+        subtitle="先选择老人，再录入关键体征值与记录人。"
+      />
 
       <InteractionRailLayout
         main={(
           <>
-            <DataCard title="体征录入闭环" subtitle="首批流程为录入 -> 回流列表 -> 纳入当班体征记录。">
+            <DataCard title="录入闭环" subtitle="录入 → 写入 Health Service → 列表页回流。">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 {[
-                  { title: '1. 选择老人', description: '基于现有老人台账录入当班生命体征。', icon: <Activity size={16} /> },
-                  { title: '2. 当班录入', description: '提交后立即回流列表，形成可追踪记录。', icon: <Save size={16} /> },
-                  { title: '3. 持续跟踪', description: '后续由体征列表继续查看趋势与异常信号。', icon: <AlertCircle size={16} /> },
+                  { title: '1. 选择老人', description: '老人列表来自 /api/admin/elders 真实接口。', icon: <UserCheck size={16} /> },
+                  { title: '2. 录入体征', description: '血压 / 心率 / 体温 / 血糖 / 血氧为必填。', icon: <Activity size={16} /> },
+                  { title: '3. 列表回流', description: '提交成功后跳转到 /elderly/vitals 并选中新纪录。', icon: <UserCheck size={16} /> },
                 ].map(item => (
                   <div key={item.title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 14, background: 'var(--color-card)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>{item.icon}{item.title}</div>
@@ -65,53 +128,59 @@ export default function VitalsNewPage() {
 
             <form onSubmit={handleSubmit}>
               {error ? <div className="form-error" style={{ marginTop: 16 }}><AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} /><span className="form-error-text">{error}</span></div> : null}
+              {eldersError ? <div className="form-error" style={{ marginTop: 16 }}><AlertCircle size={16} style={{ color: 'var(--color-danger)', flexShrink: 0 }} /><span className="form-error-text">老人列表加载失败：{eldersError}</span></div> : null}
+
               <div style={{ marginTop: 16 }}>
-                <DataCard icon={<Activity size={18} />} title="生命体征输入" bodyClassName="form-section">
+                <DataCard icon={<Activity size={18} />} title="体征信息" bodyClassName="form-section">
                   <div className="form-grid">
-              <div className="form-grid-full">
-                <label className="form-label">老人</label>
-                <select className={inputClass} value={form.elderlyId} onChange={event => updateForm('elderlyId', event.target.value)}>
-                  <option value="">请选择</option>
-                  {elderlyList.map(item => <option key={item.id} value={item.id}>{item.name} ({item.roomNumber}-{item.bedNumber})</option>)}
-                </select>
-              </div>
-              <div><label className="form-label">血压</label><input className={inputClass} value={form.bp} onChange={event => updateForm('bp', event.target.value)} placeholder="如 135/85" /></div>
-              <div><label className="form-label">心率</label><input className={inputClass} value={form.hr} onChange={event => updateForm('hr', event.target.value)} placeholder="如 72" /></div>
-              <div><label className="form-label">体温</label><input className={inputClass} value={form.temp} onChange={event => updateForm('temp', event.target.value)} placeholder="如 36.5" /></div>
-              <div><label className="form-label">血氧</label><input className={inputClass} value={form.spo2} onChange={event => updateForm('spo2', event.target.value)} placeholder="如 97" /></div>
-              <div><label className="form-label">血糖</label><input className={inputClass} value={form.bloodSugar} onChange={event => updateForm('bloodSugar', event.target.value)} placeholder="如 5.8" /></div>
-              <div><label className="form-label">记录人</label><input className={inputClass} value={form.recordedBy} onChange={event => updateForm('recordedBy', event.target.value)} placeholder="如 陈美华" /></div>
-              <div><label className="form-label">记录时间</label><input className={inputClass} type="time" value={form.time} onChange={event => updateForm('time', event.target.value)} /></div>
+                    <div className="form-grid-full">
+                      <label className="form-label">老人</label>
+                      <select className={inputClass} value={form.elderId} onChange={event => updateForm('elderId', event.target.value)} disabled={elders === null}>
+                        <option value="">{elders === null ? '加载中…' : '请选择'}</option>
+                        {(elders ?? []).map(item => (
+                          <option key={item.elderId} value={item.elderId}>{item.elderName}（{item.roomNumber}）</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div><label className="form-label">血压（mmHg）</label><input className={inputClass} value={form.bloodPressure} onChange={event => updateForm('bloodPressure', event.target.value)} placeholder="如 135/85" /></div>
+                    <div><label className="form-label">心率（bpm）</label><input className={inputClass} type="number" value={form.heartRate} onChange={event => updateForm('heartRate', event.target.value)} placeholder="60-100" /></div>
+                    <div><label className="form-label">体温（℃）</label><input className={inputClass} type="number" step="0.1" value={form.temperature} onChange={event => updateForm('temperature', event.target.value)} placeholder="36-37.3" /></div>
+                    <div><label className="form-label">血糖（mmol/L）</label><input className={inputClass} type="number" step="0.1" value={form.bloodSugar} onChange={event => updateForm('bloodSugar', event.target.value)} placeholder="3.9-7.0" /></div>
+                    <div><label className="form-label">血氧（%）</label><input className={inputClass} type="number" value={form.oxygen} onChange={event => updateForm('oxygen', event.target.value)} placeholder="95-100" /></div>
+                    <div className="form-grid-full"><label className="form-label">记录人</label><input className={inputClass} value={form.recordedBy} onChange={event => updateForm('recordedBy', event.target.value)} placeholder="填写实际录入人姓名" /></div>
                   </div>
                 </DataCard>
               </div>
+
               <div className="flex items-center justify-end gap-3" style={{ marginTop: 16 }}>
                 <Link href="/elderly/vitals" className="btn btn-ghost btn-md">取消</Link>
-                <button type="submit" className="btn btn-primary btn-md" disabled={loading}>{loading ? <span className="login-spinner animate-spin" /> : <><Save size={15} />提交并回流列表</>}</button>
+                <button type="submit" className="btn btn-primary btn-md" disabled={submitting}>
+                  {submitting ? <span className="login-spinner animate-spin" /> : <><Save size={15} />保存体征</>}
+                </button>
               </div>
             </form>
           </>
         )}
         rail={(
           <>
-            <DataCard title="录入边界" subtitle="主区只保留体征输入和提交流程。" badge={<Tag variant="warning">Boundary</Tag>}>
+            <DataCard title="录入边界" subtitle="主区只保留表单录入与提交。" badge={<Tag variant="warning">Boundary</Tag>}>
               <div style={{ display: 'grid', gap: 10 }}>
-                <div className="page-help-card-item">体征录入提交后直接回流列表，不在新建页承载趋势说明。</div>
-                <div className="page-help-card-item">异常判断以后续体征列表和健康监测视图为准。</div>
-                <div className="page-help-card-item">完整页面定位和使用顺序迁移到帮助页。</div>
+                <div className="page-help-card-item">提交成功后回流 /elderly/vitals 并高亮新纪录。</div>
+                <div className="page-help-card-item">失败保留表单内容，可调整后重试。</div>
+                <div className="page-help-card-item">老人列表来自 /api/admin/elders 真实接口。</div>
               </div>
             </DataCard>
 
             <PageHelpCard
               title="页面帮助"
               subtitle="完整体征录入说明迁移到显式帮助页"
-              summary="生命体征录入页现在只保留录入闭环和表单字段，页面解释与判断边界统一后置。"
+              summary="体征录入已对接 Admin BFF /api/admin/vitals → Health Service /api/health/vitals。"
               items={[
-                '先选择老人并录入当班生命体征。',
-                '提交后直接回流体征列表继续跟踪。',
+                '字段要求：血压格式 xxx/xx，其他为正数。',
+                '记录人请填写实际录入人，便于审计对应。',
                 '若需要完整说明，进入老人帮助页查看。',
               ]}
-              href={helpHref}
+              href="/elderly/help"
               actionLabel="查看老人帮助"
             />
           </>

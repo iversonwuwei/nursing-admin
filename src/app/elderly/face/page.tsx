@@ -1,42 +1,22 @@
 "use client"
 import { DataCard, EmptyState, FilterBar, FilterItem, InteractionRailLayout, PageHeader, PageHelpCard, StatCard, Tag, WorkflowOverviewCard, type TagVariant } from "@/components/nh"
-import { getAdmissionApplicationsSnapshot, subscribeAdmissionWorkflow } from "@/lib/mock/admission-workflow"
-import { buildLiveElderlyList } from "@/lib/mock/elderly-registry"
 import {
-  activateFaceEnrollment,
-  captureFaceSample,
-  findFaceEnrollmentRecordByElderlyId,
-  getFaceEnrollmentSnapshot,
-  returnFaceEnrollmentForRetake,
-  startFaceEnrollment,
-  subscribeFaceEnrollmentWorkflow,
+  activateAdminFaceEnrollment,
+  captureAdminFaceEnrollmentSample,
+  fetchAdminFaceEnrollmentQueue,
+  retakeAdminFaceEnrollment,
+  startAdminFaceEnrollment,
   validateFaceActivation,
   validateFaceCaptureContext,
   validateRetakeReason,
+  type AdminFaceQueueItem,
   type FaceCaptureStepKey,
   type FaceEnrollmentStatus,
-} from "@/lib/mock/face-enrollment-workflow"
+} from "@/lib/services/admin-face-services"
 import { AlertCircle, Camera, CheckCircle2, ChevronRight, ScanFace, Search } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useMemo, useState, useSyncExternalStore } from "react"
-
-type FaceQueueItem = {
-  elderlyId: string
-  name: string
-  room: string
-  careLevel: string
-  status: FaceEnrollmentStatus
-  progress: number
-  qualityScore: number
-  qualitySummary: string
-  lastUpdated: string
-  operator: string
-  deviceLabel: string
-  activationNote?: string
-  retakeReason?: string
-  capturedSteps: FaceCaptureStepKey[]
-}
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 const STATUS_VARIANT: Record<FaceEnrollmentStatus, TagVariant> = {
   '待录入': 'neutral',
@@ -76,25 +56,26 @@ function progressForStatus(status: FaceEnrollmentStatus, capturedSteps: FaceCapt
   return 0
 }
 
-function buildQueueItem(record: ReturnType<typeof findFaceEnrollmentRecordByElderlyId>, elder: ReturnType<typeof buildLiveElderlyList>[number]): FaceQueueItem {
-  const status = record?.status ?? '待录入'
-  const capturedSteps = record?.capturedSteps ?? []
-  return {
-    elderlyId: elder.id,
-    name: elder.name,
-    room: `${elder.roomNumber}-${elder.bedNumber}`,
-    careLevel: elder.careLevel,
-    status,
-    progress: progressForStatus(status, capturedSteps),
-    qualityScore: record?.qualityScore ?? 0,
-    qualitySummary: record?.qualitySummary ?? '尚未开始采集，请先记录三个角度样本。',
-    lastUpdated: record?.lastUpdated ?? '——',
-    operator: record?.operator ?? '前台接待 李敏',
-    deviceLabel: record?.deviceLabel ?? '前台采集终端 A',
-    activationNote: record?.activationNote,
-    retakeReason: record?.retakeReason,
-    capturedSteps,
+function progressForItem(item: AdminFaceQueueItem) {
+  return progressForStatus(item.status, item.capturedSteps)
+}
+
+function formatUpdatedAt(value: string) {
+  if (value === '——') {
+    return value
   }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export default function FacePage() {
@@ -102,17 +83,11 @@ export default function FacePage() {
   const preselectedId = searchParams.get('selected')
   const entry = searchParams.get('entry')
   const scene = searchParams.get('scene')
-  const admissionSnapshot = useSyncExternalStore(
-    subscribeAdmissionWorkflow,
-    getAdmissionApplicationsSnapshot,
-    getAdmissionApplicationsSnapshot,
-  )
-  const faceSnapshot = useSyncExternalStore(
-    subscribeFaceEnrollmentWorkflow,
-    getFaceEnrollmentSnapshot,
-    getFaceEnrollmentSnapshot,
-  )
-  const liveElderlyList = useMemo(() => buildLiveElderlyList(admissionSnapshot), [admissionSnapshot])
+  const [queue, setQueue] = useState<AdminFaceQueueItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<FaceEnrollmentStatus | ''>('')
   const [selectedId, setSelectedId] = useState<string | null>(preselectedId)
@@ -122,10 +97,46 @@ export default function FacePage() {
   const [retakeNotes, setRetakeNotes] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const queue = useMemo(
-    () => liveElderlyList.map(elder => buildQueueItem(findFaceEnrollmentRecordByElderlyId(elder.id, faceSnapshot), elder)),
-    [faceSnapshot, liveElderlyList],
-  )
+  const loadQueue = useCallback(async (isBackground = false) => {
+    try {
+      if (isBackground) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+      setLoadError('')
+      const response = await fetchAdminFaceEnrollmentQueue({ page: 1, pageSize: 500 })
+      setQueue(response.items)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '人脸录入队列加载失败，请稍后重试。'
+      setLoadError(message)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadQueue(false)
+  }, [loadQueue])
+
+  useEffect(() => {
+    setSelectedId(preselectedId)
+  }, [preselectedId])
+
+  const upsertQueueItem = useCallback((item: AdminFaceQueueItem) => {
+    setQueue(current => {
+      const index = current.findIndex(record => record.elderlyId === item.elderlyId)
+      if (index === -1) {
+        return [item, ...current]
+      }
+
+      const next = [...current]
+      next[index] = item
+      return next
+    })
+  }, [])
+
   const filtered = useMemo(
     () => queue.filter(item => {
       if (search && !item.name.includes(search) && !item.elderlyId.includes(search)) {
@@ -148,6 +159,16 @@ export default function FacePage() {
       ?? queue[0]
       ?? null
   }, [filtered, preselectedId, queue, selectedId])
+
+  useEffect(() => {
+    if (selected) {
+      return
+    }
+
+    if (queue.length > 0) {
+      setSelectedId(queue[0].elderlyId)
+    }
+  }, [queue, selected])
 
   const selectedOperator = selected ? operatorDrafts[selected.elderlyId] ?? selected.operator : ''
   const selectedDevice = selected ? deviceDrafts[selected.elderlyId] ?? selected.deviceLabel : ''
@@ -220,14 +241,20 @@ export default function FacePage() {
     }
 
     clearError()
-    startFaceEnrollment({
-      elderlyId: selected.elderlyId,
-      elder: selected.name,
-      room: selected.room,
+    setSubmitting(true)
+    void startAdminFaceEnrollment(selected.elderlyId, {
       operator: selectedOperator,
       deviceLabel: selectedDevice,
       entrySource: resolveEntrySource(),
     })
+      .then(item => {
+        upsertQueueItem(item)
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '开始采集失败，请稍后重试。'
+        updateError(message)
+      })
+      .finally(() => setSubmitting(false))
   }
 
   function handleCapture(step: FaceCaptureStepKey) {
@@ -242,17 +269,32 @@ export default function FacePage() {
     }
 
     clearError()
-    if (selected.status === '待录入' || selected.status === '需重录') {
-      startFaceEnrollment({
-        elderlyId: selected.elderlyId,
-        elder: selected.name,
-        room: selected.room,
+    setSubmitting(true)
+    const doCapture = async () => {
+      if (selected.status === '待录入' || selected.status === '需重录') {
+        await startAdminFaceEnrollment(selected.elderlyId, {
+          operator: selectedOperator,
+          deviceLabel: selectedDevice,
+          entrySource: resolveEntrySource(),
+        })
+      }
+
+      return captureAdminFaceEnrollmentSample(selected.elderlyId, {
+        step,
         operator: selectedOperator,
         deviceLabel: selectedDevice,
-        entrySource: resolveEntrySource(),
       })
     }
-    captureFaceSample(selected.elderlyId, step, selectedOperator, selectedDevice)
+
+    void doCapture()
+      .then(item => {
+        upsertQueueItem(item)
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '采集样本失败，请稍后重试。'
+        updateError(message)
+      })
+      .finally(() => setSubmitting(false))
   }
 
   function handleActivate() {
@@ -260,15 +302,23 @@ export default function FacePage() {
       return
     }
 
-    const record = findFaceEnrollmentRecordByElderlyId(selected.elderlyId, faceSnapshot)
-    const validationMessage = validateFaceActivation(record, selectedActivationNote)
+    const validationMessage = validateFaceActivation(selected, selectedActivationNote)
     if (validationMessage) {
       updateError(validationMessage)
       return
     }
 
     clearError()
-    activateFaceEnrollment(selected.elderlyId, selectedActivationNote)
+    setSubmitting(true)
+    void activateAdminFaceEnrollment(selected.elderlyId, selectedActivationNote)
+      .then(item => {
+        upsertQueueItem(item)
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '确认激活失败，请稍后重试。'
+        updateError(message)
+      })
+      .finally(() => setSubmitting(false))
   }
 
   function handleRetake() {
@@ -283,7 +333,16 @@ export default function FacePage() {
     }
 
     clearError()
-    returnFaceEnrollmentForRetake(selected.elderlyId, selectedRetakeNote)
+    setSubmitting(true)
+    void retakeAdminFaceEnrollment(selected.elderlyId, selectedRetakeNote)
+      .then(item => {
+        upsertQueueItem(item)
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '退回重录失败，请稍后重试。'
+        updateError(message)
+      })
+      .finally(() => setSubmitting(false))
   }
 
   return (
@@ -294,7 +353,10 @@ export default function FacePage() {
         actions={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Link href="/elderly" className="btn btn-secondary btn-sm">返回老人列表</Link>
-            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handleStart} data-testid="face-start-button">
+            <button className="btn btn-secondary btn-sm" onClick={() => void loadQueue(true)} disabled={refreshing || loading}>
+              {refreshing ? '刷新中...' : '刷新队列'}
+            </button>
+            <button className="btn btn-primary btn-sm flex items-center gap-2" onClick={handleStart} disabled={submitting || loading} data-testid="face-start-button">
               <Camera size={14} />{selected && (selected.status === '待录入' || selected.status === '需重录') ? '开始采集' : '继续处理'}
             </button>
           </div>
@@ -315,6 +377,17 @@ export default function FacePage() {
                     当前对象 {selected.name}，房间 {selected.room}，可在单页内完成采集、退回和激活。
                   </div>
                   <Link href={`/elderly/${selected.elderlyId}`} className="btn btn-secondary btn-sm">查看老人档案</Link>
+                </div>
+              </DataCard>
+            ) : null}
+
+            {loadError ? (
+              <DataCard title="数据加载失败" subtitle="无法获取实时人脸录入队列。">
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: 13, color: 'var(--color-danger)' }}>{loadError}</div>
+                  <div>
+                    <button className="btn btn-primary btn-sm" onClick={() => void loadQueue(false)}>重新加载</button>
+                  </div>
                 </div>
               </DataCard>
             ) : null}
@@ -393,12 +466,12 @@ export default function FacePage() {
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div style={{ flex: 1, height: 6, background: 'var(--color-bg)', borderRadius: 999 }}>
-                                <div style={{ height: '100%', width: `${item.progress}%`, background: item.progress >= 100 ? 'var(--color-success)' : item.progress >= 80 ? 'var(--color-info)' : item.progress > 0 ? 'var(--color-warning)' : 'var(--color-border)', borderRadius: 999 }} />
+                                <div style={{ height: '100%', width: `${progressForItem(item)}%`, background: progressForItem(item) >= 100 ? 'var(--color-success)' : progressForItem(item) >= 80 ? 'var(--color-info)' : progressForItem(item) > 0 ? 'var(--color-warning)' : 'var(--color-border)', borderRadius: 999 }} />
                               </div>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: item.qualityScore >= 85 ? 'var(--color-success)' : item.qualityScore > 0 ? 'var(--color-warning)' : 'var(--color-muted)', width: 36 }}>{item.qualityScore || item.progress}%</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: item.qualityScore >= 85 ? 'var(--color-success)' : item.qualityScore > 0 ? 'var(--color-warning)' : 'var(--color-muted)', width: 36 }}>{item.qualityScore || progressForItem(item)}%</span>
                             </div>
                           </td>
-                          <td><span className="text-xs" style={{ color: 'var(--color-muted)' }}>{item.lastUpdated}</span></td>
+                          <td><span className="text-xs" style={{ color: 'var(--color-muted)' }}>{formatUpdatedAt(item.lastUpdated)}</span></td>
                           <td>
                             <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }} onClick={() => setSelectedId(item.elderlyId)}>
                               {item.status === '待录入' ? '录入' : item.status === '已生效' ? '查看' : '继续'}
@@ -426,7 +499,7 @@ export default function FacePage() {
                     <div style={{ borderRadius: 10, border: '1px solid var(--color-border)', padding: 14 }}>
                       <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>质量摘要</div>
                       <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: 'var(--color-text)' }}>{selected.qualitySummary}</div>
-                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 700 }}>质量评分 {selected.qualityScore}% · 当前进度 {selected.progress}%</div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-primary)', fontWeight: 700 }}>质量评分 {selected.qualityScore}% · 当前进度 {progressForItem(selected)}%</div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
@@ -435,6 +508,7 @@ export default function FacePage() {
                         <input
                           className="input"
                           value={selectedOperator}
+                          disabled={submitting || loading}
                           onChange={event => setOperatorDrafts(current => ({ ...current, [selected.elderlyId]: event.target.value }))}
                           placeholder="如 前台接待 李敏"
                           style={{ marginTop: 8 }}
@@ -445,6 +519,7 @@ export default function FacePage() {
                         <input
                           className="input"
                           value={selectedDevice}
+                          disabled={submitting || loading}
                           onChange={event => setDeviceDrafts(current => ({ ...current, [selected.elderlyId]: event.target.value }))}
                           placeholder="如 前台采集终端 A"
                           style={{ marginTop: 8 }}
@@ -464,7 +539,7 @@ export default function FacePage() {
                             {done ? (
                               <Tag variant="success">已采集</Tag>
                             ) : (
-                              <button className="btn btn-secondary btn-sm" onClick={() => handleCapture(step.key)} data-testid={`face-capture-${step.key}`}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => handleCapture(step.key)} disabled={submitting || loading} data-testid={`face-capture-${step.key}`}>
                                 采集
                               </button>
                             )}
@@ -478,6 +553,7 @@ export default function FacePage() {
                       <textarea
                         className="input"
                         value={selectedActivationNote}
+                        disabled={submitting || loading}
                         onChange={event => setActivationNotes(current => ({ ...current, [selected.elderlyId]: event.target.value }))}
                         placeholder="填写为什么可以激活，例如已完成三角度采集且光照稳定。"
                         style={{ marginTop: 8, minHeight: 84, resize: 'vertical', paddingTop: 10 }}
@@ -489,6 +565,7 @@ export default function FacePage() {
                       <textarea
                         className="input"
                         value={selectedRetakeNote}
+                        disabled={submitting || loading}
                         onChange={event => setRetakeNotes(current => ({ ...current, [selected.elderlyId]: event.target.value }))}
                         placeholder="如 逆光、遮挡、佩戴口罩导致模板质量不足。"
                         style={{ marginTop: 8, minHeight: 72, resize: 'vertical', paddingTop: 10 }}
@@ -506,8 +583,8 @@ export default function FacePage() {
                         健康信号：状态变化必须在当前页显式可见，避免前台或护理主管依赖口头确认。
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={handleRetake} data-testid="face-retake-button">退回重录</button>
-                        <button className="btn btn-primary btn-sm" onClick={handleActivate} data-testid="face-activate-button">确认激活</button>
+                        <button className="btn btn-ghost btn-sm" onClick={handleRetake} disabled={submitting || loading} data-testid="face-retake-button">退回重录</button>
+                        <button className="btn btn-primary btn-sm" onClick={handleActivate} disabled={submitting || loading} data-testid="face-activate-button">确认激活</button>
                       </div>
                     </div>
                   </div>

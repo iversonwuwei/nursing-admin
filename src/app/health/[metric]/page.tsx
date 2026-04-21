@@ -1,6 +1,5 @@
-import { StandardModulePage } from '@/components/nh'
-import { healthMetricPages } from '@/lib/data/standard-pages'
 import { notFound } from 'next/navigation'
+import HealthMetricClient from './health-metric-client'
 
 export default async function HealthMetricPage({
   params,
@@ -8,11 +7,10 @@ export default async function HealthMetricPage({
   params: Promise<{ metric: string }>
 }) {
   const { metric } = await params
-  const config = healthMetricPages[metric]
 
-  if (!config) {
+  if (metric !== 'bp' && metric !== 'hr' && metric !== 'sleep') {
     notFound()
   }
 
-  return <StandardModulePage config={config} routePath={`/health/${metric}`} />
+  return <HealthMetricClient metric={metric} />
 }
