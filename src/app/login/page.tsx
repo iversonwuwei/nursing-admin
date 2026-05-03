@@ -36,7 +36,6 @@ export default function LoginPage() {
   return (
     <div className="login-root">
       <div className="login-card animate-fadeUp">
-        {/* Logo */}
         <div className="login-logo">
           <div className="login-logo-icon">养</div>
           <span className="login-logo-text">智慧养老管理系统</span>
@@ -46,16 +45,7 @@ export default function LoginPage() {
         <p className="login-subtitle">请登录您的账号继续使用</p>
 
         {error && (
-          <div
-            style={{
-              background: 'var(--danger-bg)',
-              color: 'var(--danger-text)',
-              border: '1px solid #F5BFBF',
-              borderRadius: 'var(--r-lg)',
-              padding: '10px 14px',
-              fontSize: 13,
-            }}
-          >
+          <div className="login-error" role="alert">
             {error}
           </div>
         )}

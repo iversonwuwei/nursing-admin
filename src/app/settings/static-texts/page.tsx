@@ -20,7 +20,7 @@ export default function StaticTextsPage() {
   const [nsFilter, setNsFilter] = useState('')
   const [localeFilter, setLocaleFilter] = useState('')
   const [page, setPage] = useState(1)
-  const pageSize = 10
+  const pageSize = 20
 
   const [paged, setPaged] = useState<StaticTextItem[]>([])
   const [total, setTotal] = useState(0)
@@ -76,16 +76,16 @@ export default function StaticTextsPage() {
       <InteractionRailLayout
         main={(
           <>
-            <div className="kpi-grid" style={{ marginBottom: 16 }}>
-              {NAMESPACES.map(ns => {
-                const count = namespaceTotals[ns] ?? 0
-                return (
-                  <DataCard key={ns} title={NAMESPACE_LABELS[ns]} subtitle={`${count} 条文本`}>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text)' }}>{count}</div>
-                  </DataCard>
-                )
-              })}
-            </div>
+            <DataCard title="命名空间统计" subtitle="各命名空间文本数量概览" badge={<Tag variant="info">Namespaces</Tag>}>
+              <div className="ns-summary-bar">
+                {NAMESPACES.map(ns => (
+                  <div key={ns} className="ns-summary-chip">
+                    <span className="ns-summary-chip__label">{NAMESPACE_LABELS[ns as TextNamespace]}</span>
+                    <span className="ns-summary-chip__count">{namespaceTotals[ns] ?? 0}</span>
+                  </div>
+                ))}
+              </div>
+            </DataCard>
 
             <FilterBar>
               <FilterItem label="">
@@ -141,7 +141,7 @@ export default function StaticTextsPage() {
               overflow: 'hidden',
             }}>
               <div className="table-wrap">
-                <table className="table">
+                  <table className="table table-compact">
                   <thead>
                     <tr>
                       <th>命名空间</th>

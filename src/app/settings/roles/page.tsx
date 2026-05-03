@@ -109,7 +109,7 @@ export default function SettingsRolesPage() {
                 <div className="home-context-description">加载中…</div>
               ) : roles && roles.length > 0 ? (
                 <div className="table-wrap">
-                  <table className="table">
+                  <table className="table table-compact">
                     <thead>
                       <tr>
                         <th>角色</th>
@@ -126,7 +126,16 @@ export default function SettingsRolesPage() {
                             <div className="home-context-description">{role.description}</div>
                           </td>
                           <td>{role.scope}</td>
-                          <td>{role.abilities.join(' · ')}</td>
+                          <td>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                              {role.abilities.slice(0, 4).map((a, i) => (
+                                <Tag key={i} variant="neutral">{a}</Tag>
+                              ))}
+                              {role.abilities.length > 4 && (
+                                <Tag variant="neutral">+{role.abilities.length - 4}</Tag>
+                              )}
+                            </div>
+                          </td>
                           <td>
                             {role.isHighRisk ? (
                               <Tag variant="danger">高危权限</Tag>

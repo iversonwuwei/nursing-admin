@@ -17,7 +17,7 @@ export default function OptionGroupsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const [selectedGroup, setSelectedGroup] = useState<OptionGroup | null>(null)
-  const pageSize = 10
+  const pageSize = 20
 
   const [allGroups, setAllGroups] = useState<OptionGroup[]>([])
   const [, setLoading] = useState(true)
@@ -125,7 +125,7 @@ export default function OptionGroupsPage() {
                   overflow: 'hidden',
                 }}>
                   <div className="table-wrap">
-                    <table className="table">
+                    <table className="table table-compact">
                       <thead>
                         <tr>
                           <th>分组名称</th>
@@ -195,7 +195,7 @@ export default function OptionGroupsPage() {
                 overflow: 'hidden',
               }}>
                 <div className="table-wrap">
-                  <table className="table">
+                  <table className="table table-compact">
                     <thead>
                       <tr>
                         <th>排序</th>

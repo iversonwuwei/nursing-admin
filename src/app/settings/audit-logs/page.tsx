@@ -25,7 +25,7 @@ export default function AuditLogsPage() {
   const [typeFilter, setTypeFilter] = useState('')
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const pageSize = 10
+  const pageSize = 20
 
   const [paged, setPaged] = useState<ContentAuditLog[]>([])
   const [total, setTotal] = useState(0)
@@ -106,7 +106,7 @@ export default function AuditLogsPage() {
               overflow: 'hidden',
             }}>
               <div className="table-wrap">
-                <table className="table">
+                  <table className="table table-compact">
                   <thead>
                     <tr>
                       <th>时间</th>
